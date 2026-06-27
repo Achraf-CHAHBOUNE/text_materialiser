@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets & runtime
+.env
+.anonymizer_state.json
+
+# Input documents — NEVER commit (sensitive PII). Keep the empty folder only.
+input/*
+!input/.gitkeep
+
+# Generated output — keep the empty folder only.
+output/*
+!output/.gitkeep

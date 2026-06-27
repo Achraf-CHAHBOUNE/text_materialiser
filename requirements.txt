@@ -1,0 +1,9 @@
+# Core
+python-docx==1.1.2        # build the output .docx (RTL Arabic via OOXML)
+pypdf==5.1.0              # split big PDFs into page-batches (pure python, no system deps)
+python-dotenv==1.0.1     # load configuration from .env
+tenacity==9.0.0          # retry/backoff around LLM calls
+tqdm==4.66.5             # progress bar
+
+# Vision LLM provider (default). Swap/extend under anonymizer/llm/.
+google-genai==1.9.0      # Gemini (gemini-2.5-flash-lite): native PDF OCR + PII detection
