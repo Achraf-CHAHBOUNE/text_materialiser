@@ -14,15 +14,15 @@ from typing import List, Optional
 
 from tqdm import tqdm
 
-from .categories import UNKNOWN, normalize_category
 from .config import Settings
-from .docx_writer import write_docx
+from .core.categories import UNKNOWN, normalize_category
+from .core.redactor import redact_text
+from .core.state import DocRecord, State
+from .documents.docx_writer import write_docx
+from .documents.loaders import InputDoc, discover_inputs, iter_work_batches
 from .llm.base import DocumentAI, PIIEntity
 from .llm.factory import get_provider
-from .loaders import InputDoc, discover_inputs, iter_work_batches
-from .logging_setup import get_logger
-from .redactor import redact_text
-from .state import DocRecord, State
+from .utils.logging import get_logger
 
 log = get_logger()
 

@@ -4,10 +4,10 @@ Two modes share the same PII + classification rules:
 - OCR_PII_PROMPT  : scanned PDFs (model must OCR, then detect + classify).
 - PII_TEXT_PROMPT : text already extracted locally (.docx / text PDFs) -> detect + classify only.
 
-The chamber taxonomy is injected from anonymizer.categories so it lives in one place.
+The chamber taxonomy is injected from anonymizer.core.categories so it lives in one place.
 """
 
-from ..categories import CATEGORIES, TAXONOMY, UNKNOWN
+from ..core.categories import CATEGORIES, TAXONOMY, UNKNOWN
 
 _TAXONOMY_LINES = "\n".join(f"  - {court} / {chamber}" for court, chamber in TAXONOMY)
 _ALLOWED_CHAMBERS = "، ".join(CATEGORIES)

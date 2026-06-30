@@ -1,7 +1,11 @@
-"""Arabic scanned-PDF PII anonymization pipeline.
+"""Arabic document PII anonymization pipeline.
 
-Pipeline: scanned PDF -> vision LLM (OCR + PII detection) -> local redaction
--> RTL Arabic .docx. See README.md for the architecture overview.
+Pipeline: PDF/DOCX -> (vision OCR or local text) -> LLM PII detection + chamber
+classification -> local redaction -> RTL Arabic .docx + index.csv.
+See README.md for the architecture overview.
 """
+from .config import Settings
+from .pipeline import Pipeline, RunOptions
 
 __version__ = "1.0.0"
+__all__ = ["Settings", "Pipeline", "RunOptions", "__version__"]

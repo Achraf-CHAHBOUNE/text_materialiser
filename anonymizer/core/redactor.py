@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from .llm.base import PIIEntity
+from ..llm.base import PIIEntity
 
 
 @dataclass

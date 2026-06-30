@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arabic-pii-anonymizer"
+version = "1.0.0"
+description = "Anonymize PII in Arabic legal documents (scanned PDF / text PDF / DOCX) using a vision LLM, and classify each into its court chamber."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Achraf CHAHBOUNE" }]
+keywords = ["pii", "anonymization", "arabic", "ocr", "gemini", "docx", "legal"]
+
+dependencies = [
+    "python-docx==1.1.2",
+    "pypdf==5.1.0",
+    "python-dotenv==1.0.1",
+    "tenacity==9.0.0",
+    "tqdm==4.66.5",
+    "google-genai==1.9.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+anonymize = "anonymizer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["anonymizer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

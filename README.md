@@ -36,27 +36,53 @@ The LLM **only OCRs and flags PII**; all replacement happens locally in Python.
 ## Project layout
 
 ```
-anonymizer/
-  config.py         # .env-driven settings + cost estimate
-  logging_setup.py  # logging
-  state.py          # resume checkpoint (atomic JSON) + index.csv export
-  loaders.py        # discover .pdf/.docx + yield image/text batches (auto scan-vs-text)
-  categories.py     # court-chamber taxonomy (classification)
-  redactor.py       # local PII -> XXXXXXX (whitespace-flexible, line-wrap safe)
-  docx_writer.py    # RTL Arabic .docx output
-  pipeline.py       # orchestration: concurrency, resume, progress, per-doc isolation
-  llm/
-    base.py         # DocumentAI interface + data classes (provider-agnostic)
-    prompt.py       # OCR/PII/classification prompts
-    gemini.py       # Gemini provider (process_pdf = OCR; process_text = text-only)
-    factory.py      # PROVIDER -> implementation
-main.py             # CLI
+arabic-pii-anonymizer/
+├── anonymizer/                  # the package
+│   ├── __init__.py              # public API: Pipeline, Settings
+│   ├── __main__.py              # enables `python -m anonymizer`
+│   ├── cli.py                   # argparse CLI
+│   ├── config.py                # .env-driven settings + cost estimate
+│   ├── pipeline.py              # orchestration: concurrency, resume, progress, isolation
+│   ├── core/                    # domain logic
+│   │   ├── categories.py        #   court-chamber taxonomy (classification)
+│   │   ├── redactor.py          #   local PII -> XXXXXXX (line-wrap safe)
+│   │   └── state.py             #   resume checkpoint + index.csv export
+│   ├── documents/               # document I/O
+│   │   ├── loaders.py           #   discover .pdf/.docx, auto scan-vs-text batches
+│   │   └── docx_writer.py       #   RTL Arabic .docx output
+│   ├── llm/                     # pluggable providers
+│   │   ├── base.py              #   DocumentAI interface + data classes
+│   │   ├── prompt.py            #   OCR/PII/classification prompts
+│   │   ├── gemini.py            #   Gemini (process_pdf = OCR; process_text = text)
+│   │   └── factory.py           #   PROVIDER -> implementation
+│   └── utils/
+│       └── logging.py           #   UTF-8 console logging
+├── tests/                       # offline unit tests (pytest)
+│   └── test_redactor.py
+├── input/                       # put PDFs/DOCX here  (contents gitignored)
+├── output/                      # results: <name>.docx + index.csv  (gitignored)
+├── main.py                      # thin entry shim -> anonymizer.cli
+├── pyproject.toml               # packaging + `anonymize` console script
+├── requirements.txt
+├── environment.yml              # conda env
+├── .env.example                 # config template
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
 
 ## Setup
 
 ```bash
+# option A: plain
 pip install -r requirements.txt
+
+# option B: as an installed package (adds the `anonymize` command)
+pip install -e .
+
+# option C: conda
+conda env create -f environment.yml && conda activate arabic-anonymizer
+
 cp .env.example .env        # then edit .env and set GEMINI_API_KEY
 ```
 
@@ -64,15 +90,31 @@ Get a Gemini API key: https://aistudio.google.com/apikey
 
 ## Run
 
+Three equivalent entry points:
+
 ```bash
-python main.py                 # process every PDF/DOCX under INPUT_DIR (default: input/)
-python main.py --limit 3       # small batch first (verify cost & quality)
-python main.py --overwrite     # redo everything, ignoring resume state
-python main.py --workers 8 --batch-size 4
+python main.py                 # thin shim
+python -m anonymizer           # module entry
+anonymize                      # console script (after `pip install -e .`)
+```
+
+Common options (apply to any entry point):
+
+```bash
+python -m anonymizer --limit 3       # small batch first (verify cost & quality)
+python -m anonymizer --overwrite     # redo everything, ignoring resume state
+python -m anonymizer --workers 8 --batch-size 4
 ```
 
 Output `.docx` files mirror the input folder structure under `OUTPUT_DIR`
 (default `output/`).
+
+## Tests
+
+```bash
+pip install -e ".[dev]"   # installs pytest
+pytest                    # offline unit tests (no API calls)
+```
 
 ## Category index (side output)
 
