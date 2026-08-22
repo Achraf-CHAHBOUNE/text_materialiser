@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    paths: ["pipeline/**", "platform/backend/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["pipeline/**", "platform/backend/**", ".github/workflows/ci.yml"]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest
+      - name: Tests (§4 harness + leak gate + idempotence)
+        run: python -m pytest tests/ -q
+
+  platform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform/backend
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest httpx
+      - name: Tests (permissions, boundary, import gate, search)
+        run: python -m pytest tests/ -q

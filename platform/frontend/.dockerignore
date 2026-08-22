@@ -1,0 +1,9 @@
+node_modules
+.git
+.output
+dist
+.nitro
+.tanstack
+.vite
+.env
+npm-debug.log

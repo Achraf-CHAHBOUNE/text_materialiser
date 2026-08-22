@@ -1,0 +1,11 @@
+# Keep the image small and free of any local data / secrets.
+input/*
+output/*
+data/
+.env
+*.db
+__pycache__/
+*.py[cod]
+.pytest_cache/
+docs/
+tests/

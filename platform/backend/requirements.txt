@@ -1,0 +1,12 @@
+# Project 2 — platform backend. Ingest-only; NO LLM engine (that lives in ../../pipeline).
+python-docx==1.1.2         # extract text from imported .docx (import gate + search)
+pypdf==5.1.0               # extract text from imported text PDFs
+python-dotenv==1.0.1
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12   # multipart import upload
+minio==7.2.10              # anonymized-file object storage (never raw documents)
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3     # PostgreSQL driver
+
+# Dev/test only (not needed at runtime): pytest, httpx

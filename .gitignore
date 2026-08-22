@@ -6,17 +6,36 @@ venv/
 *.egg-info/
 .pytest_cache/
 
+# Node / frontend build
+node_modules/
+platform/frontend/.output/
+platform/frontend/dist/
+platform/frontend/.nitro/
+platform/frontend/.tanstack/
+.vite/
+
 # Archives
 *.zip
 
 # Secrets & runtime
 .env
-.anonymizer_state.json
+**/.env
+**/.anonymizer_state.json
 
-# Input documents — NEVER commit (sensitive PII). Keep the empty folder only.
-input/*
-!input/.gitkeep
+# Pipeline local I/O — raw PII documents must NEVER be committed.
+# Keep the empty folder placeholders only.
+pipeline/input/*
+!pipeline/input/.gitkeep
+pipeline/output/*
+!pipeline/output/.gitkeep
+pipeline/data/
+platform/backend/data/
 
-# Generated output — keep the empty folder only.
-output/*
-!output/.gitkeep
+# Databases
+*.db
+
+# Raw corpora / archives — real PII, never commit
+*.rar
+*.7z
+01_civile*
+corpus_*/

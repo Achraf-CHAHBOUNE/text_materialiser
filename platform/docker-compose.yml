@@ -1,0 +1,63 @@
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # web console
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anon}
+      POSTGRES_DB: ${POSTGRES_DB:-anonymize}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      # Ingest-only: NO engine, NO Gemini key. Stores only anonymized content.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_SECURE: "false"
+      MINIO_ANON_BUCKET: anonymized
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anon}:${POSTGRES_PASSWORD:-anon}@postgres:5432/${POSTGRES_DB:-anonymize}
+      ALLOW_ORIGINS: "*"
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      SEED_EMAIL: ${SEED_EMAIL:-}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+      SEED_CLIENT_EMAIL: ${SEED_CLIENT_EMAIL:-}
+      SEED_CLIENT_PASSWORD: ${SEED_CLIENT_PASSWORD:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - minio
+      - postgres
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "8080:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  pg-data:

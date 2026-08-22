@@ -1,0 +1,12 @@
+# Project 1 — Anonymization pipeline (CLI). Engine/runtime dependencies only.
+# (Project 2 web-app deps live in ../platform.)
+
+python-docx==1.1.2        # read/write .docx (RTL Arabic via OOXML)
+pypdf==5.1.0              # split big PDFs into page-batches (pure python, no system deps)
+python-dotenv==1.0.1      # load configuration from .env
+tenacity==9.0.0           # retry/backoff around LLM calls
+tqdm==4.66.5              # progress bar
+openpyxl==3.1.2           # XLSX records for the platform hand-off (§7)
+google-genai==1.9.0       # Gemini (gemini-2.5-flash-lite): native PDF OCR + PII detection
+
+# Optional operator UI (run: streamlit run app.py):  pip install streamlit
