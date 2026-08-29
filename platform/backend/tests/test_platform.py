@@ -13,6 +13,7 @@ _tmp = tempfile.mkdtemp()
 os.environ.update(
     DB_DIR=_tmp, FILESTORE_DIR=os.path.join(_tmp, "files"),
     AUTH_SECRET="test-secret", SEED_EMAIL="admin@x.com", SEED_PASSWORD="admin-pass",
+    AUTO_PUBLISH="0",   # these tests exercise the manual review/publish workflow
 )
 os.environ.pop("DATABASE_URL", None)
 os.environ.pop("MINIO_ENDPOINT", None)

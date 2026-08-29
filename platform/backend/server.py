@@ -39,6 +39,8 @@ app.add_middleware(
 
 STORE = get_filestore()
 CATEGORIES = ["إدارية", "تجارية", "مدنية", "جنائية", "اجتماعية", "أحوال شخصية", "عقارية"]
+# Publish imports straight away (no manual pending step). Set AUTO_PUBLISH=0 to require review.
+AUTO_PUBLISH = os.getenv("AUTO_PUBLISH", "1") not in ("0", "false", "False", "no")
 
 
 @app.on_event("startup")
@@ -178,6 +180,8 @@ async def import_batch(file: UploadFile = File(...), user: dict = Depends(requir
         }, body_text=text, file_name=fname)
         db.set_links(doc_id, rec.get("links", []))
         STORE.put(fname, data)
+        if AUTO_PUBLISH:                       # publish directly — no manual pending step
+            db.set_decision_state(doc_id, "published", user["email"])
         imported += 0 if existed else 1
         updated += 1 if existed else 0
 

@@ -48,6 +48,7 @@ class Settings:
     # cost reporting (USD per 1M tokens)
     input_price_per_m: float
     output_price_per_m: float
+    cached_price_per_m: float   # cache-read rate (Gemini 2.5 Flash-Lite: $0.01/1M)
     budget_usd: float    # hard ceiling; run halts when reached (0 = no limit)
 
     # prompt caching: cache the static instruction so its input tokens aren't re-billed
@@ -76,6 +77,7 @@ class Settings:
             soffice_path=_get("SOFFICE_PATH", "") or _autodetect_soffice(),
             input_price_per_m=float(_get("INPUT_PRICE_PER_M", "0.10")),
             output_price_per_m=float(_get("OUTPUT_PRICE_PER_M", "0.40")),
+            cached_price_per_m=float(_get("CACHED_PRICE_PER_M", "0.01")),
             budget_usd=float(_get("BUDGET_USD", "0")),
             cache_prompt=_get("ENABLE_PROMPT_CACHE", "1") not in ("0", "false", "False", "no"),
             cache_ttl_seconds=int(_get("CACHE_TTL_SECONDS", "3600")),
@@ -84,10 +86,10 @@ class Settings:
         )
 
     def estimate_cost(self, input_tokens: int, output_tokens: int, cached_tokens: int = 0) -> float:
-        # prompt_token_count includes cached tokens; cached input is billed at ~25%.
+        # prompt_token_count includes cached tokens; cached input bills at the cache-read rate.
         billable_input = max(0, input_tokens - cached_tokens)
         return (
             billable_input / 1_000_000 * self.input_price_per_m
-            + cached_tokens / 1_000_000 * self.input_price_per_m * 0.25
+            + cached_tokens / 1_000_000 * self.cached_price_per_m
             + output_tokens / 1_000_000 * self.output_price_per_m
         )
