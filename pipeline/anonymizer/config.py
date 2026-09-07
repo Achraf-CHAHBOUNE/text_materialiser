@@ -58,6 +58,10 @@ class Settings:
     # verification: independent second pass re-checks the anonymized text for missed names
     verify_pass: bool
 
+    # Vertex AI (PROVIDER=vertex): IAM auth, per-project quota, no API key needed
+    vertex_project: str
+    vertex_location: str
+
     # logging
     log_level: str
 
@@ -82,6 +86,8 @@ class Settings:
             cache_prompt=_get("ENABLE_PROMPT_CACHE", "1") not in ("0", "false", "False", "no"),
             cache_ttl_seconds=int(_get("CACHE_TTL_SECONDS", "3600")),
             verify_pass=_get("ENABLE_VERIFY", "0") not in ("0", "false", "False", "no"),
+            vertex_project=_get("VERTEX_PROJECT", ""),
+            vertex_location=_get("VERTEX_LOCATION", "us-central1"),
             log_level=_get("LOG_LEVEL", "INFO").upper(),
         )
 

@@ -80,12 +80,18 @@ class GeminiProvider(DocumentAI):
             config=types.GenerateContentConfig(**cfg),
         )
 
-    def process_pdf(self, pdf_bytes: bytes) -> BatchResult:
+    # Generous per-page ceiling for OCR output. A real page transcribes to ~1-2k
+    # tokens; a runaway on a garbled scan hit 16k per page (65k total), costing 10x
+    # and stalls the batch for minutes. Cap it.
+    MAX_OUTPUT_PER_PAGE = 6000
+
+    def process_pdf(self, pdf_bytes: bytes, page_count: int = 1) -> BatchResult:
         from google.genai import types
 
+        cap = max(4000, self.MAX_OUTPUT_PER_PAGE * max(1, page_count))
         resp = self._generate(
             [types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
-            OCR_PII_PROMPT, "ocr")
+            OCR_PII_PROMPT, "ocr", max_output=cap)
         return self._to_result(resp, include_pages=True)
 
     def process_text(self, text: str) -> BatchResult:

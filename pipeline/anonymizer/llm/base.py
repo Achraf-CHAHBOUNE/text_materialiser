@@ -62,7 +62,7 @@ class DocumentAI(ABC):
     """
 
     @abstractmethod
-    def process_pdf(self, pdf_bytes: bytes) -> BatchResult:
+    def process_pdf(self, pdf_bytes: bytes, page_count: int = 1) -> BatchResult:
         ...
 
     @abstractmethod

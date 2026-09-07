@@ -39,3 +39,12 @@ platform/backend/data/
 *.7z
 01_civile*
 corpus_*/
+
+# Google Cloud service-account keys — never commit
+*.gcp-key.json
+gcp-key.json
+service-account*.json
+*-sa-key.json
+
+# Raw corpus folders delivered by the client (NN_name) — real PII, never commit
+[0-9][0-9]_*/

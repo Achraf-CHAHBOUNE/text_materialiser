@@ -112,7 +112,7 @@ class Pipeline:
         for batch in iter_work_batches(doc, self.settings.pages_per_batch,
                                        soffice_path=self.settings.soffice_path):
             if batch.kind == "image":
-                result = self.provider.process_pdf(batch.pdf_bytes)
+                result = self.provider.process_pdf(batch.pdf_bytes, batch.page_count)
                 pages = _align_pages(result.pages, batch.page_count)  # OCR text
                 saw_image = True
             else:  # "text": we already have the text locally

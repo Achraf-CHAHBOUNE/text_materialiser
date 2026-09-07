@@ -142,18 +142,30 @@ def iter_work_batches(doc: InputDoc, pages_per_batch: int, soffice_path: str = "
         return
 
     # PDF: decide text vs scan from the embedded text layer.
+    # Only SAMPLE the first few pages — extract_text() parses the whole page content
+    # stream and is the single most expensive local step; a document is uniformly a
+    # scan or a text PDF in practice, so sampling is enough and much cheaper.
     reader = PdfReader(str(doc.path))
-    page_texts = [(pg.extract_text() or "") for pg in reader.pages]
-    total = len(page_texts) or 1
-    avg_chars = sum(len(t.strip()) for t in page_texts) / total
+    total = len(reader.pages) or 1
+    sample = reader.pages[:min(3, total)]
+    sample_texts = [(pg.extract_text() or "") for pg in sample]
+    avg_chars = sum(len(t.strip()) for t in sample_texts) / max(1, len(sample_texts))
 
     if avg_chars >= TEXT_PDF_MIN_CHARS_PER_PAGE:
-        # Text PDF: use the local text, batch by page count.
+        # Text PDF: use the local text, batch by page count. Extract the rest now.
+        page_texts = list(sample_texts) + [
+            (pg.extract_text() or "") for pg in reader.pages[len(sample_texts):]
+        ]
         for start in range(0, total, pages_per_batch):
             chunk = page_texts[start : start + pages_per_batch]
             yield WorkBatch(kind="text", pages=chunk, page_count=len(chunk))
     else:
         # Scanned PDF: send page-image slices to the vision model.
+        # Fast path: the whole document fits in one batch, so send the original bytes
+        # instead of re-encoding it through PdfWriter (pure CPU work under the GIL).
+        if total <= pages_per_batch:
+            yield WorkBatch(kind="image", pdf_bytes=doc.path.read_bytes(), page_count=total)
+            return
         for start in range(0, total, pages_per_batch):
             end = min(start + pages_per_batch, total)
             yield WorkBatch(
