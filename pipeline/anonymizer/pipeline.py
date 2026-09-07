@@ -19,6 +19,7 @@ from .core.casedb import CaseDB
 from .core.categories import UNKNOWN, normalize_category
 from .core.identifiers import Ident, local_extract
 from .core.leaktest import leak_scan
+from .core.quality import ocr_garbled
 from .core.redactor import redact_structured, redact_text
 from .core.state import DocRecord, State
 from .documents import records as records_mod
@@ -171,6 +172,11 @@ class Pipeline:
                 verify_found = remaining
                 log.info("[VERIFY] %s: %d item(s) flagged for human review: %s",
                          doc.doc_id, len(remaining), ", ".join(remaining[:5]))
+
+        # Operator fallback: if the model couldn't classify, use the folder-level
+        # chamber the operator supplied. Never overrides a confident model answer.
+        if (not category or category == UNKNOWN) and self.settings.default_category:
+            category = normalize_category(self.settings.default_category)
 
         # Title for the document = "court — chamber" (skip unknown/empty parts).
         title_parts = [p for p in (court, category) if p and p != UNKNOWN]
@@ -432,23 +438,8 @@ class Pipeline:
 
 
 def _ocr_garbled(text: str) -> bool:
-    """True if the text is mostly Arabic *presentation forms* — the signature of a
-    low-quality scan the OCR couldn't read properly. Such output is unusable and its
-    redaction can't be trusted, so it must be quarantined for manual handling."""
-    pres = arab = 0
-    for c in text:
-        o = ord(c)
-        if 0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF:   # Arabic presentation forms
-            pres += 1
-        elif 0x0600 <= o <= 0x06FF:                           # normal Arabic
-            arab += 1
-    n = len(text.strip())
-    if n < 200:                       # too little text to judge
-        return False
-    arabic = pres + arab
-    pres_ratio = pres / max(1, arabic)         # scan read as broken glyphs
-    arabic_density = arabic / n                 # a real ruling is mostly Arabic
-    return pres_ratio > 0.15 or arabic_density < 0.15
+    """True if the scan came back unreadable (see core.quality)."""
+    return ocr_garbled(text)
 
 
 def _align_pages(pages: List[str], expected: int) -> List[str]:

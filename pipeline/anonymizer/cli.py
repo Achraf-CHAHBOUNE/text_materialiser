@@ -38,6 +38,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true",
                    help="Cost probe on real files: process a small sample (25 unless --limit) "
                         "and report the projected total for the full corpus. Do this before any full run.")
+    p.add_argument("--category", help="Fallback الغرفة when the model returns غير محدد "
+                   "(e.g. 'أحوال شخصية' for a personal-status folder)")
     p.add_argument("--log-level", help="DEBUG/INFO/WARNING/ERROR (default from .env)")
     return p.parse_args()
 
@@ -56,6 +58,7 @@ def main() -> int:
     if args.batch_size: overrides["pages_per_batch"] = args.batch_size
     if args.log_level:  overrides["log_level"] = args.log_level.upper()
     if args.budget is not None: overrides["budget_usd"] = args.budget
+    if args.category:   overrides["default_category"] = args.category
     settings = replace(settings, **overrides)
 
     # Dry run: a small cost probe on real files (Script.md §3.4) before any full run.

@@ -15,6 +15,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from ..core.quality import ocr_garbled
 from .base import BatchResult, DocIdentity, DocRef, DocumentAI, PIIEntity
 from .prompt import OCR_PII_PROMPT, PII_TEXT_PROMPT
 
@@ -84,15 +85,35 @@ class GeminiProvider(DocumentAI):
     # tokens; a runaway on a garbled scan hit 16k per page (65k total), costing 10x
     # and stalls the batch for minutes. Cap it.
     MAX_OUTPUT_PER_PAGE = 6000
+    # Retry an OCR call whose response comes back empty/degenerate (transient model
+    # failure). Measured: all 4 "poor-OCR" quarantines in a 10-doc sample were these,
+    # and every one transcribed cleanly on a second attempt.
+    OCR_ATTEMPTS = 3
+    MIN_CHARS_PER_PAGE = 120
 
     def process_pdf(self, pdf_bytes: bytes, page_count: int = 1) -> BatchResult:
+        """OCR a scanned page-batch, retrying when the model returns an empty/degenerate
+        response.
+
+        The model intermittently answers with no (or almost no) transcription even
+        though the scan is perfectly readable — a transient failure, not a bad
+        document. tenacity only retries *exceptions*, so those responses used to sail
+        through and get the document quarantined as "poor OCR". Retry on the content.
+        """
         from google.genai import types
 
         cap = max(4000, self.MAX_OUTPUT_PER_PAGE * max(1, page_count))
-        resp = self._generate(
-            [types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
-            OCR_PII_PROMPT, "ocr", max_output=cap)
-        return self._to_result(resp, include_pages=True)
+        part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+        # A genuine page yields hundreds of characters; anything below this is a failure.
+        floor = self.MIN_CHARS_PER_PAGE * max(1, page_count)
+        result = None
+        for attempt in range(self.OCR_ATTEMPTS):
+            resp = self._generate([part], OCR_PII_PROMPT, "ocr", max_output=cap)
+            result = self._to_result(resp, include_pages=True)
+            text = "".join(result.pages).strip()
+            if len(text) >= floor and not ocr_garbled(text):
+                return result
+        return result
 
     def process_text(self, text: str) -> BatchResult:
         # Text is already extracted locally; the model only detects PII + classifies.

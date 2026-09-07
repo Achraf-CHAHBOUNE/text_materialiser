@@ -48,3 +48,7 @@ service-account*.json
 
 # Raw corpus folders delivered by the client (NN_name) — real PII, never commit
 [0-9][0-9]_*/
+
+# Pipeline output folders kept at the repo root for review
+out_statut*/
+test_statut_input/
