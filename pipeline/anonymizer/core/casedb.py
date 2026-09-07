@@ -85,28 +85,53 @@ class CaseDB:
         return list(self.con.execute("SELECT * FROM documents"))
 
     def relink(self) -> None:
-        """Rebuild edges from refs↔own-ids, then assign case_id via components."""
+        """Rebuild edges from refs<->own-ids, then assign case_id via components.
+
+        Candidates are found through indexes rather than by scanning every document.
+        match_score only ever calls a pair link-worthy on an exact file-number match,
+        or on decision-number + date + court agreeing — so a document that shares
+        neither key with the reference can never produce a link and is skipped.
+        Same results, without the O(refs x documents) scan (which measured ~27 hours
+        at 51k documents).
+        """
         self.con.execute("DELETE FROM edges")
         docs = self._docs()
-        # index own-identities
         own = {
             d["doc_id"]: Ident(d["court"], d["city"], d["decision_no"], d["date"], d["file_no"])
             for d in docs
         }
         levels = {d["doc_id"]: (d["level"] or "") for d in docs}
 
+        # --- candidate indexes (the two ways a match can be link-worthy) ---
+        by_file: Dict[str, List[str]] = {}
+        by_dec_date: Dict[tuple, List[str]] = {}
+        for d in docs:
+            if d["file_norm"]:
+                by_file.setdefault(d["file_norm"], []).append(d["doc_id"])
+            dec, dat = (d["decision_no"] or "").strip(), d["date_norm"]
+            if dec and dat:
+                by_dec_date.setdefault((dec, dat), []).append(d["doc_id"])
+
         for row in self.con.execute("SELECT * FROM doc_refs"):
             parent = row["doc_id"]
             ref = Ident(row["court"], row["city"], row["decision_no"], row["date"], row["file_no"])
+
+            candidates = set()
+            if ref.file_norm:
+                candidates.update(by_file.get(ref.file_norm, ()))
+            dec, dat = (ref.decision_no or "").strip(), ref.date_norm
+            if dec and dat:
+                candidates.update(by_dec_date.get((dec, dat), ()))
+
             best = None  # (score, conf, child_doc)
-            for child, oid in own.items():
+            for child in candidates:
                 if child == parent:
                     continue
                 # a parent (higher court) reviews a lower one: enforce rank if known
                 pr, cr = LEVEL_RANK.get(levels[parent], 0), LEVEL_RANK.get(levels[child], 0)
                 if pr and cr and pr <= cr:
                     continue
-                score, conf = match_score(ref, oid)
+                score, conf = match_score(ref, own[child])
                 if conf not in ("high", "medium"):  # never auto-link on weak matches
                     continue
                 if best is None or score > best[0]:
@@ -120,7 +145,8 @@ class CaseDB:
         self._assign_cases()
 
     def _assign_cases(self) -> None:
-        docs = [d["doc_id"] for d in self._docs()]
+        rows = {d["doc_id"]: d for d in self._docs()}   # fetched once
+        docs = list(rows)
         parent: Dict[str, str] = {d: d for d in docs}
 
         def find(x):
@@ -134,29 +160,30 @@ class CaseDB:
             if ra != rb:
                 parent[ra] = rb
 
-        for e in self.con.execute("SELECT parent_doc,child_doc FROM edges"):
+        # Edge confidences loaded once, keyed by document — a SQL scan per component
+        # was O(components x edges) and dominated the run at scale.
+        conf_by_doc: Dict[str, List[str]] = {}
+        for e in self.con.execute("SELECT parent_doc,child_doc,confidence FROM edges"):
             if e["parent_doc"] in parent and e["child_doc"] in parent:
                 union(e["parent_doc"], e["child_doc"])
+            conf_by_doc.setdefault(e["parent_doc"], []).append(e["confidence"])
+            conf_by_doc.setdefault(e["child_doc"], []).append(e["confidence"])
 
-        # name each component by its lowest-level member's file/doc id
+        # group into connected components
         comp: Dict[str, List[str]] = {}
         for d in docs:
             comp.setdefault(find(d), []).append(d)
-        rows = {d["doc_id"]: d for d in self._docs()}
+
+        updates = []
         for members in comp.values():
-            rep = sorted(members, key=lambda d: (LEVEL_RANK.get(rows[d]["level"] or "", 9), d))[0]
-            key = rows[rep]["file_norm"] or rep
-            case_id = f"C:{key}"
-            # review flag: worst confidence among the case's edges
-            confs = [e["confidence"] for e in self.con.execute(
-                "SELECT confidence FROM edges WHERE parent_doc IN (%s) OR child_doc IN (%s)"
-                % (",".join("?" * len(members)), ",".join("?" * len(members))),
-                members + members,
-            )]
+            # name the case after its lowest-level member's file number
+            rep = min(members, key=lambda d: (LEVEL_RANK.get(rows[d]["level"] or "", 9), d))
+            case_id = f"C:{rows[rep]['file_norm'] or rep}"
+            confs = [c for d in members for c in conf_by_doc.get(d, ())]
             review = "check" if any(c in ("low", "medium") for c in confs) else "ok"
-            for d in members:
-                self.con.execute("UPDATE documents SET case_id=?, review=? WHERE doc_id=?",
-                                 (case_id, review, d))
+            updates.extend((case_id, review, d) for d in members)
+        self.con.executemany(
+            "UPDATE documents SET case_id=?, review=? WHERE doc_id=?", updates)
         self.con.commit()
 
     # --- export ---------------------------------------------------------------
