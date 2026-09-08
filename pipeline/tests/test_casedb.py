@@ -113,3 +113,24 @@ def test_relink_matches_rows_normalized_by_an_older_ruleset(tmp_path):
     assert [(e["parent_doc"], e["child_doc"]) for e in edges] == [("high", "low")]
     assert db.document("low")["case_id"] == db.document("high")["case_id"]
     db.close()
+
+
+def test_a_joined_file_number_from_the_model_is_split_into_each_file():
+    """The model names several reviewed files in one field.
+
+    Kept whole, canon_file_no runs the digits together into a key that matches
+    nothing, so the lower rulings are never linked.
+    """
+    from anonymizer.core.identifiers import canon_file_no, split_file_numbers
+
+    joined = "444 /1606 /2016 وعدد445 /1606/2016"
+    assert canon_file_no(joined) == "444/1606/2016/445/1606/2016"   # the useless key
+    assert [canon_file_no(f) for f in split_file_numbers(joined)] == [
+        "444/1606/2016", "445/1606/2016"]
+
+
+def test_splitting_leaves_an_ordinary_single_file_number_alone():
+    from anonymizer.core.identifiers import split_file_numbers
+
+    assert split_file_numbers("1622/95") == ["1622/95"]
+    assert split_file_numbers("") == [""]

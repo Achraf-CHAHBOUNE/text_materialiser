@@ -18,7 +18,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from .config import Settings
 from .core.casedb import CaseDB
 from .core.categories import UNKNOWN, normalize_category
-from .core.identifiers import Ident, local_extract
+from .core.identifiers import Ident, local_extract, split_file_numbers
 from .core.leaktest import leak_scan
 from .core.quality import ocr_garbled
 from .core.redactor import redact_structured, redact_text
@@ -254,7 +254,15 @@ class Pipeline:
         # Combine LLM refs + local refs, dedup by file/decision.
         merged_refs: list[Ident] = []
         seen: set[str] = set()
-        llm_refs = [Ident(r.court, r.city, r.decision_no, r.date, r.file_no) for r in refs]
+        # The model reports several joined files in one field when a ruling reviews
+        # more than one ("444/1606/2016 وعدد445/1606/2016"). Left whole, canon_file_no
+        # runs the digits together into a key that matches nothing, so the lower
+        # rulings are never linked. Split it the same way the local extractor does.
+        llm_refs = [
+            Ident(r.court, r.city, r.decision_no, r.date, file_no)
+            for r in refs
+            for file_no in split_file_numbers(r.file_no)
+        ]
         for r in llm_refs + loc_refs:
             key = r.file_norm or r.decision_no
             if not key or key in seen:

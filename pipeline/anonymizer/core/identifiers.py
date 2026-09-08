@@ -143,8 +143,13 @@ def _tidy(s: str) -> str:
     return re.sub(r"\s*([/\-–])\s*", r"\1", (s or "").strip())
 
 
-def _split_files(raw: str) -> list:
-    """Split a joined file-number run into its individual numbers (may be empty)."""
+def split_file_numbers(raw: str) -> list:
+    """Split a joined file-number run into its individual numbers (may be empty).
+
+    A ruling that reviews several files names them in one breath, from the model
+    ("444/1606/2016 وعدد445/1606/2016") or the text ("الملفين عدد X و Y"). Kept whole,
+    the digits run together into a key that matches nothing.
+    """
     if not raw or not raw.strip():
         return [""]
     found = re.findall(_FILE, raw)
@@ -192,7 +197,7 @@ def local_extract(text: str) -> tuple[str, Ident, list[Ident]]:
         # One reference per joined file number: a cassation ruling often reviews two
         # or three files at once ("الملفين عدد 1622/95 و 1623/95"), and taking only the
         # first would silently drop the other lower rulings from the case.
-        for file_no in _split_files(f.group(1) if f else ""):
+        for file_no in split_file_numbers(f.group(1) if f else ""):
             refs.append(Ident(
                 court=court, city=city_of(court),
                 decision_no=_tidy(d.group(1)) if d else "",

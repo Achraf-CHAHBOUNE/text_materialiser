@@ -222,8 +222,23 @@ def _coerce(data):
     """Normalise the shapes the model actually returns into the expected object."""
     if isinstance(data, dict):
         return data
-    # A bare array: the model emitted the pii list and dropped the wrapper object.
     if isinstance(data, list):
+        # One or more complete result objects in an array. A PDF holding two rulings
+        # comes back as two objects, so they are MERGED rather than picked from:
+        # taking only the first would silently drop the second ruling's PII and ship
+        # those names unredacted. Checked before the bare-list case, since a result
+        # object is itself a dict and would otherwise look like a malformed PII entry.
+        wrapper = {"pii", "pages", "own", "refs", "level", "court", "category"}
+        if data and all(isinstance(e, dict) and (wrapper & set(e)) for e in data):
+            merged: dict = {"pages": [], "pii": [], "refs": []}
+            for e in data:
+                for key in ("pages", "pii", "refs"):
+                    merged[key].extend(e.get(key) or [])
+                for key in ("level", "court", "category", "own", "outcome"):
+                    if not merged.get(key) and e.get(key):
+                        merged[key] = e[key]
+            return merged
+        # A bare array: the model emitted the pii list and dropped the wrapper object.
         if all(isinstance(e, dict) for e in data) and any("text" in e for e in data):
             return {"pages": [], "pii": data}
         if not data:                      # an empty array carries no PII claim at all
