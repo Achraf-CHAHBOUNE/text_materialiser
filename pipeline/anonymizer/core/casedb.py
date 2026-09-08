@@ -103,12 +103,17 @@ class CaseDB:
         levels = {d["doc_id"]: (d["level"] or "") for d in docs}
 
         # --- candidate indexes (the two ways a match can be link-worthy) ---
+        # Keyed off the freshly computed Ident, never the stored file_norm/date_norm
+        # columns: those were written by whatever normalization was current at ingest
+        # time, so indexing them would compare old keys against new ones and quietly
+        # drop every link whenever a normalization rule changes.
         by_file: Dict[str, List[str]] = {}
         by_dec_date: Dict[tuple, List[str]] = {}
         for d in docs:
-            if d["file_norm"]:
-                by_file.setdefault(d["file_norm"], []).append(d["doc_id"])
-            dec, dat = (d["decision_no"] or "").strip(), d["date_norm"]
+            ident = own[d["doc_id"]]
+            if ident.file_norm:
+                by_file.setdefault(ident.file_norm, []).append(d["doc_id"])
+            dec, dat = (d["decision_no"] or "").strip(), ident.date_norm
             if dec and dat:
                 by_dec_date.setdefault((dec, dat), []).append(d["doc_id"])
 
@@ -178,7 +183,7 @@ class CaseDB:
         for members in comp.values():
             # name the case after its lowest-level member's file number
             rep = min(members, key=lambda d: (LEVEL_RANK.get(rows[d]["level"] or "", 9), d))
-            case_id = f"C:{rows[rep]['file_norm'] or rep}"
+            case_id = f"C:{canon_file_no(rows[rep]['file_no'] or '') or rep}"
             confs = [c for d in members for c in conf_by_doc.get(d, ())]
             review = "check" if any(c in ("low", "medium") for c in confs) else "ok"
             updates.extend((case_id, review, d) for d in members)

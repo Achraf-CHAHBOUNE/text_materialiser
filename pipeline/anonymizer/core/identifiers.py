@@ -7,6 +7,7 @@ identity reliably, and compute a confidence score for each candidate link.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -22,6 +23,24 @@ def _strip_diac(s: str) -> str:
 
 
 # --- file number --------------------------------------------------------------
+def _expand_year_suffix(parts: list) -> list:
+    """Write a 2-digit trailing year in full, so 95/1622/16 == 95/1622/2016.
+
+    Courts write the year of a file number either way, and the two spellings must
+    reach the same key or the appeal never finds its lower ruling. Applied only when
+    the number has three or more parts, ends in exactly two digits, and carries no
+    4-digit year already — otherwise the trailing part is a chamber/section number
+    and expanding it would invent a false match.
+    """
+    if len(parts) < 3 or not re.fullmatch(r"\d{2}", parts[-1]):
+        return parts
+    if any(re.fullmatch(r"(?:19|20)\d{2}", p) for p in parts):
+        return parts
+    yy = int(parts[-1])
+    century = "20" if yy <= _dt.date.today().year % 100 else "19"
+    return parts[:-1] + [f"{century}{parts[-1]}"]
+
+
 def canon_file_no(raw: str) -> str:
     """Canonical file number: keep digits, unify separators to '/'. e.g. 4443-8202-2015 -> 4443/8202/2015."""
     if not raw:
@@ -29,7 +48,9 @@ def canon_file_no(raw: str) -> str:
     s = re.sub(r"[^\d/\-\s]", "", raw)
     s = re.sub(r"[\-\s]+", "/", s.strip())
     s = re.sub(r"/+", "/", s).strip("/")
-    return s
+    if not s:
+        return ""
+    return "/".join(_expand_year_suffix(s.split("/")))
 
 
 def file_components(raw: str) -> frozenset:
@@ -46,7 +67,6 @@ def canon_date(raw: str) -> str:
     year = next((n for n in nums if len(n) == 4), None)
     if not year:
         return ""
-    others = [n for n in nums if n is not year]
     # take the two parts nearest the year triple
     parts = [n for n in nums if n != year][:2] or ["", ""]
     a, b = sorted(parts)
@@ -113,12 +133,22 @@ class Ident:
 # --- deterministic local extraction (backstop for LLM inconsistency) ---------
 _NUM = r"\d+(?:\s*[/\-–]\s*\d+){0,3}"
 _FILE = r"\d+(?:\s*[/\-–]\s*\d+){1,3}"          # needs at least one separator
+# Several file numbers joined by "و" / "،" — courts routinely group files in one ruling.
+_FILES = _FILE + r"(?:\s*(?:و|،|;|؛)\s*" + _FILE + r"){0,5}"
 _DATE = r"\d{1,4}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*\d{1,4}"
 _COURT = r"(محكمة النقض|محكمة الاستئناف[^\n،؛.]{0,45}|المحكمة (?:الابتدائية|التجارية|الإدارية)[^\n،؛.]{0,45})"
 
 
 def _tidy(s: str) -> str:
     return re.sub(r"\s*([/\-–])\s*", r"\1", (s or "").strip())
+
+
+def _split_files(raw: str) -> list:
+    """Split a joined file-number run into its individual numbers (may be empty)."""
+    if not raw or not raw.strip():
+        return [""]
+    found = re.findall(_FILE, raw)
+    return [_tidy(f) for f in found] if found else [""]
 
 
 def _level_from_text(head: str) -> str:
@@ -157,14 +187,18 @@ def local_extract(text: str) -> tuple[str, Ident, list[Ident]]:
         court = m.group(1).strip()
         ctx = text[max(0, m.start() - 260): m.start()]
         d = re.search(r"(?:القرار|الحكم)\s*(?:رقم|عدد)\s*(" + _NUM + ")", ctx)
-        f = re.search(r"الملف\s*(?:عدد|رقم)\s*(" + _FILE + ")", ctx)
+        f = re.search(r"الملف(?:ين|ات)?\s*(?:عدد|رقم|أعداد|عددي)?\s*(" + _FILES + ")", ctx)
         dt = re.search(r"(" + _DATE + ")", ctx)
-        refs.append(Ident(
-            court=court, city=city_of(court),
-            decision_no=_tidy(d.group(1)) if d else "",
-            date=_tidy(dt.group(1)) if dt else "",
-            file_no=_tidy(f.group(1)) if f else "",
-        ))
+        # One reference per joined file number: a cassation ruling often reviews two
+        # or three files at once ("الملفين عدد 1622/95 و 1623/95"), and taking only the
+        # first would silently drop the other lower rulings from the case.
+        for file_no in _split_files(f.group(1) if f else ""):
+            refs.append(Ident(
+                court=court, city=city_of(court),
+                decision_no=_tidy(d.group(1)) if d else "",
+                date=_tidy(dt.group(1)) if dt else "",
+                file_no=file_no,
+            ))
     return level, own, refs
 
 
