@@ -36,6 +36,22 @@ HONORIFICS = (
 # constant so the two never drift apart.
 MIN_REDACTABLE_CHARS = 3
 
+
+def is_initials(value: str) -> bool:
+    """True if the value is a run of single letters — the court's own redaction.
+
+    Moroccan rulings already de-identify the parties, writing them as initials
+    ("أ. ه.", "ع ح ت", "أ) (ت)"). Those carry no identity to protect, and chasing
+    them shreds ordinary words, so they are neither redacted nor treated as leaks.
+    The length guard alone misses the longer runs, which is why documents were held
+    for review over three separated letters.
+
+    Judged by shape, not length: every letter-run must be a single character. A real
+    three-letter name ("علي") is one run of three and is redacted normally.
+    """
+    runs = [r for r in re.split(r"[\W_]+", _NOISE.sub(" ", value)) if r]
+    return bool(runs) and all(len(r) == 1 for r in runs)
+
 # Interchangeable Arabic letters (key char -> all equivalent forms).
 _EQUIV = {c: "اأإآٱ" for c in "اأإآٱ"}
 _EQUIV.update({c: "يى" for c in "يى"})
@@ -110,14 +126,18 @@ def redact_text(text: str, entities: List[PIIEntity], token: str) -> tuple[str, 
     report = RedactionReport()
 
     # Deduplicate, longest first, so longer values are redacted before any
-    # shorter substring of them.
-    values = sorted({e.text for e in entities if e.text.strip()}, key=len, reverse=True)
+    # shorter substring of them. Ties break lexicographically: the source is a set,
+    # so ordering equal-length values by length alone left it to the hash seed, and
+    # two overlapping names of the same length could be redacted in either order --
+    # making the output differ between runs of the same document.
+    values = sorted({e.text for e in entities if e.text.strip()},
+                    key=lambda v: (-len(v), v))
 
     for value in values:
         # Guard against catastrophic over-redaction: a 1–2 char "value" (a stray letter
         # or OCR fragment) would match all over the text and shred the document. A real
         # identifier is longer; skip anything shorter than 3 significant characters.
-        if len(_significant(value)) < MIN_REDACTABLE_CHARS:
+        if len(_significant(value)) < MIN_REDACTABLE_CHARS or is_initials(value):
             report.unmatched.append(value)
             continue
         matched = False

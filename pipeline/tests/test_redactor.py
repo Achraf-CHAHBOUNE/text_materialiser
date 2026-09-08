@@ -97,3 +97,35 @@ def test_a_value_made_only_of_decoration_is_still_refused():
     out, rep = redact_text(text, [PIIEntity(text="ــ", type="name")], "XXXXXXX")
     assert out == text
     assert "ــ" in rep.unmatched
+
+
+def test_redaction_order_is_independent_of_the_hash_seed():
+    """Equal-length values must not be ordered by set iteration.
+
+    The values come from a set; ordering them by length alone left ties to the
+    hash seed, so the same document could redact in a different order -- and
+    produce different bytes -- from one run to the next.
+    """
+    import subprocess
+    import sys
+
+    script = (
+        "from anonymizer.core.redactor import redact_text;"
+        "from anonymizer.llm.base import PIIEntity;"
+        "names=['محمد الغريب','سعاد بنانيي','عبدالله كريم'];"
+        "t=' و '.join(names);"
+        "out,_=redact_text(t,[PIIEntity(n,'name') for n in names],'X');"
+        "print(out)"
+    )
+    import os
+
+    outs = set()
+    for seed in ("0", "1", "2", "3"):
+        # Inherit the real environment: a stripped one breaks the interpreter on
+        # Windows. Only the hash seed is overridden.
+        env = {**os.environ, "PYTHONHASHSEED": seed, "PYTHONUTF8": "1"}
+        r = subprocess.run([sys.executable, "-c", script], capture_output=True,
+                           text=True, encoding="utf-8", env=env, cwd=os.getcwd())
+        assert r.returncode == 0, r.stderr
+        outs.add(r.stdout)
+    assert len(outs) == 1, f"redaction varied with the hash seed: {outs}"

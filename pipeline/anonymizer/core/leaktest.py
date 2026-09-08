@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from .redactor import MIN_REDACTABLE_CHARS, _flex_pattern, _variants
+from .redactor import MIN_REDACTABLE_CHARS, _flex_pattern, _variants, is_initials
 
 # Arabic diacritics (harakat U+0610–U+061A, U+064B–U+065F, superscript alef U+0670)
 # and tatweel (U+0640). Explicit code points — a literal char range can span Arabic
@@ -57,7 +57,7 @@ def leak_scan(output_text: str, pii_values: List[str]) -> LeakResult:
         # Anything the redactor is not allowed to remove must not be reported as a
         # leak either, or every document containing the court's own party initials
         # ("أ. ه.") would be quarantined forever.
-        if len(cv) < MIN_REDACTABLE_CHARS:
+        if len(cv) < MIN_REDACTABLE_CHARS or is_initials(v):
             continue
         found = 0
         # pass 1: flex regex (same reach as the redactor)

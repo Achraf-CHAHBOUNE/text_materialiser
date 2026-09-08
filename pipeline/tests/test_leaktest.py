@@ -34,3 +34,25 @@ def test_short_value_no_false_positive():
 
 def test_empty_values_pass():
     assert leak_scan("أي نص", ["", "   "]).passed
+
+
+def test_the_courts_own_party_initials_are_not_reported_as_a_leak():
+    """Rulings already de-identify parties as initials ("ع ح ت").
+
+    Those carry no identity to protect, and holding a document over them sends a
+    correctly-anonymized file to human review for nothing -- two of the four files
+    still held after a 3,239-document run were exactly this.
+    """
+    from anonymizer.core.leaktest import leak_scan
+
+    text = "وحضر الطرفان ع ح ت و م م ت أمام المحكمة"
+    assert leak_scan(text, ["ع ح ت", "م م ت"]).passed
+
+
+def test_a_real_short_name_is_still_reported():
+    """The rule is the shape, not the length: a 3-letter name must still be caught."""
+    from anonymizer.core.leaktest import leak_scan
+
+    result = leak_scan("وحضر علي أمام المحكمة", ["علي"])
+    assert not result.passed
+    assert "علي" in result.leaked
