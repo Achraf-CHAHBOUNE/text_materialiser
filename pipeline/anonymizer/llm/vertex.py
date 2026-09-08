@@ -20,6 +20,8 @@ Credentials are resolved in this order:
 from __future__ import annotations
 
 import datetime as _dt
+import json as _json
+import shutil as _shutil
 import subprocess
 
 from google.oauth2.credentials import Credentials as _OAuthCredentials
@@ -34,7 +36,20 @@ class _GcloudSessionCredentials(_OAuthCredentials):
     (so google-auth/genai find every attribute they expect) and re-shells to gcloud
     before the token expires — a raw token lasts ~1h, which would otherwise kill a
     multi-hour run.
+
+    The expiry is read from the token itself, never guessed. `gcloud auth
+    print-access-token` hands back a *cached* token rather than minting a new one, so
+    stamping a fixed lifetime on every refresh eventually declares a token good well
+    past its real death: the credential then never refreshes again and every request
+    401s until the run is killed. Asking the token what it has left costs one call per
+    refresh (roughly hourly) and cannot drift.
     """
+
+    # Refresh this long before the real expiry, so in-flight requests can't race it.
+    _SAFETY = _dt.timedelta(minutes=5)
+    # Used only when the token's real lifetime can't be read — short on purpose, so we
+    # re-check soon rather than trusting a guess.
+    _BLIND = _dt.timedelta(minutes=10)
 
     def __init__(self) -> None:
         super().__init__(token=self._fetch())
@@ -42,21 +57,40 @@ class _GcloudSessionCredentials(_OAuthCredentials):
 
     @staticmethod
     def _fetch() -> str:
+        exe = _shutil.which("gcloud") or "gcloud"
         out = subprocess.run(
-            ["gcloud", "auth", "print-access-token"],
-            capture_output=True, text=True, shell=True,
+            [exe, "auth", "print-access-token"],
+            capture_output=True, text=True, shell=(exe == "gcloud"),
         )
         tok = (out.stdout or "").strip()
-        if not tok:
+        # A non-zero exit with output on stdout would otherwise install an error
+        # message as the bearer token and fail much later, far from the cause.
+        if out.returncode != 0 or not tok or not tok.startswith("ya29."):
             raise RuntimeError(
                 "No Google credentials. Run `gcloud auth application-default login` "
-                "(or set GOOGLE_APPLICATION_CREDENTIALS)."
+                "(or set GOOGLE_APPLICATION_CREDENTIALS). "
+                f"gcloud said: {(out.stderr or '').strip()[:200]}"
             )
         return tok
 
+    def _remaining(self) -> _dt.timedelta | None:
+        """What this token actually has left, or None if it can't be determined."""
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(
+                "https://oauth2.googleapis.com/tokeninfo?access_token=" + self.token,
+                timeout=10,
+            ) as r:
+                return _dt.timedelta(seconds=int(_json.load(r)["expires_in"]))
+        except Exception:
+            return None
+
     def _stamp(self) -> None:
-        # gcloud tokens last ~60 min; expire ours early so it refreshes in good time.
-        self.expiry = _dt.datetime.utcnow() + _dt.timedelta(minutes=45)
+        left = self._remaining()
+        window = (left - self._SAFETY) if left else self._BLIND
+        # Never stamp an expiry in the past, or google-auth refresh-loops.
+        self.expiry = _dt.datetime.utcnow() + max(window, _dt.timedelta(minutes=1))
 
     def refresh(self, request=None) -> None:  # noqa: ARG002 - signature fixed by google-auth
         self.token = self._fetch()
