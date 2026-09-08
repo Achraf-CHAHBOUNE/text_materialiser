@@ -109,7 +109,14 @@ class GeminiProvider(DocumentAI):
         result = None
         for attempt in range(self.OCR_ATTEMPTS):
             resp = self._generate([part], OCR_PII_PROMPT, "ocr", max_output=cap)
-            result = self._to_result(resp, include_pages=True)
+            try:
+                result = self._to_result(resp, include_pages=True)
+            except UnparseableResponse:
+                # A malformed reply is worth another attempt; only give up (and let
+                # the document be quarantined) if the last one is malformed too.
+                if attempt == self.OCR_ATTEMPTS - 1:
+                    raise
+                continue
             text = "".join(result.pages).strip()
             if len(text) >= floor and not ocr_garbled(text):
                 return result
@@ -125,7 +132,10 @@ class GeminiProvider(DocumentAI):
         from .prompt import VERIFY_PROMPT
         resp = self._generate([anonymized_text], VERIFY_PROMPT.replace("{TOKEN}", token),
                               "verify", max_output=256)
-        data = _parse_json(resp.text or "")
+        try:
+            data = _parse_json(resp.text or "")
+        except UnparseableResponse:
+            data = {}          # advisory pass only — never fail a document on it
         # Drop the token, and drop institutions the verifier wrongly reports as "names"
         # (the State, ministries, companies, courts…) — the brief keeps those.
         names = [n for n in (str(x).strip() for x in data.get("remaining", []))
@@ -198,20 +208,51 @@ def _is_entity(name: str) -> bool:
     return any(term in name for term in _ENTITY_TERMS)
 
 
+class UnparseableResponse(RuntimeError):
+    """The model's reply could not be read as the expected JSON object.
+
+    Raised rather than defaulted, because the safe-looking default ("no PII
+    found") is the dangerous one: it writes the document out with nothing
+    redacted, and the leak gate then has no values to scan, so the file ships
+    as clean. Failing here quarantines the document instead.
+    """
+
+
+def _coerce(data):
+    """Normalise the shapes the model actually returns into the expected object."""
+    if isinstance(data, dict):
+        return data
+    # A bare array: the model emitted the pii list and dropped the wrapper object.
+    if isinstance(data, list):
+        if all(isinstance(e, dict) for e in data) and any("text" in e for e in data):
+            return {"pages": [], "pii": data}
+        if not data:                      # an empty array carries no PII claim at all
+            raise UnparseableResponse("model returned an empty array")
+    raise UnparseableResponse(f"unexpected JSON type: {type(data).__name__}")
+
+
 def _parse_json(text: str) -> dict:
-    """Parse model JSON, tolerating ```json fences or stray text around it."""
+    """Parse model JSON, tolerating ```json fences or stray text around it.
+
+    Raises UnparseableResponse if nothing usable can be recovered.
+    """
     text = text.strip()
+    if not text:
+        raise UnparseableResponse("empty response")
     if text.startswith("```"):
         text = text.strip("`")
         if text.lstrip().lower().startswith("json"):
             text = text.lstrip()[4:]
     try:
-        return json.loads(text)
+        return _coerce(json.loads(text))
     except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start != -1 and end != -1 and end > start:
+        pass
+    # Salvage the outermost object or array embedded in surrounding prose.
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start, end = text.find(opener), text.rfind(closer)
+        if start != -1 and end > start:
             try:
-                return json.loads(text[start : end + 1])
+                return _coerce(json.loads(text[start : end + 1]))
             except json.JSONDecodeError:
-                pass
-    return {"pages": [], "pii": []}
+                continue
+    raise UnparseableResponse("no JSON object found in response")
