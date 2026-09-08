@@ -211,6 +211,16 @@ class Pipeline:
             else:
                 log.error("[POOR-OCR] %s: garbled scan — quarantined for manual review",
                           doc.doc_id)
+        else:
+            # This document was held by an earlier run and has now passed. Drop that
+            # copy: it is the version that still contained the PII, and leaving it
+            # behind both keeps a leaking artifact on disk and overstates how many
+            # files actually need review.
+            stale = self.settings.output_dir / "_quarantine" / out_path.name
+            if stale.exists():
+                stale.unlink()
+                log.info("[CLEARED] %s: passed on re-run; removed stale quarantine copy",
+                         doc.doc_id)
 
         cost = self.settings.estimate_cost(in_tok, out_tok, cached_tok)
         record = DocRecord(

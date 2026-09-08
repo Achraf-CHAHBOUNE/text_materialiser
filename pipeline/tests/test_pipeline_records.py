@@ -104,3 +104,24 @@ def test_budget_ceiling_halts(tmp_path):
     totals = Pipeline(s, provider=FakeAI()).run(RunOptions(overwrite=True))
     assert totals["halted"] is True
     assert totals["documents"] < 4  # stopped early
+
+
+def test_a_document_that_passes_on_rerun_drops_its_stale_quarantine_copy(tmp_path):
+    """A held copy left behind is the version that still contained the PII.
+
+    It also inflates the review queue: after one real run, 9 of the 20 files in
+    _quarantine were stale copies of documents that had since passed.
+    """
+    s = _settings(tmp_path)
+    _docx(s.input_dir / "a.docx", "قضت المحكمة في حق محمد العلوي وسعاد بناني")
+
+    # Stand in for an earlier run that held this document.
+    qdir = s.output_dir / "_quarantine"
+    qdir.mkdir(parents=True, exist_ok=True)
+    stale = qdir / "a.docx"
+    stale.write_bytes(b"the leaking version from an earlier run")
+
+    Pipeline(s, FakeAI()).run(RunOptions())
+
+    assert (s.output_dir / "a.docx").exists(), "document should have passed the gate"
+    assert not stale.exists(), "the leaking copy must not survive a successful re-run"

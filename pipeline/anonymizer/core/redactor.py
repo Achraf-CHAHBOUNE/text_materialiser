@@ -43,6 +43,12 @@ _EQUIV.update({c: "يى" for c in "يى"})
 # Allowed "noise" between two significant characters of a name: whitespace (incl. OCR
 # line-wraps), tatweel (U+0640), harakat (U+064B–U+065F), superscript alef (U+0670).
 _BETWEEN = "[\\sـً-ٰٟ]*"
+# The same characters, as a matcher for stripping them out of a flagged value.
+# The model echoes a name exactly as the OCR rendered it, tatweel and all
+# ("باســــــو"), and requiring those decorations to reappear in the
+# same places made the pattern miss the plain spelling. They are noise wherever
+# they occur, so they are dropped from the value and tolerated in the text.
+_NOISE = re.compile("[\\sـً-ٰٟ]")
 
 
 @dataclass
@@ -56,9 +62,14 @@ def _char_class(ch: str) -> str:
     return f"[{_EQUIV[ch]}]" if ch in _EQUIV else re.escape(ch)
 
 
+def _significant(value: str) -> str:
+    """The value's meaningful characters — whitespace, tatweel and harakat removed."""
+    return _NOISE.sub("", value)
+
+
 def _flex_pattern(value: str) -> re.Pattern:
     """Variant-tolerant regex for `value`, ignoring internal whitespace/diacritics."""
-    chars = [_char_class(ch) for ch in value if not ch.isspace()]
+    chars = [_char_class(ch) for ch in _significant(value)]
     return re.compile(_BETWEEN.join(chars) if chars else re.escape(value))
 
 
@@ -106,7 +117,7 @@ def redact_text(text: str, entities: List[PIIEntity], token: str) -> tuple[str, 
         # Guard against catastrophic over-redaction: a 1–2 char "value" (a stray letter
         # or OCR fragment) would match all over the text and shred the document. A real
         # identifier is longer; skip anything shorter than 3 significant characters.
-        if len(re.sub(r"\s", "", value)) < MIN_REDACTABLE_CHARS:
+        if len(_significant(value)) < MIN_REDACTABLE_CHARS:
             report.unmatched.append(value)
             continue
         matched = False
