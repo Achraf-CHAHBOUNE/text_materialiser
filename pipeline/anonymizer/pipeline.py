@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from .config import Settings
 from .core.casedb import CaseDB
@@ -307,11 +308,15 @@ class Pipeline:
         extras: dict[str, DocExtra] = {}
         failed_docs: List[dict] = []
         cumulative_cost = 0.0
+        n_quarantined = 0
         halted = False
         budget = self.settings.budget_usd
-        with ThreadPoolExecutor(max_workers=self.settings.max_workers) as pool:
+        bar = None
+        with logging_redirect_tqdm(), ThreadPoolExecutor(max_workers=self.settings.max_workers) as pool:
             futures = {pool.submit(self._process_one, d): d for d in todo}
-            for fut in tqdm(as_completed(futures), total=len(futures), desc="Anonymizing", unit="doc"):
+            bar = tqdm(as_completed(futures), total=len(futures), desc="Anonymizing",
+                       unit="doc", smoothing=0.1)
+            for fut in bar:
                 doc = futures[fut]
                 event = {"done": 0, "total": total, "doc_id": doc.doc_id, "ok": True}
                 try:
@@ -319,6 +324,8 @@ class Pipeline:
                     self.state.update(doc.doc_id, record)
                     extras[doc.doc_id] = extra
                     cumulative_cost += record.cost
+                    if extra.quarantined:
+                        n_quarantined += 1
                     # Ingest case-linkage data (main thread only — SQLite).
                     self.casedb.ingest(
                         doc_id=payload.doc_id, source=payload.source, level=payload.level,
@@ -352,6 +359,10 @@ class Pipeline:
                     event.update(ok=False, error=str(exc))
                 done += 1
                 event["done"] = done
+                if bar is not None:
+                    bar.set_postfix_str(
+                        f"${cumulative_cost:.3f} | clean {done - len(failed_docs) - n_quarantined}"
+                        f" | held {n_quarantined} | fail {len(failed_docs)}")
                 if progress_cb:
                     try:
                         progress_cb(event)

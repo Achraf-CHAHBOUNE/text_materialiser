@@ -29,6 +29,13 @@ HONORIFICS = (
     "الأستاذين", "السادة", "مولاي",
 )
 
+# Below this many significant characters a value cannot be matched safely: it would
+# hit fragments of ordinary words and shred the document. In practice these are the
+# court's OWN initials for the parties ("أ. ه."), which are already de-identified —
+# so they are neither redacted nor treated as leaks. The leak gate imports this same
+# constant so the two never drift apart.
+MIN_REDACTABLE_CHARS = 3
+
 # Interchangeable Arabic letters (key char -> all equivalent forms).
 _EQUIV = {c: "اأإآٱ" for c in "اأإآٱ"}
 _EQUIV.update({c: "يى" for c in "يى"})
@@ -99,7 +106,7 @@ def redact_text(text: str, entities: List[PIIEntity], token: str) -> tuple[str, 
         # Guard against catastrophic over-redaction: a 1–2 char "value" (a stray letter
         # or OCR fragment) would match all over the text and shred the document. A real
         # identifier is longer; skip anything shorter than 3 significant characters.
-        if len(re.sub(r"\s", "", value)) < 3:
+        if len(re.sub(r"\s", "", value)) < MIN_REDACTABLE_CHARS:
             report.unmatched.append(value)
             continue
         matched = False
