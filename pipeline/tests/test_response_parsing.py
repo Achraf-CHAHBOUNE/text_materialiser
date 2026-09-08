@@ -82,3 +82,48 @@ def test_a_wrapped_object_is_not_mistaken_for_a_pii_entry():
     d = _parse_json('[{"pages": ["page one"], "pii": []}]')
     assert d["pages"] == ["page one"]
     assert d["pii"] == []
+
+
+class _Cand:
+    def __init__(self, reason): self.finish_reason = reason
+
+
+class _Resp:
+    def __init__(self, text, reason=None):
+        self.text = text
+        self.candidates = [_Cand(reason)] if reason else []
+        self.usage_metadata = None
+
+
+def test_a_reply_cut_off_at_the_token_cap_is_not_salvaged_into_partial_data():
+    """The dangerous shape: a half-written pii array parses as valid JSON.
+
+    Redacting only the names that fit under the cap would ship the rest, and the
+    leak gate would not notice because it only re-scans the values it was handed.
+    """
+    from anonymizer.llm.gemini import GeminiProvider, TruncatedResponse
+
+    truncated = '{"pages": ["page one"], "pii": [{"text": "محمد", "type": "name"}'
+    with pytest.raises(TruncatedResponse):
+        GeminiProvider._check_complete(_Resp(truncated, "MAX_TOKENS"))
+
+
+def test_a_complete_reply_passes_the_truncation_check():
+    from anonymizer.llm.gemini import GeminiProvider
+
+    GeminiProvider._check_complete(_Resp('{"pii": []}', "STOP"))
+    GeminiProvider._check_complete(_Resp('{"pii": []}'))
+
+
+def test_salvage_alone_cannot_be_trusted_to_reject_a_truncated_reply():
+    """Why the finish_reason check exists rather than relying on invalid JSON.
+
+    Most truncations do leave unparseable JSON, but not all: when the cut lands
+    after a complete "pii" array the salvage recovers that array and returns it as
+    a whole answer. Nothing downstream can tell the reply was cut short.
+    """
+    cut_after_pii = ('{"pii": [{"text": "محمد"}, {"text": "سعاد"}], '
+                     '"own": {"court": "محك')
+    d = _parse_json(cut_after_pii)
+    assert len(d["pii"]) == 2          # accepted, with no sign it was truncated
+    assert d.get("pages", []) == []    # the rest of the reply is simply gone

@@ -85,6 +85,8 @@ class GeminiProvider(DocumentAI):
     # tokens; a runaway on a garbled scan hit 16k per page (65k total), costing 10x
     # and stalls the batch for minutes. Cap it.
     MAX_OUTPUT_PER_PAGE = 6000
+    # Absolute ceiling when retrying a truncated reply with a bigger budget.
+    MAX_OUTPUT_CEILING = 65536
     # Retry an OCR call whose response comes back empty/degenerate (transient model
     # failure). Measured: all 4 "poor-OCR" quarantines in a 10-doc sample were these,
     # and every one transcribed cleanly on a second attempt.
@@ -111,6 +113,14 @@ class GeminiProvider(DocumentAI):
             resp = self._generate([part], OCR_PII_PROMPT, "ocr", max_output=cap)
             try:
                 result = self._to_result(resp, include_pages=True)
+            except TruncatedResponse:
+                # A dense page can genuinely need more room than the per-page ceiling
+                # allows. Give it more and try again rather than losing the document;
+                # the ceiling still exists to stop a runaway on a garbled scan.
+                if attempt == self.OCR_ATTEMPTS - 1:
+                    raise
+                cap = min(cap * 2, self.MAX_OUTPUT_CEILING)
+                continue
             except UnparseableResponse:
                 # A malformed reply is worth another attempt; only give up (and let
                 # the document be quarantined) if the last one is malformed too.
@@ -145,7 +155,15 @@ class GeminiProvider(DocumentAI):
                 getattr(usage, "prompt_token_count", 0) or 0,
                 getattr(usage, "candidates_token_count", 0) or 0)
 
+    @staticmethod
+    def _check_complete(resp: Any) -> None:
+        """Raise if the model stopped because it ran out of output budget."""
+        for cand in (getattr(resp, "candidates", None) or []):
+            if str(getattr(cand, "finish_reason", "") or "").upper().endswith("MAX_TOKENS"):
+                raise TruncatedResponse("reply cut off at the output-token cap")
+
     def _to_result(self, resp: Any, include_pages: bool) -> BatchResult:
+        self._check_complete(resp)
         data = _parse_json(resp.text or "")
         pages = [str(p) for p in data.get("pages", [])] if include_pages else []
         pii = [
@@ -206,6 +224,17 @@ _ENTITY_TERMS = (
 
 def _is_entity(name: str) -> bool:
     return any(term in name for term in _ENTITY_TERMS)
+
+
+class TruncatedResponse(RuntimeError):
+    """The model hit its output-token cap mid-reply, so the JSON is incomplete.
+
+    Kept separate from an unreadable reply because the remedy differs: this one is
+    retried with a larger budget. It must never be salvaged into partial data -- a
+    half-written "pii" array looks perfectly valid, and redacting only the names that
+    made it under the cap would ship the rest, with the leak gate none the wiser
+    because it only re-scans the values it was given.
+    """
 
 
 class UnparseableResponse(RuntimeError):
