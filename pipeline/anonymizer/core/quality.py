@@ -34,3 +34,26 @@ def ocr_garbled(text: str) -> bool:
     pres_ratio = pres / max(1, arabic)          # scan read as broken glyphs
     arabic_density = arabic / n                  # a real ruling is mostly Arabic
     return pres_ratio > 0.15 or arabic_density < 0.15
+
+
+def text_layer_unreliable(text: str) -> bool:
+    """Stricter than ocr_garbled — decides whether a PDF's text layer can be TRUSTED.
+
+    Some rulings use a broken font for the header and a good one for the body, so only
+    a small share of characters decode to glyphs — but that share is exactly the
+    decision number and date we need to extract. ocr_garbled's 15% threshold lets those
+    through; for routing, any real contamination means: ignore the text layer and let
+    the vision model read the page images instead.
+    """
+    bad = arab = 0
+    for c in text:
+        o = ord(c)
+        if (0xFB50 <= o <= 0xFDFF or 0xFE70 <= o <= 0xFEFF
+                or 0xE000 <= o <= 0xF8FF or 0x0180 <= o <= 0x024F):
+            bad += 1
+        elif 0x0600 <= o <= 0x06FF:
+            arab += 1
+    n = len(text.strip())
+    if n < 200:
+        return False
+    return (bad / max(1, bad + arab)) > 0.03 or ((bad + arab) / n) < 0.15

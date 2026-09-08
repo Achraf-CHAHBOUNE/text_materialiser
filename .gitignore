@@ -52,3 +52,4 @@ service-account*.json
 # Pipeline output folders kept at the repo root for review
 out_statut*/
 test_statut_input/
+output_first/

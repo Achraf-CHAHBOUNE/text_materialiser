@@ -24,7 +24,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from pypdf import PdfReader, PdfWriter
 
-from ..core.quality import ocr_garbled
+from ..core.quality import text_layer_unreliable
 
 from .convert import convert_to_docx
 
@@ -155,7 +155,7 @@ def iter_work_batches(doc: InputDoc, pages_per_batch: int, soffice_path: str = "
 
     # A text layer that decodes to broken glyphs is worse than none: treat the file
     # as a scan and let the vision model read the page images instead.
-    if avg_chars >= TEXT_PDF_MIN_CHARS_PER_PAGE and ocr_garbled(chr(10).join(sample_texts)):
+    if avg_chars >= TEXT_PDF_MIN_CHARS_PER_PAGE and text_layer_unreliable(chr(10).join(sample_texts)):
         avg_chars = 0
 
     if avg_chars >= TEXT_PDF_MIN_CHARS_PER_PAGE:
