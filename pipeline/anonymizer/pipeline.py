@@ -68,6 +68,7 @@ class DocExtra:
     quarantined: bool
     quarantine_reason: str
     verify_found: List[str]
+    category_source: str        # detected | assumed-from-folder | undetermined
 
 
 def _field_meta(llm_val: str, loc_val: str) -> dict:
@@ -176,8 +177,12 @@ class Pipeline:
 
         # Operator fallback: if the model couldn't classify, use the folder-level
         # chamber the operator supplied. Never overrides a confident model answer.
+        # The source is recorded so an assumed chamber can always be told apart from a
+        # detected one — the folder is not 100% one chamber, so assumptions need review.
+        cat_source = "detected" if (category and category != UNKNOWN) else "undetermined"
         if (not category or category == UNKNOWN) and self.settings.default_category:
             category = normalize_category(self.settings.default_category)
+            cat_source = "assumed-from-folder"
 
         # Title for the document = "court — chamber" (skip unknown/empty parts).
         title_parts = [p for p in (court, category) if p and p != UNKNOWN]
@@ -274,6 +279,7 @@ class Pipeline:
             quarantined=quarantined,
             quarantine_reason=q_reason,
             verify_found=verify_found,
+            category_source=cat_source,
         )
         return record, payload, extra
 
@@ -404,7 +410,8 @@ class Pipeline:
                 "format": extra.fmt,
                 "read_method": extra.read_method,
                 "fields": extra.fields,
-                "category": {"value": cdoc.get("category") or st.category or UNKNOWN},
+                "category": {"value": cdoc.get("category") or st.category or UNKNOWN,
+                             "source": extra.category_source},
                 "level": cdoc.get("level") or "",
                 "case_id": cdoc.get("case_id") or "",
                 "review": "check" if extra.verify_found else (cdoc.get("review") or "ok"),

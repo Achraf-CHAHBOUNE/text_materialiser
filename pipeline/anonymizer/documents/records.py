@@ -45,6 +45,7 @@ def _row(r: dict) -> dict:
         "read_method": r.get("read_method", ""),
         "level": r.get("level", ""),
         "category": (r.get("category") or {}).get("value", "") if isinstance(r.get("category"), dict) else r.get("category", ""),
+        "category_source": (r.get("category") or {}).get("source", "") if isinstance(r.get("category"), dict) else "",
         "case_id": r.get("case_id", ""),
         "review": r.get("review", ""),
         F_DECISION: val(F_DECISION),
