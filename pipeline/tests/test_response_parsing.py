@@ -134,3 +134,41 @@ def test_the_retry_ceiling_stays_inside_what_the_api_accepts():
     from anonymizer.llm.gemini import GeminiProvider
 
     assert GeminiProvider.MAX_OUTPUT_CEILING < 65536
+
+
+def test_a_batch_too_large_for_any_budget_is_split_rather_than_lost():
+    """When even the API maximum cannot hold the reply, halve the batch.
+
+    One document failed every retry because six pages of a garbled scan could not
+    fit in one reply at any budget the API accepts.
+    """
+    import io
+
+    from pypdf import PdfWriter
+
+    from anonymizer.llm.base import BatchResult
+    from anonymizer.llm.gemini import GeminiProvider, TruncatedResponse
+
+    writer = PdfWriter()
+    for _ in range(4):
+        writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    pdf = buf.getvalue()
+
+    seen: list[int] = []
+
+    class _Provider(GeminiProvider):
+        def __init__(self):
+            pass
+
+        def process_pdf(self, pdf_bytes, page_count=1):
+            seen.append(page_count)
+            # Anything wider than one page is still too big for a reply.
+            if page_count > 1:
+                return self._split_and_process(pdf_bytes, page_count)
+            return BatchResult(pages=["p"], output_tokens=1)
+
+    result = _Provider().process_pdf(pdf, 4)
+    assert result.pages == ["p"] * 4, "every page must survive the split"
+    assert 1 in seen and 4 in seen, f"expected halving down to single pages: {seen}"

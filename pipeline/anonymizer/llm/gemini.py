@@ -119,6 +119,11 @@ class GeminiProvider(DocumentAI):
                 # allows. Give it more and try again rather than losing the document;
                 # the ceiling still exists to stop a runaway on a garbled scan.
                 if attempt == self.OCR_ATTEMPTS - 1:
+                    # Still cut off at the API's own maximum: no budget will fit this
+                    # batch, so halve it. A batch of one page that still overflows is
+                    # genuinely unprocessable and is allowed to fail.
+                    if page_count > 1:
+                        return self._split_and_process(pdf_bytes, page_count)
                     raise
                 cap = min(cap * 2, self.MAX_OUTPUT_CEILING)
                 continue
@@ -132,6 +137,39 @@ class GeminiProvider(DocumentAI):
             if len(text) >= floor and not ocr_garbled(text):
                 return result
         return result
+
+    def _split_and_process(self, pdf_bytes: bytes, page_count: int) -> BatchResult:
+        """OCR a too-large batch as two halves and stitch the results back together.
+
+        Reached only when even the maximum output budget cannot hold the reply for
+        this many pages. Splitting keeps the document rather than losing it, and the
+        halves recurse, so a batch that is still too big keeps halving down to
+        single pages.
+        """
+        import io
+
+        from pypdf import PdfReader, PdfWriter
+
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        mid = page_count // 2
+        merged = BatchResult()
+        for lo, hi in ((0, mid), (mid, page_count)):
+            writer = PdfWriter()
+            for i in range(lo, hi):
+                writer.add_page(reader.pages[i])
+            buf = io.BytesIO()
+            writer.write(buf)
+            part = self.process_pdf(buf.getvalue(), hi - lo)
+            merged.pages.extend(part.pages)
+            merged.pii.extend(part.pii)
+            merged.refs.extend(part.refs)
+            merged.input_tokens += part.input_tokens
+            merged.output_tokens += part.output_tokens
+            merged.cached_tokens += part.cached_tokens
+            merged.court = merged.court or part.court
+            merged.category = merged.category or part.category
+            merged.identity = merged.identity or part.identity
+        return merged
 
     def process_text(self, text: str) -> BatchResult:
         # Text is already extracted locally; the model only detects PII + classifies.
