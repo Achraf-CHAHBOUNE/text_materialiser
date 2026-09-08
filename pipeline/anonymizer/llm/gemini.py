@@ -86,7 +86,8 @@ class GeminiProvider(DocumentAI):
     # and stalls the batch for minutes. Cap it.
     MAX_OUTPUT_PER_PAGE = 6000
     # Absolute ceiling when retrying a truncated reply with a bigger budget.
-    MAX_OUTPUT_CEILING = 65536
+    # The API accepts 1..65536 EXCLUSIVE, so 65536 itself is rejected outright.
+    MAX_OUTPUT_CEILING = 65535
     # Retry an OCR call whose response comes back empty/degenerate (transient model
     # failure). Measured: all 4 "poor-OCR" quarantines in a 10-doc sample were these,
     # and every one transcribed cleanly on a second attempt.

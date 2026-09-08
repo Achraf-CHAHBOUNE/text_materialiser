@@ -127,3 +127,10 @@ def test_salvage_alone_cannot_be_trusted_to_reject_a_truncated_reply():
     d = _parse_json(cut_after_pii)
     assert len(d["pii"]) == 2          # accepted, with no sign it was truncated
     assert d.get("pages", []) == []    # the rest of the reply is simply gone
+
+
+def test_the_retry_ceiling_stays_inside_what_the_api_accepts():
+    """maxOutputTokens must be < 65536; 65536 itself is a hard 400."""
+    from anonymizer.llm.gemini import GeminiProvider
+
+    assert GeminiProvider.MAX_OUTPUT_CEILING < 65536
