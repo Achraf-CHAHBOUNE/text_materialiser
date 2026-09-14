@@ -173,3 +173,23 @@ def test_audit_trail_records_corrections():
     detail = client.get("/api/admin/decisions/clean1", headers=_h(_admin())).json()
     assert detail["category"] == "مدنية"
     assert any(a["field"] == "category" and a["new"] == "مدنية" for a in detail["audit"])
+
+
+def test_a_file_the_pipeline_held_back_is_never_imported():
+    """The pipeline's own leak gate is the only thing that knows which names survived.
+
+    A held file carries a real name in plain text -- nothing the platform's pattern
+    scan can recognise -- so if the zip happens to include _quarantine/, matching on
+    file name alone would import it and publish it.
+    """
+    held = _docx("محكمة النقض\nحكمت المحكمة على فاطمة الزهراء بنعلي بأداء النفقة")
+    rec = _record("held1")
+    rec.update(quarantined=True, status="quarantined")
+    payload = _zip([rec], {"_quarantine/held1.docx": held})
+    r = client.post("/api/admin/import", headers=_h(_admin()),
+                    files={"file": ("batch.zip", payload, "application/zip")})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["imported"] == 0
+    assert any(q["doc_id"] == "held1" for q in body["quarantined"])
+    assert client.get("/api/admin/decisions/held1", headers=_h(_admin())).status_code == 404

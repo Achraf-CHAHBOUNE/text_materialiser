@@ -150,6 +150,12 @@ async def import_batch(file: UploadFile = File(...), user: dict = Depends(requir
     rejected, quarantined = [], []
     for rec in records:
         doc_id = rec.get("doc_id")
+        # The pipeline's leak gate is the only check that knows which real names
+        # survived; a file it held back carries one in plain text, which the pattern
+        # scan below cannot recognise. Never import it, whatever the zip contains.
+        if rec.get("quarantined") or rec.get("status") == "quarantined":
+            quarantined.append({"doc_id": doc_id, "findings": ["held by the pipeline"]})
+            continue
         fname = rec.get("anonymized_file") or (doc_id + ".docx")
         if fname not in by_base:
             rejected.append({"doc_id": doc_id, "reason": "no matching file in archive"})
