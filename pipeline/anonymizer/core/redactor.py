@@ -83,10 +83,35 @@ def _significant(value: str) -> str:
     return _NOISE.sub("", value)
 
 
+# A value this short is matched only as a whole word. 319 of 3,236 delivered rulings
+# had ordinary words cut open -- "XXXXXXXحكمة" for "المحكمة", "XXXXXXXلف" for "الملف"
+# -- because the model flagged an OCR fragment such as "الم", and an unanchored
+# three-letter pattern matches inside every word that begins that way. Longer values
+# (real full names) stay unanchored, so a name OCR glued to its neighbour is still
+# caught; a short one must stand alone or behind a one-letter clitic ("ومحمد").
+SHORT_VALUE_CHARS = 4
+
+# Arabic letters, minus tatweel (a decoration, not a letter), plus the Persian
+# look-alikes OCR substitutes for them.
+_LETTER = "[ء-ؿف-يپچکگی]"
+# Clitics that attach in front of a name: a conjunction (و ف), a preposition
+# (ب ل ك), or both ("وبمحمد"). Each option is its own fixed-width lookbehind.
+_WORD_START = (f"(?:(?<!{_LETTER})|(?<=(?<!{_LETTER})[وفبلك])"
+               f"|(?<=(?<!{_LETTER})[وف][بلك]))")
+_WORD_END = f"(?!{_LETTER})"
+
+
 def _flex_pattern(value: str) -> re.Pattern:
-    """Variant-tolerant regex for `value`, ignoring internal whitespace/diacritics."""
-    chars = [_char_class(ch) for ch in _significant(value)]
-    return re.compile(_BETWEEN.join(chars) if chars else re.escape(value))
+    """Variant-tolerant regex for `value`, ignoring internal whitespace/diacritics.
+
+    Short values are anchored to word boundaries (see SHORT_VALUE_CHARS).
+    """
+    sig = _significant(value)
+    chars = [_char_class(ch) for ch in sig]
+    body = _BETWEEN.join(chars) if chars else re.escape(value)
+    if chars and len(sig) <= SHORT_VALUE_CHARS:
+        body = f"{_WORD_START}(?:{body}){_WORD_END}"
+    return re.compile(body)
 
 
 def _variants(value: str) -> Iterable[str]:

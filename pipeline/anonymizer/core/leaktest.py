@@ -20,7 +20,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from .redactor import MIN_REDACTABLE_CHARS, _flex_pattern, _variants, is_initials
+from .redactor import (MIN_REDACTABLE_CHARS, SHORT_VALUE_CHARS, _flex_pattern,
+                       _variants, is_initials)
 
 # Arabic diacritics (harakat U+0610–U+061A, U+064B–U+065F, superscript alef U+0670)
 # and tatweel (U+0640). Explicit code points — a literal char range can span Arabic
@@ -28,8 +29,11 @@ from .redactor import MIN_REDACTABLE_CHARS, _flex_pattern, _variants, is_initial
 _DIAC = re.compile("[ؐ-ؚـً-ٰٟ]")
 _ALEF = {ord(c): "ا" for c in "أإآٱ"}  # أ إ آ ٱ -> ا
 _YA = {ord("ى"): "ي"}                                 # ى -> ي
-# Below this normalized length a substring match is too likely to be a coincidence.
-_MIN_COLLAPSED = 4
+# The collapsed pass ignores word boundaries by construction, so it only covers
+# values long enough to be anchored-free in the redactor too. Shorter ones are
+# checked by the flex pass alone, with the same whole-word rule the redactor uses --
+# otherwise a fragment the redactor rightly left inside "المحكمة" would read as a leak.
+_MIN_COLLAPSED = SHORT_VALUE_CHARS + 1
 
 
 def _collapse(s: str) -> str:

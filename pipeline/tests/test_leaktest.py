@@ -56,3 +56,16 @@ def test_a_real_short_name_is_still_reported():
     result = leak_scan("وحضر علي أمام المحكمة", ["علي"])
     assert not result.passed
     assert "علي" in result.leaked
+
+
+def test_a_fragment_left_inside_ordinary_words_is_not_a_leak():
+    """The gate must share the redactor's whole-word rule for short values."""
+    from anonymizer.core.leaktest import leak_scan
+
+    assert leak_scan("قضت المحكمة في الملف", ["الم"]).passed
+
+
+def test_a_short_name_left_behind_two_clitics_is_a_leak():
+    from anonymizer.core.leaktest import leak_scan
+
+    assert not leak_scan("وحضر وبمحمد", ["محمد"]).passed

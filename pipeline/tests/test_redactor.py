@@ -129,3 +129,32 @@ def test_redaction_order_is_independent_of_the_hash_seed():
         assert r.returncode == 0, r.stderr
         outs.add(r.stdout)
     assert len(outs) == 1, f"redaction varied with the hash seed: {outs}"
+
+
+# --- short values match whole words only ---------------------------------------
+def _red(text, values):
+    from anonymizer.core.redactor import redact_text
+    from anonymizer.llm.base import PIIEntity
+
+    return redact_text(text, [PIIEntity(v, "name") for v in values], "XXXXXXX")[0]
+
+
+def test_a_flagged_fragment_no_longer_cuts_open_ordinary_words():
+    """319 of 3,236 delivered rulings read "XXXXXXXحكمة" for "المحكمة"."""
+    text = "قضت المحكمة في الملف المذكور بعد الاستئناف"
+    assert _red(text, ["الم", "الا"]) == text
+
+
+def test_a_short_name_is_still_redacted_as_a_word_and_behind_clitics():
+    out = _red("حضر محمد ومحمد وبمحمد فلمحمد", ["محمد"])
+    assert "محمد" not in out
+    assert out.count("XXXXXXX") == 4
+
+
+def test_a_short_name_inside_a_longer_word_is_left_alone():
+    assert _red("مدينة المحمدية", ["محمد"]) == "مدينة المحمدية"
+
+
+def test_a_full_name_is_still_caught_when_ocr_glued_it_to_a_neighbour():
+    """Long values stay unanchored: recall on real names is not traded away."""
+    assert _red("المدعيمحمد العلوي حضر", ["محمد العلوي"]) == "المدعيXXXXXXX حضر"
