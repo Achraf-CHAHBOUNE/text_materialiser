@@ -35,10 +35,16 @@ class FakeAI(DocumentAI):
         )
 
 
+# Neutral ruling prose with no names: the pipeline holds any output with too little
+# text to be a ruling, so a one-line fixture would be (rightly) held as empty.
+FILLER = 'وحيث إن الطاعن ينعى على القرار المطعون فيه خرق القانون وانعدام التعليل، ذلك أن المحكمة لم تجب عن الدفوع المثارة أمامها ولم تبين الأساس القانوني الذي اعتمدته في قضائها، مما يجعل قرارها معرضا للنقض. وحيث إنه بالرجوع إلى القرار المطعون فيه يتبين أن المحكمة عللت قضاءها تعليلا كافيا وسليما، واستندت إلى الوثائق المدلى بها، فجاء قرارها مرتكزا على أساس قانوني والوسيلة على غير أساس.'
+
+
 def _docx(path: Path, text: str) -> None:
     d = Document()
     for line in text.split("\n"):
         d.add_paragraph(line)
+    d.add_paragraph(FILLER)
     d.save(str(path))
 
 

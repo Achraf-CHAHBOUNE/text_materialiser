@@ -1,0 +1,230 @@
+"""End to end: duplicate copies, records that survive resumed runs, the listing
+fields, the empty-output hold, and the two maintenance passes. No network.
+"""
+from __future__ import annotations
+
+import csv
+import dataclasses
+import json
+from pathlib import Path
+
+from docx import Document
+
+from anonymizer.config import Settings
+from anonymizer.llm.base import BatchResult, DocIdentity, DocRef, DocumentAI, PIIEntity
+from anonymizer.pipeline import Pipeline, RunOptions
+from test_pipeline_records import FILLER
+
+HEADER = "قرار محكمة النقض عدد 53 الصادر بتاريخ 08 فبراير 2022 في الملف الشرعي رقم 2020/2/2/516"
+
+
+class FakeAI(DocumentAI):
+    """Flags one name; classifies by topic, the way the real model does."""
+    category = "اجتماعية"
+
+    def process_pdf(self, pdf_bytes: bytes, page_count: int = 1) -> BatchResult:
+        return self._r()
+
+    def process_text(self, text: str) -> BatchResult:
+        return self._r()
+
+    def _r(self) -> BatchResult:
+        return BatchResult(
+            pii=[PIIEntity("محمد العلوي", "name")],
+            court="محكمة النقض", category=self.category,
+            identity=DocIdentity(level="نقض", court="محكمة النقض", decision_no="53/1",
+                                 date="08 فبراير 2022", file_no="2020/2/2/516"),
+            refs=[DocRef(court="محكمة الاستئناف بطنجة", decision_no="12", file_no="44/1601/2019")],
+            input_tokens=100, output_tokens=50,
+        )
+
+
+def _docx(path: Path, *lines: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    d = Document()
+    for line in lines:
+        d.add_paragraph(line)
+    d.save(str(path))
+
+
+def _ruling(path: Path, extra: str = "") -> None:
+    _docx(path, HEADER, "حضر محمد العلوي " + extra, FILLER)
+
+
+def _settings(tmp: Path, folder: str = "in", out: str = "out", db: str = "cases.db") -> Settings:
+    return dataclasses.replace(
+        Settings.load(), provider="fake", api_key="x", soffice_path="",
+        input_dir=tmp / folder, output_dir=tmp / out,
+        state_file=tmp / out / ".state.json", db_path=tmp / db,
+        max_workers=1, budget_usd=0, corpus="", default_category="",
+    )
+
+
+def _csv(path: Path) -> list[dict]:
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def test_byte_identical_copies_are_processed_once(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    (s.input_dir / "a_1.docx").write_bytes((s.input_dir / "a.docx").read_bytes())
+    _ruling(s.input_dir / "b.docx", "وشخص آخر")
+
+    calls = []
+
+    class Counting(FakeAI):
+        def process_text(self, text):
+            calls.append(text)
+            return super().process_text(text)
+
+    Pipeline(s, Counting()).run(RunOptions())
+    assert len(calls) == 2, "the copy must not be sent to the model"
+    assert _csv(s.output_dir / "duplicates.csv") == [{"file": "a_1", "same_as": "a"}]
+    records = json.loads((s.output_dir / "records.json").read_text(encoding="utf-8"))
+    assert sorted(r["doc_id"] for r in records) == ["a", "b"]
+
+
+def test_a_copy_already_processed_by_an_earlier_run_is_retired(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    (s.input_dir / "a_1.docx").write_bytes((s.input_dir / "a.docx").read_bytes())
+    p = Pipeline(s, FakeAI())
+    # Simulate the old behaviour: both copies delivered before copies were detected.
+    p._drop_duplicates = lambda docs: (setattr(p, "_hashes", {}) or docs)
+    p.run(RunOptions())
+    assert (s.output_dir / "a_1.docx").exists()
+
+    Pipeline(s, FakeAI()).run(RunOptions())
+    assert not (s.output_dir / "a_1.docx").exists()
+    assert (s.output_dir / "_duplicates" / "a_1.docx").exists(), "moved aside, not deleted"
+    assert [r["file"] for r in _csv(s.output_dir / "listing.csv")] == ["a"]
+
+
+def test_a_copy_of_a_ruling_from_another_folder_sharing_the_database_is_skipped(tmp_path):
+    first = _settings(tmp_path, folder="f1", out="o1")
+    _ruling(first.input_dir / "x.docx")
+    Pipeline(first, FakeAI()).run(RunOptions())
+
+    second = _settings(tmp_path, folder="f2", out="o2")
+    second.input_dir.mkdir(parents=True)
+    (second.input_dir / "renamed.docx").write_bytes((first.input_dir / "x.docx").read_bytes())
+    Pipeline(second, FakeAI()).run(RunOptions())
+    assert _csv(second.output_dir / "duplicates.csv") == [{"file": "renamed", "same_as": "x"}]
+    assert _csv(second.output_dir / "listing.csv") == []
+    # the first folder's exports are untouched by the second folder's run
+    assert [r["file"] for r in _csv(first.output_dir / "listing.csv")] == ["x"]
+
+
+def test_records_cover_every_document_across_resumed_runs(tmp_path):
+    """records.json used to describe only the last run: 11 of 3,239 rulings."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    _ruling(s.input_dir / "b.docx", "وآخر")
+    Pipeline(s, FakeAI()).run(RunOptions(limit=1))
+    Pipeline(s, FakeAI()).run(RunOptions())
+    records = json.loads((s.output_dir / "records.json").read_text(encoding="utf-8"))
+    assert sorted(r["doc_id"] for r in records) == ["a", "b"]
+    # Not just listed: the first run's record keeps everything it knew, rather than
+    # the thin record that can be rebuilt from the state file alone.
+    first = next(r for r in records if r["doc_id"] == "a")
+    assert first["read_method"] == "text"
+    assert first["fields"]["رقم القرار"]["value"] == "53"
+
+
+def test_listing_fields_come_out_in_portal_form(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    Pipeline(s, FakeAI()).run(RunOptions())
+    [row] = _csv(s.output_dir / "listing.csv")
+    assert row["رقم القرار"] == "53"               # "53/1" -> decision without section
+    assert row["تاريخ القرار"] == "08/02/2022"
+    assert row["السنة"] == "2022"
+    assert row["المدينة"] == "طنجة"                # the lower court, not Rabat
+    # The model said "social" (the topic); the ruling says it is a personal-status file.
+    assert row["الغرفة"] == "أحوال شخصية"
+    rec = json.loads((s.output_dir / "records.json").read_text(encoding="utf-8"))[0]
+    assert rec["category"] == {"value": "أحوال شخصية", "source": "ruling-text"}
+    assert rec["city"] == "طنجة" and rec["year"] == "2022"
+
+
+def test_an_almost_empty_output_is_held_not_delivered(tmp_path):
+    s = _settings(tmp_path)
+    _docx(s.input_dir / "blank.docx", "حضر محمد العلوي")    # a title's worth of text
+    Pipeline(s, FakeAI()).run(RunOptions())
+    assert not (s.output_dir / "blank.docx").exists()
+    assert (s.output_dir / "_quarantine" / "blank.docx").exists()
+    [q] = _csv(s.output_dir / "quarantine.csv")
+    assert q["reason"] == "empty"
+
+
+def test_quarantine_csv_never_quotes_the_surviving_names(tmp_path):
+    s = _settings(tmp_path)
+
+    class Leaky(FakeAI):
+        def _r(self):
+            r = super()._r()
+            r.pii = [PIIEntity("زيد", "name")]   # flagged, but the text also has a variant
+            return r
+
+    _docx(s.input_dir / "leaky.docx", HEADER, "حضر زيد", FILLER)
+    p = Pipeline(s, Leaky())
+    import anonymizer.pipeline as pl
+    real = pl.redact_text
+    pl.redact_text = lambda text, ents, tok: (text, real(text, [], tok)[1])  # redactor misses it
+    try:
+        p.run(RunOptions())
+    finally:
+        pl.redact_text = real
+    [q] = _csv(s.output_dir / "quarantine.csv")
+    assert q["reason"] == "leak"
+    assert "زيد" not in q["detail"]
+    sidecar = (s.output_dir / "_records" / "leaky.json").read_text(encoding="utf-8")
+    assert "زيد" not in sidecar
+
+
+def test_refresh_corrects_the_chamber_and_its_title_without_the_model(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+
+    class OldRules(FakeAI):
+        pass
+
+    p = Pipeline(s, OldRules())
+    import anonymizer.pipeline as pl
+    real = pl.chamber_from_text
+    pl.chamber_from_text = lambda text: ""          # the pipeline before this change
+    try:
+        p.run(RunOptions())
+    finally:
+        pl.chamber_from_text = real
+    out = s.output_dir / "a.docx"
+    assert Document(str(out)).paragraphs[0].text == "محكمة النقض — اجتماعية"
+
+    class NoCalls(FakeAI):
+        def process_text(self, text):
+            raise AssertionError("refresh must not call the model")
+
+    q = Pipeline(s, NoCalls())
+    counts = q.refresh_listing()
+    q.export()
+    assert counts["chamber_changed"] == 1 and counts["retitled"] == 1
+    assert Document(str(out)).paragraphs[0].text == "محكمة النقض — أحوال شخصية"
+    [row] = _csv(s.output_dir / "listing.csv")
+    assert row["الغرفة"] == "أحوال شخصية"
+
+
+def test_requeue_sets_aside_files_with_words_cut_open(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    Pipeline(s, FakeAI()).run(RunOptions())
+    out = s.output_dir / "a.docx"
+    d = Document(str(out))
+    d.add_paragraph("قضت XXXXXXXحكمة بما يلي")          # the old over-redaction
+    d.save(str(out))
+
+    counts = Pipeline(s, FakeAI()).requeue_damaged()
+    assert counts["cut-words"] == 1
+    assert not out.exists() and (s.output_dir / "_superseded" / "a.docx").exists()
+    Pipeline(s, FakeAI()).run(RunOptions())
+    assert out.exists(), "the next normal run reprocesses it"

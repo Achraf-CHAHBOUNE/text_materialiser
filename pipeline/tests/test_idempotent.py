@@ -7,6 +7,7 @@ from docx import Document
 from anonymizer.config import Settings
 from anonymizer.llm.base import BatchResult, DocIdentity, DocumentAI, PIIEntity
 from anonymizer.pipeline import Pipeline, RunOptions
+from test_pipeline_records import FILLER
 
 
 class FakeAI(DocumentAI):
@@ -46,6 +47,7 @@ def test_reruns_are_byte_identical(tmp_path):
     inp.mkdir(parents=True)
     d = Document()
     d.add_paragraph("حكمت المحكمة على محمد العلوي بأداء المبلغ المحكوم به")
+    d.add_paragraph(FILLER)   # long enough to be a ruling, not held as empty
     d.save(str(inp / "doc.docx"))
 
     out = _run(tmp_path)

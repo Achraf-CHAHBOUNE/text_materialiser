@@ -158,3 +158,23 @@ def write_docx(pages: List[str], out_path: Path, title: str = "") -> None:
             br.add_run().add_break(WD_BREAK.PAGE)
 
     doc.save(str(out_path))
+
+
+def retitle_docx(out_path: Path, new_title: str) -> bool:
+    """Replace the title line of a delivered file, keeping its formatting.
+
+    Used when a ruling's chamber is corrected after delivery: the title shows
+    "court — chamber", and a wrong chamber there is visible to every reader.
+    Returns True if the file changed.
+    """
+    doc = Document(str(out_path))
+    if not doc.paragraphs or not doc.paragraphs[0].runs:
+        return False
+    first = doc.paragraphs[0]
+    if first.text == new_title:
+        return False
+    first.runs[0].text = new_title
+    for run in first.runs[1:]:
+        run.text = ""
+    doc.save(str(out_path))
+    return True

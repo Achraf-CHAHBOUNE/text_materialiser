@@ -7,6 +7,9 @@ resume checkpoint are updated after every document.
 from __future__ import annotations
 
 import datetime as _dt
+import json
+import re
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,14 +21,17 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from .config import Settings
 from .core.casedb import CaseDB
 from .core.categories import UNKNOWN, normalize_category
+from .core.dedupe import HashCache, split_duplicates
+from .core.fields import (chamber_from_text, display_date, display_decision_no,
+                          header_date, origin_city)
 from .core.identifiers import Ident, local_extract, split_file_numbers
 from .core.leaktest import leak_scan
 from .core.quality import ocr_garbled
 from .core.redactor import redact_structured, redact_text
 from .core.state import DocRecord, State
 from .documents import records as records_mod
-from .documents.records import F_DATE, F_DECISION, F_FILE
-from .documents.docx_writer import write_docx
+from .documents.records import F_CHAMBER, F_CITY, F_DATE, F_DECISION, F_FILE
+from .documents.docx_writer import retitle_docx, write_docx
 from .documents.loaders import InputDoc, _docx_lines, discover_inputs, iter_work_batches
 from .llm.base import DocumentAI, PIIEntity
 from .llm.factory import get_provider
@@ -51,6 +57,7 @@ class LinkPayload:
     category: str
     outcome: str
     refs: List[Ident]
+    listing: dict        # display fields for the case DB (see CaseDB.LISTING_KEYS)
 
 
 @dataclass
@@ -68,19 +75,35 @@ class DocExtra:
     quarantined: bool
     quarantine_reason: str
     verify_found: List[str]
-    category_source: str        # detected | assumed-from-folder | undetermined
+    category_source: str        # ruling-text | model | assumed-from-folder | undetermined
+    origin_city: str = ""
+    origin_city_source: str = ""
 
 
-def _field_meta(llm_val: str, loc_val: str) -> dict:
-    """Reconcile the LLM value and the deterministic (regex) value into one field."""
-    llm_val, loc_val = (llm_val or "").strip(), (loc_val or "").strip()
-    if llm_val and loc_val and llm_val == loc_val:
-        return {"value": llm_val, "confidence": 0.97, "source": "llm+regex"}
-    if llm_val:
-        return {"value": llm_val, "confidence": 0.9, "source": "llm"}
-    if loc_val:
-        return {"value": loc_val, "confidence": 0.8, "source": "regex"}
-    return {"value": "", "confidence": 0.0, "source": "none"}
+def _field_meta(llm_val: str, loc_val: str, show: Callable[[str], str] = str.strip) -> dict:
+    """Reconcile the LLM value and the deterministic (regex) value into one field.
+
+    `show` turns a raw value into the form a listing displays ("33/1" -> "33");
+    agreement is judged on that form, and the raw text is kept alongside.
+    """
+    llm_raw, loc_raw = (llm_val or "").strip(), (loc_val or "").strip()
+    llm_v, loc_v = show(llm_raw), show(loc_raw)
+    if llm_v and loc_v and llm_v == loc_v:
+        return {"value": llm_v, "raw": llm_raw, "confidence": 0.97, "source": "llm+regex"}
+    if llm_v:
+        return {"value": llm_v, "raw": llm_raw, "confidence": 0.9, "source": "llm"}
+    if loc_v:
+        return {"value": loc_v, "raw": loc_raw, "confidence": 0.8, "source": "regex"}
+    return {"value": "", "raw": llm_raw or loc_raw, "confidence": 0.0, "source": "none"}
+
+
+# An output with less visible text than this is not a ruling, whatever the leak
+# gate says: 63 delivered files held nothing but their title after the model read
+# a scan back as blank pages -- and an empty file has no names left to find.
+EMPTY_MIN_CHARS = 200
+EMPTY_MIN_CHARS_PER_PAGE = 60
+# A multi-page ruling averaging less than this per page stopped transcribing early.
+PARTIAL_MAX_CHARS_PER_PAGE = 250
 
 
 class Pipeline:
@@ -175,14 +198,22 @@ class Pipeline:
                 log.info("[VERIFY] %s: %d item(s) flagged for human review: %s",
                          doc.doc_id, len(remaining), ", ".join(remaining[:5]))
 
-        # Operator fallback: if the model couldn't classify, use the folder-level
-        # chamber the operator supplied. Never overrides a confident model answer.
-        # The source is recorded so an assumed chamber can always be told apart from a
-        # detected one — the folder is not 100% one chamber, so assumptions need review.
-        cat_source = "detected" if (category and category != UNKNOWN) else "undetermined"
-        if (not category or category == UNKNOWN) and self.settings.default_category:
+        # Chamber, most reliable source first. What the ruling states about itself
+        # ("في الملف الشرعي رقم ...") names the chamber that issued it; the model
+        # classifies by topic instead, and read child-support rulings as "social" --
+        # 234 personal-status rulings mislabelled in one folder. Then the model, then
+        # the operator's folder-level hint. The source is always recorded.
+        raw_text = "\n".join(raw_pages)
+        stated = chamber_from_text(raw_text)
+        if stated:
+            category, cat_source = stated, "ruling-text"
+        elif category and category != UNKNOWN:
+            cat_source = "model"
+        elif self.settings.default_category:
             category = normalize_category(self.settings.default_category)
             cat_source = "assumed-from-folder"
+        else:
+            category, cat_source = UNKNOWN, "undetermined"
 
         # Title for the document = "court — chamber" (skip unknown/empty parts).
         title_parts = [p for p in (court, category) if p and p != UNKNOWN]
@@ -197,8 +228,11 @@ class Pipeline:
         delivered = "\n".join(_docx_lines(out_path))
         leak = leak_scan(delivered, sorted(flagged_values))
         garbled = _ocr_garbled(delivered)
-        quarantined = (not leak.passed) or garbled
-        q_reason = "leak" if not leak.passed else ("poor-ocr" if garbled else "")
+        visible = len(re.sub(r"\s", "", delivered)) - len(re.sub(r"\s", "", title))
+        empty = visible < max(EMPTY_MIN_CHARS, EMPTY_MIN_CHARS_PER_PAGE * len(all_pages))
+        quarantined = (not leak.passed) or garbled or empty
+        q_reason = ("leak" if not leak.passed else "poor-ocr" if garbled
+                    else "empty" if empty else "")
         if quarantined:
             qdir = self.settings.output_dir / "_quarantine"
             qdir.mkdir(parents=True, exist_ok=True)
@@ -208,9 +242,12 @@ class Pipeline:
             if not leak.passed:
                 log.error("[LEAK] %s: %d hit(s) survived redaction: %s",
                           doc.doc_id, leak.hits, ", ".join(leak.leaked[:5]))
-            else:
+            elif garbled:
                 log.error("[POOR-OCR] %s: garbled scan — quarantined for manual review",
                           doc.doc_id)
+            else:
+                log.error("[EMPTY] %s: only %d characters of text came back — held, "
+                          "not delivered; a rerun retries it", doc.doc_id, visible)
         else:
             # This document was held by an earlier run and has now passed. Drop that
             # copy: it is the version that still contained the PII, and leaving it
@@ -238,7 +275,7 @@ class Pipeline:
         )
         # Deterministic local extraction as a backstop for LLM inconsistency,
         # then merge: prefer the LLM's value, fall back to the local one per field.
-        loc_level, loc_own, loc_refs = local_extract("\n".join(raw_pages))
+        loc_level, loc_own, loc_refs = local_extract(raw_text)
 
         def pick(llm_val: str, loc_val: str) -> str:
             return llm_val if (llm_val and llm_val.strip()) else loc_val
@@ -270,6 +307,24 @@ class Pipeline:
             seen.add(key)
             merged_refs.append(r)
 
+        fields = {
+            F_DECISION: _field_meta(identity.decision_no if identity else "",
+                                    loc_own.decision_no, display_decision_no),
+            F_FILE: _field_meta(identity.file_no if identity else "", loc_own.file_no),
+            F_DATE: _field_meta(identity.date if identity else "", loc_own.date, display_date),
+        }
+        if not fields[F_DATE]["value"]:
+            stated_date = header_date(raw_text)
+            if stated_date:
+                fields[F_DATE].update(value=stated_date, confidence=0.8, source="header")
+        # The ruling's own city is always Rabat; a listing shows the lower court's.
+        city, city_source = origin_city(merged_refs, raw_text)
+        fields[F_CITY] = {"value": city, "confidence": 0.9 if city_source == "appeal" else
+                          0.8 if city else 0.0, "source": city_source or "none"}
+        fields[F_CHAMBER] = {"value": category or UNKNOWN, "source": cat_source,
+                             "confidence": 0.97 if cat_source == "ruling-text" else
+                             0.8 if cat_source == "model" else 0.5}
+
         payload = LinkPayload(
             doc_id=doc.doc_id,
             source=str(doc.path),
@@ -278,12 +333,11 @@ class Pipeline:
             category=category or UNKNOWN,
             outcome=(identity.outcome if identity else ""),
             refs=merged_refs,
+            listing={"decision_display": fields[F_DECISION]["value"],
+                     "date_display": fields[F_DATE]["value"],
+                     "origin_city": city, "origin_city_source": city_source,
+                     "category_source": cat_source},
         )
-        fields = {
-            F_DECISION: _field_meta(identity.decision_no if identity else "", loc_own.decision_no),
-            F_FILE: _field_meta(identity.file_no if identity else "", loc_own.file_no),
-            F_DATE: _field_meta(identity.date if identity else "", loc_own.date),
-        }
         extra = DocExtra(
             source_file=doc.path.name,
             fmt=doc.path.suffix.lower().lstrip("."),
@@ -298,6 +352,8 @@ class Pipeline:
             quarantine_reason=q_reason,
             verify_found=verify_found,
             category_source=cat_source,
+            origin_city=city,
+            origin_city_source=city_source,
         )
         return record, payload, extra
 
@@ -308,34 +364,159 @@ class Pipeline:
             return True
         return False
 
+    # --- duplicates ---------------------------------------------------------
+    def _drop_duplicates(self, docs: List[InputDoc]) -> List[InputDoc]:
+        """Keep one document per distinct file content; retire the copies.
+
+        A copy already processed by an earlier run (before copies were detected)
+        is retired too: its output moves to _duplicates/ and its database row goes,
+        so it is neither listed nor counted twice. What was spent on it stays in
+        the cost totals.
+        """
+        cache = HashCache(self.settings.output_dir / ".hashes.json")
+        self._hashes = {}
+        for d in tqdm(docs, desc="Fingerprinting", unit="file", leave=False):
+            self._hashes[d.doc_id] = cache.get(d.path)
+        cache.save()
+
+        keep, copies = split_duplicates(docs, self._hashes, self.casedb.known_hashes(),
+                                        self.state.is_done)
+        for copy_id, original in copies.items():
+            self._retire_copy(copy_id, original)
+
+        # Rulings already in the database from an earlier run carry no fingerprint
+        # or folder label yet; stamp them so later folders can find their copies.
+        corpus = self.settings.corpus_label
+        for d in keep:
+            row = self.casedb.document(d.doc_id)
+            if row and (row.get("content_hash") != self._hashes[d.doc_id]
+                        or row.get("corpus") != corpus):
+                self.casedb.update_listing(d.doc_id, content_hash=self._hashes[d.doc_id],
+                                           corpus=corpus)
+        return keep
+
+    def _retire_copy(self, copy_id: str, original: str) -> None:
+        out = self.settings.output_dir
+        for where in (out, out / "_quarantine"):
+            f = where / (copy_id + ".docx")
+            if f.exists():
+                dest = out / "_duplicates" / f.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(f), str(dest))
+        sidecar = self._sidecar(copy_id)
+        if sidecar.exists():
+            sidecar.unlink()
+        if self.casedb.document(copy_id):
+            self.casedb.remove(copy_id)
+        rec = self.state.get(copy_id)
+        if rec is None or rec.status != "duplicate":
+            self.state.mark_duplicate(copy_id, original)
+
+    # --- per-document records -------------------------------------------------
+    def _sidecar(self, doc_id: str) -> Path:
+        return self.settings.output_dir / "_records" / (doc_id + ".json")
+
+    def _save_record(self, doc_id: str, record: DocRecord, extra: DocExtra) -> None:
+        """Persist this document's record the moment it is processed.
+
+        records.json used to be assembled from memory at the very end of a run, so a
+        run that was stopped, or resumed, lost every earlier record: after four
+        resumed runs over 3,239 rulings it described 11. Each record now lives in
+        _records/ and records.json is rebuilt from all of them. No personal data is
+        written here -- leak hits are counted, never quoted.
+        """
+        if extra.quarantine_reason == "leak":
+            detail = f"{extra.leak_hits} surviving name(s) — open the held file to review"
+        elif extra.quarantine_reason == "poor-ocr":
+            detail = "garbled OCR — manual review"
+        elif extra.quarantine_reason == "empty":
+            detail = "almost no text came back — a rerun retries it"
+        else:
+            detail = ""
+        data = {
+            "doc_id": doc_id,
+            "source_file": extra.source_file,
+            "format": extra.fmt,
+            "read_method": extra.read_method,
+            "fields": extra.fields,
+            "category": {"value": record.category or UNKNOWN, "source": extra.category_source},
+            "review_notes": extra.verify_found,
+            "pii": {"removed_count": record.pii_count, "types": extra.pii_types},
+            "anonymized_file": Path(record.output).name,
+            "quarantined": extra.quarantined,
+            "quarantine_reason": extra.quarantine_reason,
+            "quarantine_detail": detail,
+            "leak_test": {"passed": extra.leak_passed, "hits": extra.leak_hits,
+                          "leaked_count": len(extra.leaked)},
+            "cost": {"calls": extra.calls, "input_tokens": record.input_tokens,
+                     "output_tokens": record.output_tokens, "usd": round(record.cost, 6)},
+            "pages": record.pages,
+            "audit": {"model": self.settings.model, "timestamp": record.ts},
+        }
+        path = self._sidecar(doc_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    def _legacy_record(self, doc_id: str, st: DocRecord, cdoc: dict) -> dict:
+        """A record for a document processed before records were kept per document.
+
+        Rebuilt from the state file and the case database; what was never stored
+        (read method, PII types, the leak detail) is left empty rather than guessed.
+        """
+        held = "_quarantine" in (st.output or "")
+        return {
+            "doc_id": doc_id,
+            "source_file": Path(cdoc.get("source") or doc_id).name,
+            "format": Path(cdoc.get("source") or "").suffix.lstrip("."),
+            "read_method": "",
+            "fields": {},
+            "category": {"value": cdoc.get("category") or st.category or UNKNOWN,
+                         "source": cdoc.get("category_source") or ""},
+            "review_notes": [],
+            "pii": {"removed_count": st.pii_count, "types": []},
+            "anonymized_file": Path(st.output).name,
+            "quarantined": held,
+            "quarantine_reason": "held" if held else "",
+            "quarantine_detail": "held by an earlier run — open the file to review" if held else "",
+            "leak_test": {"passed": (None if held else True), "hits": 0, "leaked_count": 0},
+            "cost": {"calls": 0, "input_tokens": st.input_tokens,
+                     "output_tokens": st.output_tokens, "usd": round(st.cost, 6)},
+            "pages": st.pages,
+            "audit": {"model": self.settings.model, "timestamp": st.ts},
+        }
+
+    # --- run ----------------------------------------------------------------
     def run(self, opts: RunOptions, progress_cb: Optional[Callable[[dict], None]] = None) -> dict:
         docs = discover_inputs(self.settings.input_dir)
         if not docs:
             log.warning("No .pdf or .docx files found under %s", self.settings.input_dir)
             return self.state.totals()
 
+        found = len(docs)
+        docs = self._drop_duplicates(docs)
         todo = [d for d in docs if not self._should_skip(d, opts)]
         skipped = len(docs) - len(todo)
         if opts.limit is not None:
             todo = todo[: opts.limit]
 
         log.info(
-            "Found %d PDF(s): %d to process, %d skipped (already done).",
-            len(docs), len(todo), skipped,
+            "Found %d file(s): %d distinct rulings (%d duplicate copies skipped) — "
+            "%d to process, %d already done.",
+            found, len(docs), found - len(docs), len(todo), skipped,
         )
 
-        if not todo:
-            return self.state.totals()
+        halted = self._process_all(todo, progress_cb) if todo else False
+        return self.export(halted)
 
+    def _process_all(self, todo: List[InputDoc],
+                     progress_cb: Optional[Callable[[dict], None]]) -> bool:
+        """Process `todo` concurrently. Returns True if the budget ceiling halted it."""
         total = len(todo)
-        done = 0
-        extras: dict[str, DocExtra] = {}
-        failed_docs: List[dict] = []
+        done = n_failed = n_quarantined = 0
         cumulative_cost = 0.0
-        n_quarantined = 0
         halted = False
         budget = self.settings.budget_usd
-        bar = None
+        corpus = self.settings.corpus_label
         with logging_redirect_tqdm(), ThreadPoolExecutor(max_workers=self.settings.max_workers) as pool:
             futures = {pool.submit(self._process_one, d): d for d in todo}
             bar = tqdm(as_completed(futures), total=len(futures), desc="Anonymizing",
@@ -346,7 +527,7 @@ class Pipeline:
                 try:
                     record, payload, extra = fut.result()
                     self.state.update(doc.doc_id, record)
-                    extras[doc.doc_id] = extra
+                    self._save_record(doc.doc_id, record, extra)
                     cumulative_cost += record.cost
                     if extra.quarantined:
                         n_quarantined += 1
@@ -356,6 +537,8 @@ class Pipeline:
                         own=payload.own, category=payload.category,
                         outcome=payload.outcome, refs=payload.refs,
                         pii_count=record.pii_count,
+                        listing={**payload.listing, "corpus": corpus,
+                                 "content_hash": self._hashes.get(doc.doc_id, "")},
                     )
                     log.info(
                         "[%s] %s -> %s | %s | %s | %d pages | %d PII | $%.4f%s%s",
@@ -370,6 +553,7 @@ class Pipeline:
                                  pii=record.pii_count, cost=record.cost)
                 except Exception as exc:  # isolate per-document failures
                     log.exception("[FAIL] %s: %s", doc.doc_id, exc)
+                    n_failed += 1
                     self.state.update(
                         doc.doc_id,
                         DocRecord(
@@ -378,15 +562,12 @@ class Pipeline:
                             ts=_dt.datetime.now().isoformat(timespec="seconds"),
                         ),
                     )
-                    failed_docs.append({"doc_id": doc.doc_id, "source_file": doc.path.name,
-                                        "reason": "error", "detail": str(exc)})
                     event.update(ok=False, error=str(exc))
                 done += 1
                 event["done"] = done
-                if bar is not None:
-                    bar.set_postfix_str(
-                        f"${cumulative_cost:.3f} | clean {done - len(failed_docs) - n_quarantined}"
-                        f" | held {n_quarantined} | fail {len(failed_docs)}")
+                bar.set_postfix_str(
+                    f"${cumulative_cost:.3f} | clean {done - n_failed - n_quarantined}"
+                    f" | held {n_quarantined} | fail {n_failed}")
                 if progress_cb:
                     try:
                         progress_cb(event)
@@ -400,63 +581,64 @@ class Pipeline:
                     for pending in futures:
                         pending.cancel()
                     break
+        return halted
 
-        # Side mission: write the file -> category index for every done document.
-        index_path = self.settings.output_dir / "index.csv"
-        n = self.state.export_index(index_path)
-        log.info("Wrote category index: %s (%d documents)", index_path, n)
-
-        # Case linkage: rebuild edges across all stored docs and export cases.csv.
-        self.casedb.relink()
-        cases_path = self.settings.output_dir / "cases.csv"
-        c = self.casedb.export_cases_csv(cases_path)
-        self.casedb.export_documents_csv(self.settings.output_dir / "documents.csv")
-        log.info("Linked cases -> %s (%d cases)", cases_path, c)
-
-        # Structured hand-off (Script.md §7): JSON + XLSX records, run report, quarantine.
+    def export(self, halted: bool = False) -> dict:
+        """Write every export for this folder, covering all its documents, not one run."""
         out = self.settings.output_dir
+        corpus = self.settings.corpus_label
+
+        # Side mission: the file -> category index for every done document.
+        n = self.state.export_index(out / "index.csv")
+        log.info("Wrote category index: %s (%d documents)", out / "index.csv", n)
+
+        # Case linkage across everything in the database; exports keep to this folder.
+        self.casedb.relink()
+        c = self.casedb.export_cases_csv(out / "cases.csv", corpus=corpus)
+        self.casedb.export_documents_csv(out / "documents.csv", corpus=corpus)
+        listed = self.casedb.export_listing_csv(out / "listing.csv", corpus=corpus)
+        log.info("Linked cases -> %s (%d cases); listing.csv (%d rulings)",
+                 out / "cases.csv", c, listed)
+
         records_list: List[dict] = []
-        quarantined: List[dict] = list(failed_docs)
-        for doc_id, extra in sorted(extras.items()):
-            st = self.state.get(doc_id)
-            if st is None:
+        quarantined: List[dict] = []
+        duplicates: List[dict] = []
+        for doc_id, st in sorted(self.state.items()):
+            if st.status == "duplicate":
+                duplicates.append({"file": doc_id, "same_as": st.error.replace("copy of ", "")})
+                continue
+            if st.status == "failed":
+                quarantined.append({"doc_id": doc_id, "source_file": "",
+                                    "reason": "error", "detail": st.error})
                 continue
             cdoc = self.casedb.document(doc_id)
-            records_list.append({
-                "doc_id": doc_id,
-                "source_file": extra.source_file,
-                "format": extra.fmt,
-                "read_method": extra.read_method,
-                "fields": extra.fields,
-                "category": {"value": cdoc.get("category") or st.category or UNKNOWN,
-                             "source": extra.category_source},
-                "level": cdoc.get("level") or "",
-                "case_id": cdoc.get("case_id") or "",
-                "review": "check" if extra.verify_found else (cdoc.get("review") or "ok"),
-                "review_notes": extra.verify_found,
-                "links": self.casedb.links_for(doc_id),
-                "pii": {"removed_count": st.pii_count, "types": extra.pii_types},
-                "anonymized_file": Path(st.output).name,
-                "quarantined": extra.quarantined,
-                "leak_test": {"passed": extra.leak_passed, "hits": extra.leak_hits,
-                              "leaked_count": len(extra.leaked)},
-                "cost": {"calls": extra.calls, "input_tokens": st.input_tokens,
-                         "output_tokens": st.output_tokens, "usd": round(st.cost, 6)},
-                "pages": st.pages,
-                "status": "quarantined" if extra.quarantined else "done",
-                "audit": {"model": self.settings.model, "timestamp": st.ts},
-            })
-            if extra.quarantined:
-                detail = (f"{extra.leak_hits} hit(s): " + ", ".join(extra.leaked[:3])
-                          if extra.quarantine_reason == "leak" else "garbled OCR — manual review")
-                quarantined.append({
-                    "doc_id": doc_id, "source_file": extra.source_file,
-                    "reason": extra.quarantine_reason, "detail": detail,
-                })
+            sidecar = self._sidecar(doc_id)
+            if sidecar.exists():
+                rec = json.loads(sidecar.read_text(encoding="utf-8"))
+            else:
+                rec = self._legacy_record(doc_id, st, cdoc)
+            # Values that change as other rulings arrive come from the database now.
+            rec["category"]["value"] = cdoc.get("category") or rec["category"]["value"]
+            if cdoc.get("category_source"):
+                rec["category"]["source"] = cdoc["category_source"]
+            rec["level"] = cdoc.get("level") or ""
+            rec["case_id"] = cdoc.get("case_id") or ""
+            rec["review"] = "check" if rec.get("review_notes") else (cdoc.get("review") or "ok")
+            rec["links"] = self.casedb.links_for(doc_id)
+            rec["city"] = cdoc.get("origin_city") or ""
+            date = cdoc.get("date_display") or ""
+            rec["year"] = date[-4:] if date else ""
+            rec["status"] = "quarantined" if rec.get("quarantined") else "done"
+            records_list.append(rec)
+            if rec.get("quarantined"):
+                quarantined.append({"doc_id": doc_id, "source_file": rec.get("source_file", ""),
+                                    "reason": rec.get("quarantine_reason", ""),
+                                    "detail": rec.get("quarantine_detail", "")})
 
         records_mod.write_json(records_list, out / "records.json")
         records_mod.write_xlsx(records_list, out / "records.xlsx")
         records_mod.write_quarantine_csv(quarantined, out / "quarantine.csv")
+        records_mod.write_duplicates_csv(duplicates, out / "duplicates.csv")
         totals = self.state.totals()
         records_mod.write_run_report(
             totals, records_list, quarantined,
@@ -464,13 +646,133 @@ class Pipeline:
             path_md=out / "run_report.md", path_json=out / "run_report.json",
             halted=halted,
         )
-        log.info("Wrote records.json / records.xlsx / run_report.md (%d docs, %d quarantined)",
-                 len(records_list), len(quarantined))
+        log.info("Wrote records.json / records.xlsx / run_report.md (%d docs, %d held or "
+                 "failed, %d duplicate copies)", len(records_list), len(quarantined),
+                 len(duplicates))
 
         totals["quarantined"] = len(quarantined)
-        totals["leaked"] = sum(1 for r in records_list if not r["leak_test"]["passed"])
+        totals["leaked"] = sum(1 for r in records_list if r.get("quarantine_reason") == "leak")
         totals["halted"] = halted
         return totals
+
+
+    # --- maintenance: repair past output without reprocessing ------------------
+    def _delivered_path(self, doc_id: str) -> Optional[Path]:
+        out = self.settings.output_dir
+        for where in (out, out / "_quarantine"):
+            f = where / (doc_id + ".docx")
+            if f.exists():
+                return f
+        return None
+
+    def refresh_listing(self) -> dict:
+        """Recompute the listing fields of already-processed rulings. No model calls.
+
+        Reads what the pipeline stored -- the case database and the delivered text --
+        and applies the current rules for decision number, date, chamber and the
+        lower court's city. When the chamber changes, the title line of the delivered
+        file is corrected too.
+        """
+        counts = {"rulings": 0, "chamber_changed": 0, "retitled": 0}
+        for doc_id, st in self.state.items():
+            if st.status != "done":
+                continue
+            cdoc = self.casedb.document(doc_id)
+            path = self._delivered_path(doc_id)
+            if not cdoc or path is None:
+                continue
+            lines = _docx_lines(path)
+            text = "\n".join(lines[1:])          # line 0 is our own title
+            counts["rulings"] += 1
+
+            stated = chamber_from_text(text)
+            old_cat = cdoc.get("category") or ""
+            if stated:
+                category, source = stated, "ruling-text"
+            elif cdoc.get("category_source"):
+                category, source = old_cat, cdoc["category_source"]
+            elif old_cat and old_cat != UNKNOWN:
+                category, source = old_cat, "model"
+            else:
+                category, source = UNKNOWN, "undetermined"
+
+            _, loc_own, _ = local_extract(text)
+            decision = (display_decision_no(cdoc.get("decision_no") or "")
+                        or display_decision_no(loc_own.decision_no))
+            date = (display_date(cdoc.get("date") or "") or header_date(text)
+                    or display_date(loc_own.date))
+            city, city_source = origin_city(self.casedb.refs_for(doc_id), text)
+
+            self.casedb.update_listing(
+                doc_id, category=category, category_source=source,
+                decision_display=decision, date_display=date,
+                origin_city=city, origin_city_source=city_source)
+            if category != old_cat:
+                counts["chamber_changed"] += 1
+                st.category = category
+                self.state.update(doc_id, st)
+                court = cdoc.get("court") or ""
+                title = " — ".join(p for p in (court, category) if p and p != UNKNOWN)
+                if title and retitle_docx(path, title):
+                    counts["retitled"] += 1
+            sidecar = self._sidecar(doc_id)
+            if sidecar.exists():
+                rec = json.loads(sidecar.read_text(encoding="utf-8"))
+                rec["category"] = {"value": category, "source": source}
+                fields = rec.setdefault("fields", {})
+                fields.setdefault(F_DECISION, {})["value"] = decision
+                fields.setdefault(F_DATE, {})["value"] = date
+                fields[F_CITY] = {"value": city, "source": city_source or "none"}
+                fields[F_CHAMBER] = {"value": category, "source": source}
+                sidecar.write_text(json.dumps(rec, ensure_ascii=False, indent=1),
+                                   encoding="utf-8")
+        log.info("Refreshed listing fields for %d rulings (%d chamber corrections, "
+                 "%d titles rewritten)", counts["rulings"], counts["chamber_changed"],
+                 counts["retitled"])
+        return counts
+
+    def requeue_damaged(self) -> dict:
+        """Set aside delivered files that are not fit to deliver, so a rerun redoes them.
+
+        Three faults found in delivered output, none of which the leak gate can see:
+          empty     -- the scan came back blank and only the title was written;
+          partial   -- far less text than its page count implies (a transcription
+                       that stopped early);
+          cut-words -- an OCR fragment flagged as a name was cut out of ordinary
+                       words ("XXXXXXXحكمة"), which the redactor no longer does.
+        Files move to _superseded/ (nothing is deleted) and are marked for retry.
+        """
+        out = self.settings.output_dir
+        token = re.escape(self.settings.replacement_token)
+        glued = re.compile(token + r"(?=[ء-ؿف-ي])")
+        counts = {"empty": 0, "partial": 0, "cut-words": 0}
+        for doc_id, st in self.state.items():
+            if st.status != "done":
+                continue
+            path = out / (doc_id + ".docx")
+            if not path.exists():
+                continue
+            lines = _docx_lines(path)
+            text = "\n".join(lines[1:])
+            visible = len(re.sub(r"\s", "", text))
+            pages = max(1, st.pages)
+            if visible < max(EMPTY_MIN_CHARS, EMPTY_MIN_CHARS_PER_PAGE * pages):
+                reason = "empty"
+            elif pages > 1 and visible / pages < PARTIAL_MAX_CHARS_PER_PAGE:
+                reason = "partial"
+            elif glued.search(text):
+                reason = "cut-words"
+            else:
+                continue
+            dest = out / "_superseded" / path.name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(path), str(dest))
+            st.status = "failed"
+            st.error = f"requeued: {reason}"
+            self.state.update(doc_id, st)
+            counts[reason] += 1
+        log.info("Requeued for reprocessing: %s", counts)
+        return counts
 
 
 def _ocr_garbled(text: str) -> bool:

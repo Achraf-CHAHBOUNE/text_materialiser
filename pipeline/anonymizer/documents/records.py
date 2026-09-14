@@ -23,6 +23,8 @@ from openpyxl import Workbook
 F_DECISION = "رقم القرار"
 F_FILE = "رقم الملف"
 F_DATE = "تاريخ القرار"
+F_CITY = "المدينة"      # the lower court's city -- what a portal listing shows
+F_CHAMBER = "الغرفة"    # the chamber that issued the ruling
 
 
 def write_json(records: List[dict], path: Path) -> None:
@@ -51,6 +53,8 @@ def _row(r: dict) -> dict:
         F_DECISION: val(F_DECISION),
         F_FILE: val(F_FILE),
         F_DATE: val(F_DATE),
+        "year": r.get("year", ""),
+        F_CITY: r.get("city", "") or val(F_CITY),
         "decision_conf": conf(F_DECISION),
         "file_conf": conf(F_FILE),
         "date_conf": conf(F_DATE),
@@ -95,6 +99,17 @@ def write_quarantine_csv(quarantined: List[dict], path: Path) -> None:
                         q.get("reason", ""), q.get("detail", "")])
 
 
+def write_duplicates_csv(duplicates: List[dict], path: Path) -> None:
+    """duplicates: [{file, same_as}] -- every copy skipped, and which ruling it copies."""
+    import csv
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["file", "same_as"])
+        for d in duplicates:
+            w.writerow([d.get("file", ""), d.get("same_as", "")])
+
+
 def write_run_report(totals: dict, records: List[dict], quarantined: List[dict],
                      model: str, budget_usd: float,
                      path_md: Path, path_json: Path,
@@ -122,6 +137,26 @@ def write_run_report(totals: dict, records: List[dict], quarantined: List[dict],
         "budget_halted": halted,
     }
     path_json.parent.mkdir(parents=True, exist_ok=True)
+
+    dup = totals.get("duplicates", 0)
+    report["duplicate_copies_skipped"] = dup
+    delivered = [r for r in records if not r.get("quarantined")]
+
+    def coverage(pred) -> str:
+        k = sum(1 for r in delivered if pred(r))
+        return f"{k:,} / {len(delivered):,} ({(k / len(delivered) * 100) if delivered else 0:.1f}%)"
+
+    def fval(r, label): return ((r.get("fields") or {}).get(label) or {}).get("value", "")
+
+    listing = {
+        "decision_no": coverage(lambda r: fval(r, F_DECISION)),
+        "date": coverage(lambda r: fval(r, F_DATE)),
+        "chamber": coverage(lambda r: (r.get("category") or {}).get("value") not in ("", "غير محدد")),
+        "chamber_from_ruling_text": coverage(
+            lambda r: (r.get("category") or {}).get("source") == "ruling-text"),
+        "city_of_lower_court": coverage(lambda r: r.get("city")),
+    }
+    report["listing_field_coverage"] = listing
     path_json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
@@ -129,6 +164,7 @@ def write_run_report(totals: dict, records: List[dict], quarantined: List[dict],
         "",
         f"- **Model:** {model}",
         f"- **Documents processed:** {processed}",
+        f"- **Duplicate copies skipped:** {dup}  (see duplicates.csv)",
         f"- **Pages:** {report['pages']}",
         f"- **PII removed:** {report['pii_removed']}",
         f"- **Failed:** {report['failed']}",
@@ -142,6 +178,14 @@ def write_run_report(totals: dict, records: List[dict], quarantined: List[dict],
         + ("  ⛔ **HALTED — budget reached**" if halted else ""),
         "",
     ]
+    lines += ["## Listing fields (delivered rulings)", "",
+              "| field | filled |", "| --- | --- |",
+              f"| رقم القرار — decision number | {listing['decision_no']} |",
+              f"| تاريخ القرار — date | {listing['date']} |",
+              f"| الغرفة — chamber | {listing['chamber']} |",
+              f"| … of which read from the ruling's own header | {listing['chamber_from_ruling_text']} |",
+              f"| المدينة — lower court's city | {listing['city_of_lower_court']} |",
+              ""]
     if quarantined:
         lines += ["## Quarantine", "", "| doc | reason | detail |", "| --- | --- | --- |"]
         for q in quarantined:

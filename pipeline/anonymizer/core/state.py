@@ -17,7 +17,7 @@ from typing import Dict, Optional
 
 @dataclass
 class DocRecord:
-    status: str  # "done" | "failed"
+    status: str  # "done" | "failed" | "duplicate" (a byte-identical copy of another)
     output: str = ""
     category: str = ""   # black-text chamber (the classification)
     court: str = ""      # blue-header court (context)
@@ -71,6 +71,11 @@ class State:
     def get(self, doc_id: str) -> Optional[DocRecord]:
         return self._records.get(doc_id)
 
+    def items(self) -> list:
+        """(doc_id, record) pairs, a snapshot safe to iterate while updating."""
+        with self._lock:
+            return list(self._records.items())
+
     def update(self, doc_id: str, record: DocRecord) -> None:
         with self._lock:
             self._records[doc_id] = record
@@ -88,14 +93,28 @@ class State:
                 writer.writerow([doc_id, r.category, r.court, r.pages, r.pii_count])
         return len(done)
 
+    def mark_duplicate(self, doc_id: str, original: str) -> None:
+        """Record that `doc_id` is a copy of `original`, keeping any cost already spent."""
+        with self._lock:
+            rec = self._records.get(doc_id) or DocRecord(status="duplicate")
+            rec.status = "duplicate"
+            rec.output = ""
+            rec.error = f"copy of {original}"
+            self._records[doc_id] = rec
+            self._save_unlocked()
+
     def totals(self) -> dict:
         done = [r for r in self._records.values() if r.status == "done"]
+        spent = list(self._records.values())
         return {
             "documents": len(done),
             "pages": sum(r.pages for r in done),
-            "input_tokens": sum(r.input_tokens for r in done),
-            "output_tokens": sum(r.output_tokens for r in done),
-            "cost": sum(r.cost for r in done),
+            # Tokens and cost count every document actually paid for -- including
+            # copies that were processed before duplicates were detected.
+            "input_tokens": sum(r.input_tokens for r in spent),
+            "output_tokens": sum(r.output_tokens for r in spent),
+            "cost": sum(r.cost for r in spent),
             "pii": sum(r.pii_count for r in done),
             "failed": sum(1 for r in self._records.values() if r.status == "failed"),
+            "duplicates": sum(1 for r in self._records.values() if r.status == "duplicate"),
         }

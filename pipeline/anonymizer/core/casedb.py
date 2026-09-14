@@ -17,11 +17,30 @@ from __future__ import annotations
 import csv
 import sqlite3
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .identifiers import Ident, canon_date, canon_file_no, court_to_level, match_score
 
 LEVEL_RANK = {"ابتدائي": 1, "استئناف": 2, "نقض": 3}
+
+# Columns added after the first schema, migrated onto older databases in place.
+#   corpus         which input folder the ruling came from, so one database can
+#                  hold several folders while each folder's exports stay its own
+#   content_hash   md5 of the source file -- how byte-identical copies are found,
+#                  within a folder and across folders sharing this database
+#   listing fields the values a court-portal row shows (see core.fields)
+LATER_COLUMNS = [
+    ("pii_count", "INTEGER DEFAULT 0"),
+    ("corpus", "TEXT DEFAULT ''"),
+    ("content_hash", "TEXT DEFAULT ''"),
+    ("decision_display", "TEXT DEFAULT ''"),
+    ("date_display", "TEXT DEFAULT ''"),
+    ("origin_city", "TEXT DEFAULT ''"),
+    ("origin_city_source", "TEXT DEFAULT ''"),
+    ("category_source", "TEXT DEFAULT ''"),
+]
+LISTING_KEYS = ("corpus", "content_hash", "decision_display", "date_display",
+                "origin_city", "origin_city_source", "category_source")
 LEVEL_ORDER = ["ابتدائي", "استئناف", "نقض"]
 
 
@@ -54,22 +73,31 @@ class CaseDB:
         )
         # Forward-migrate a DB created by an older schema (add columns that post-date it).
         cols = {r[1] for r in self.con.execute("PRAGMA table_info(documents)")}
-        if "pii_count" not in cols:
-            self.con.execute("ALTER TABLE documents ADD COLUMN pii_count INTEGER DEFAULT 0")
+        for col, decl in LATER_COLUMNS:
+            if col not in cols:
+                self.con.execute(f"ALTER TABLE documents ADD COLUMN {col} {decl}")
+        self.con.execute("CREATE INDEX IF NOT EXISTS ix_doc_hash ON documents(content_hash)")
         self.con.commit()
 
     # --- ingest ---------------------------------------------------------------
     def ingest(self, doc_id: str, source: str, level: str, own: Ident,
-               category: str, outcome: str, refs: List[Ident], pii_count: int = 0) -> None:
-        """Insert/replace one document and its downward references (dedup by doc_id)."""
+               category: str, outcome: str, refs: List[Ident], pii_count: int = 0,
+               listing: Optional[dict] = None) -> None:
+        """Insert/replace one document and its downward references (dedup by doc_id).
+
+        `listing` carries the LISTING_KEYS columns (corpus, content hash, display
+        fields); missing keys are stored empty.
+        """
+        listing = listing or {}
         self.con.execute("DELETE FROM documents WHERE doc_id=?", (doc_id,))
         self.con.execute("DELETE FROM doc_refs WHERE doc_id=?", (doc_id,))
+        cols = ("doc_id,source,level,court,city,decision_no,date,file_no,file_norm,"
+                "date_norm,category,outcome,case_id,review,pii_count," + ",".join(LISTING_KEYS))
         self.con.execute(
-            """INSERT INTO documents(doc_id,source,level,court,city,decision_no,date,
-               file_no,file_norm,date_norm,category,outcome,case_id,review,pii_count)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            f"INSERT INTO documents({cols}) VALUES({','.join('?' * (15 + len(LISTING_KEYS)))})",
             (doc_id, source, level, own.court, own.city, own.decision_no, own.date,
-             own.file_no, own.file_norm, own.date_norm, category, outcome, "", "", pii_count),
+             own.file_no, own.file_norm, own.date_norm, category, outcome, "", "", pii_count,
+             *(listing.get(k, "") or "" for k in LISTING_KEYS)),
         )
         for i, r in enumerate(refs):
             self.con.execute(
@@ -79,6 +107,32 @@ class CaseDB:
                  r.file_no, r.file_norm, r.date_norm),
             )
         self.con.commit()
+
+    def update_listing(self, doc_id: str, **values) -> None:
+        """Overwrite some listing columns (and optionally category) of one document."""
+        allowed = set(LISTING_KEYS) | {"category"}
+        items = [(k, v) for k, v in values.items() if k in allowed]
+        if items:
+            self.con.execute(
+                f"UPDATE documents SET {', '.join(k + '=?' for k, _ in items)} WHERE doc_id=?",
+                (*(v for _, v in items), doc_id))
+            self.con.commit()
+
+    def remove(self, doc_id: str) -> None:
+        """Drop a document and its references (used when it turns out to be a copy)."""
+        self.con.execute("DELETE FROM documents WHERE doc_id=?", (doc_id,))
+        self.con.execute("DELETE FROM doc_refs WHERE doc_id=?", (doc_id,))
+        self.con.commit()
+
+    def known_hashes(self) -> Dict[str, str]:
+        """content_hash -> doc_id for every stored document that has one."""
+        return {h: d for h, d in self.con.execute(
+            "SELECT content_hash, doc_id FROM documents WHERE content_hash != '' ORDER BY doc_id DESC")}
+
+    def refs_for(self, doc_id: str) -> List[Ident]:
+        return [Ident(r["court"], r["city"], r["decision_no"], r["date"], r["file_no"])
+                for r in self.con.execute("SELECT * FROM doc_refs WHERE doc_id=? ORDER BY ref_ix",
+                                          (doc_id,))]
 
     # --- linking --------------------------------------------------------------
     def _docs(self) -> List[sqlite3.Row]:
@@ -192,8 +246,12 @@ class CaseDB:
         self.con.commit()
 
     # --- export ---------------------------------------------------------------
-    def export_cases_csv(self, path: Path) -> int:
+    def export_cases_csv(self, path: Path, corpus: str = "") -> int:
         docs = self._docs()
+        if corpus:
+            # Keep every case that has at least one member from this folder.
+            keep = {d["case_id"] for d in docs if d["corpus"] == corpus}
+            docs = [d for d in docs if d["case_id"] in keep]
         by_case: Dict[str, List[sqlite3.Row]] = {}
         for d in docs:
             by_case.setdefault(d["case_id"] or f"C:{d['doc_id']}", []).append(d)
@@ -244,18 +302,56 @@ class CaseDB:
                 n += 1
         return n
 
-    def export_documents_csv(self, path: Path) -> int:
-        """Per-document rows with the fields the frontend needs (level, case_id, review)."""
+    def _rows(self, corpus: str = "") -> List[sqlite3.Row]:
+        if corpus:
+            return list(self.con.execute(
+                "SELECT * FROM documents WHERE corpus=? ORDER BY doc_id", (corpus,)))
+        return list(self.con.execute("SELECT * FROM documents ORDER BY doc_id"))
+
+    def export_documents_csv(self, path: Path, corpus: str = "") -> int:
+        """Per-document rows with the fields the frontend needs (level, case_id, review).
+
+        `corpus` limits the export to one input folder when several share the DB.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
-        rows = list(self.con.execute("SELECT * FROM documents ORDER BY doc_id"))
-        cols = ["file", "level", "category", "court", "pii_count", "case_id", "review"]
+        rows = self._rows(corpus)
+        cols = ["file", "level", "category", "category_source", "court", "decision_no",
+                "date", "origin_city", "pii_count", "case_id", "review"]
         with open(path, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.writer(f)
             w.writerow(cols)
             for d in rows:
                 w.writerow([d["doc_id"], d["level"] or "", d["category"] or "",
-                            d["court"] or "", d["pii_count"] or 0,
+                            d["category_source"] or "", d["court"] or "",
+                            d["decision_display"] or "", d["date_display"] or "",
+                            d["origin_city"] or "", d["pii_count"] or 0,
                             d["case_id"] or "", d["review"] or ""])
+        return len(rows)
+
+    def export_listing_csv(self, path: Path, corpus: str = "") -> int:
+        """The court-portal listing: Court > Chamber > Year > (number, date, city).
+
+        One row per ruling, in the order a portal lists them. This is the data a
+        JURISMAROC-style browse page is built from.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rows = self._rows(corpus)
+
+        def key(d):
+            date = d["date_display"] or ""
+            num = d["decision_display"] or ""
+            return (d["category"] or "", date[-4:], date[3:5], date[:2],
+                    int(num) if num.isdigit() else 0, d["doc_id"])
+
+        cols = ["المحكمة", "الغرفة", "السنة", "رقم القرار", "تاريخ القرار", "المدينة", "file"]
+        with open(path, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(cols)
+            for d in sorted(rows, key=key):
+                date = d["date_display"] or ""
+                w.writerow(["محكمة النقض" if (d["level"] or "") == "نقض" else (d["court"] or ""),
+                            d["category"] or "", date[-4:], d["decision_display"] or "",
+                            date, d["origin_city"] or "", d["doc_id"]])
         return len(rows)
 
     def document(self, doc_id: str) -> dict:

@@ -62,6 +62,10 @@ class Settings:
     # a folder that is entirely أحوال شخصية). Never overrides a confident answer.
     default_category: str
 
+    # Which input folder this run belongs to (e.g. "01_civile"). Several folders can
+    # share one case database; each keeps its own exports. Empty = the input folder name.
+    corpus: str
+
     # Vertex AI (PROVIDER=vertex): IAM auth, per-project quota, no API key needed
     vertex_project: str
     vertex_location: str
@@ -91,10 +95,15 @@ class Settings:
             cache_ttl_seconds=int(_get("CACHE_TTL_SECONDS", "3600")),
             verify_pass=_get("ENABLE_VERIFY", "0") not in ("0", "false", "False", "no"),
             default_category=_get("DEFAULT_CATEGORY", ""),
+            corpus=_get("CORPUS", ""),
             vertex_project=_get("VERTEX_PROJECT", ""),
             vertex_location=_get("VERTEX_LOCATION", "us-central1"),
             log_level=_get("LOG_LEVEL", "INFO").upper(),
         )
+
+    @property
+    def corpus_label(self) -> str:
+        return self.corpus or self.input_dir.resolve().name
 
     def estimate_cost(self, input_tokens: int, output_tokens: int, cached_tokens: int = 0) -> float:
         # prompt_token_count includes cached tokens; cached input bills at the cache-read rate.

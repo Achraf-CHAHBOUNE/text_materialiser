@@ -40,6 +40,15 @@ def parse_args() -> argparse.Namespace:
                         "and report the projected total for the full corpus. Do this before any full run.")
     p.add_argument("--category", help="Fallback الغرفة when the model returns غير محدد "
                    "(e.g. 'أحوال شخصية' for a personal-status folder)")
+    p.add_argument("--refresh-fields", action="store_true",
+                   help="Recompute decision number, date, chamber and lower-court city for "
+                        "already-processed rulings from stored data (no model calls), then "
+                        "rewrite the exports")
+    p.add_argument("--requeue-damaged", action="store_true",
+                   help="Set aside delivered files that are empty, partial, or have words "
+                        "cut open, so the next normal run reprocesses only those")
+    p.add_argument("--corpus", help="Label for this input folder in a shared case database "
+                   "(default: the input folder name)")
     p.add_argument("--log-level", help="DEBUG/INFO/WARNING/ERROR (default from .env)")
     return p.parse_args()
 
@@ -59,6 +68,7 @@ def main() -> int:
     if args.log_level:  overrides["log_level"] = args.log_level.upper()
     if args.budget is not None: overrides["budget_usd"] = args.budget
     if args.category:   overrides["default_category"] = args.category
+    if args.corpus:     overrides["corpus"] = args.corpus
     settings = replace(settings, **overrides)
 
     # Dry run: a small cost probe on real files (Script.md §3.4) before any full run.
@@ -76,6 +86,16 @@ def main() -> int:
     except Exception as exc:
         log.error("Startup failed: %s", exc)
         return 2
+
+    if args.refresh_fields or args.requeue_damaged:
+        # Maintenance only: nothing is sent to the model.
+        if args.requeue_damaged:
+            pipeline.requeue_damaged()
+        if args.refresh_fields:
+            pipeline.refresh_listing()
+        totals = pipeline.export()
+        log.info("Maintenance done — exports rewritten for %d documents.", totals["documents"])
+        return 0
 
     opts = RunOptions(limit=limit, overwrite=args.overwrite, resume=not args.no_resume)
     totals = pipeline.run(opts)
