@@ -172,3 +172,37 @@ def test_a_batch_too_large_for_any_budget_is_split_rather_than_lost():
     result = _Provider().process_pdf(pdf, 4)
     assert result.pages == ["p"] * 4, "every page must survive the split"
     assert 1 in seen and 4 in seen, f"expected halving down to single pages: {seen}"
+
+
+def test_json_null_is_empty_not_the_word_none():
+    from anonymizer.llm.gemini import _s
+
+    assert _s(None) == ""
+    assert _s("  58 ") == "58"
+
+
+def test_a_text_batch_too_large_for_one_reply_is_split_not_lost():
+    from anonymizer.llm.base import BatchResult, PIIEntity
+    from anonymizer.llm.gemini import GeminiProvider, TruncatedResponse
+
+    calls: list[int] = []
+
+    class _Provider(GeminiProvider):
+        MIN_SPLIT_CHARS = 10
+
+        def __init__(self):
+            pass
+
+        def _generate(self, contents, prompt, key, max_output=0):
+            calls.append(len(contents[0]))
+            return contents[0]
+
+        def _to_result(self, resp, include_pages):
+            if len(resp) > 40:
+                raise TruncatedResponse("too big")
+            return BatchResult(pii=[PIIEntity(resp.strip()[:5], "name")])
+
+    text = "\n".join(f"line {i:02d} text" for i in range(8))
+    result = _Provider().process_text(text)
+    assert len(result.pii) >= 2, "both halves must contribute"
+    assert max(calls) == len(text) and min(calls) <= 40

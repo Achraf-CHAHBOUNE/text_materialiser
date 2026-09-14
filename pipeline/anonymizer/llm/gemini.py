@@ -171,10 +171,22 @@ class GeminiProvider(DocumentAI):
             merged.identity = merged.identity or part.identity
         return merged
 
+    # Below this many characters a text batch is not split further.
+    MIN_SPLIT_CHARS = 1500
+
     def process_text(self, text: str) -> BatchResult:
         # Text is already extracted locally; the model only detects PII + classifies.
         resp = self._generate([text], PII_TEXT_PROMPT, "text")
-        return self._to_result(resp, include_pages=False)
+        try:
+            return self._to_result(resp, include_pages=False)
+        except TruncatedResponse:
+            # The reply would not fit: halve the text and detect in each half. The
+            # scanned-PDF path already did this; without it here, a dense text batch
+            # was simply lost. Halves recurse; a piece too small to split fails.
+            if len(text) < self.MIN_SPLIT_CHARS:
+                raise
+            first, second = _split_text(text)
+            return _merge_results(self.process_text(first), self.process_text(second))
 
     def verify_pii(self, anonymized_text: str, token: str) -> tuple[list[str], int, int]:
         # Independent second look: cheap (text in, tiny name-list out).
@@ -204,11 +216,11 @@ class GeminiProvider(DocumentAI):
     def _to_result(self, resp: Any, include_pages: bool) -> BatchResult:
         self._check_complete(resp)
         data = _parse_json(resp.text or "")
-        pages = [str(p) for p in data.get("pages", [])] if include_pages else []
+        pages = ["" if p is None else str(p) for p in (data.get("pages") or [])] if include_pages else []
         pii = [
-            PIIEntity(text=str(e.get("text", "")), type=str(e.get("type", "other")))
+            PIIEntity(text=_s(e.get("text", "")), type=_s(e.get("type", "other")))
             for e in data.get("pii", [])
-            if str(e.get("text", "")).strip()
+            if _s(e.get("text", ""))
         ]
 
         usage = getattr(resp, "usage_metadata", None)
@@ -218,31 +230,31 @@ class GeminiProvider(DocumentAI):
 
         own = data.get("own") or {}
         identity = DocIdentity(
-            level=str(data.get("level", "")).strip(),
-            court=str(own.get("court", "")).strip(),
-            city=str(own.get("city", "")).strip(),
-            decision_no=str(own.get("decision_no", "")).strip(),
-            date=str(own.get("date", "")).strip(),
-            file_no=str(own.get("file_no", "")).strip(),
-            outcome=str(own.get("outcome", "")).strip(),
+            level=_s(data.get("level", "")),
+            court=_s(own.get("court", "")),
+            city=_s(own.get("city", "")),
+            decision_no=_s(own.get("decision_no", "")),
+            date=_s(own.get("date", "")),
+            file_no=_s(own.get("file_no", "")),
+            outcome=_s(own.get("outcome", "")),
         )
         refs = [
             DocRef(
-                court=str(r.get("court", "")).strip(),
-                city=str(r.get("city", "")).strip(),
-                decision_no=str(r.get("decision_no", "")).strip(),
-                date=str(r.get("date", "")).strip(),
-                file_no=str(r.get("file_no", "")).strip(),
+                court=_s(r.get("court", "")),
+                city=_s(r.get("city", "")),
+                decision_no=_s(r.get("decision_no", "")),
+                date=_s(r.get("date", "")),
+                file_no=_s(r.get("file_no", "")),
             )
             for r in (data.get("refs") or [])
-            if any(str(r.get(k, "")).strip() for k in ("decision_no", "file_no"))
+            if any(_s(r.get(k, "")) for k in ("decision_no", "file_no"))
         ]
 
         return BatchResult(
             pages=pages,
             pii=pii,
-            court=str(data.get("court", "")).strip(),
-            category=str(data.get("category", "")).strip(),
+            court=_s(data.get("court", "")),
+            category=_s(data.get("category", "")),
             identity=identity,
             refs=refs,
             input_tokens=in_tok,
@@ -263,6 +275,12 @@ _ENTITY_TERMS = (
 
 def _is_entity(name: str) -> bool:
     return any(term in name for term in _ENTITY_TERMS)
+
+
+def _s(value) -> str:
+    """A model field as clean text. JSON null is empty -- not the string "None",
+    which had reached stored decision numbers and dates as a literal value."""
+    return "" if value is None else str(value).strip()
 
 
 class TruncatedResponse(RuntimeError):
@@ -339,3 +357,29 @@ def _parse_json(text: str) -> dict:
             except json.JSONDecodeError:
                 continue
     raise UnparseableResponse("no JSON object found in response")
+
+
+def _split_text(text: str) -> tuple[str, str]:
+    """Two halves of `text`, cut at the line break nearest the middle."""
+    mid = len(text) // 2
+    cut = text.rfind("\n", 0, mid)
+    if cut < len(text) // 4:
+        cut = text.find("\n", mid)
+    if cut <= 0:
+        cut = mid
+    return text[:cut], text[cut:]
+
+
+def _merge_results(a: BatchResult, b: BatchResult) -> BatchResult:
+    """One BatchResult covering both halves: lists joined, first non-empty scalar."""
+    return BatchResult(
+        pages=a.pages + b.pages,
+        pii=a.pii + b.pii,
+        court=a.court or b.court,
+        category=a.category or b.category,
+        identity=a.identity or b.identity,
+        refs=a.refs + b.refs,
+        input_tokens=a.input_tokens + b.input_tokens,
+        output_tokens=a.output_tokens + b.output_tokens,
+        cached_tokens=a.cached_tokens + b.cached_tokens,
+    )
