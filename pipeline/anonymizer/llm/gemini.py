@@ -92,51 +92,70 @@ class GeminiProvider(DocumentAI):
     # failure). Measured: all 4 "poor-OCR" quarantines in a 10-doc sample were these,
     # and every one transcribed cleanly on a second attempt.
     OCR_ATTEMPTS = 3
-    MIN_CHARS_PER_PAGE = 120
+    MIN_CHARS_PER_PAGE = 120        # a single page below this came back empty
+    COMPLETE_CHARS_PER_PAGE = 400   # a multi-page batch below this stopped early
 
     def process_pdf(self, pdf_bytes: bytes, page_count: int = 1) -> BatchResult:
-        """OCR a scanned page-batch, retrying when the model returns an empty/degenerate
-        response.
+        """OCR a scanned page-batch, retrying when the transcription comes back thin.
 
-        The model intermittently answers with no (or almost no) transcription even
-        though the scan is perfectly readable — a transient failure, not a bad
-        document. tenacity only retries *exceptions*, so those responses used to sail
-        through and get the document quarantined as "poor OCR". Retry on the content.
+        The model intermittently answers with little or no transcription even though
+        the scan is readable -- sometimes nothing, sometimes only the last page. That
+        is a transient failure, not a bad document, and tenacity only retries
+        *exceptions*, so the content itself is checked: a multi-page batch must
+        average COMPLETE_CHARS_PER_PAGE (real rulings never fell below ~670 per page
+        across 3,174 outputs; the partial ones sat at 61-336). If every attempt is
+        thin, a multi-page batch is split, since a single page is read most reliably.
+        The best attempt is kept, and every attempt's tokens are counted -- the
+        discarded ones were paid for too.
         """
         from google.genai import types
 
         cap = max(4000, self.MAX_OUTPUT_PER_PAGE * max(1, page_count))
         part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
-        # A genuine page yields hundreds of characters; anything below this is a failure.
-        floor = self.MIN_CHARS_PER_PAGE * max(1, page_count)
-        result = None
+        # One page may legitimately be short (a closing page of signatures), so the
+        # stricter per-page average applies only to multi-page batches.
+        per_page = self.COMPLETE_CHARS_PER_PAGE if page_count > 1 else self.MIN_CHARS_PER_PAGE
+        floor = per_page * max(1, page_count)
+        best: BatchResult | None = None
+        spent = [0, 0, 0]
+        last = self.OCR_ATTEMPTS - 1
         for attempt in range(self.OCR_ATTEMPTS):
             resp = self._generate([part], OCR_PII_PROMPT, "ocr", max_output=cap)
+            usage = getattr(resp, "usage_metadata", None)
+            spent[0] += getattr(usage, "prompt_token_count", 0) or 0
+            spent[1] += getattr(usage, "candidates_token_count", 0) or 0
+            spent[2] += getattr(usage, "cached_content_token_count", 0) or 0
             try:
                 result = self._to_result(resp, include_pages=True)
             except TruncatedResponse:
                 # A dense page can genuinely need more room than the per-page ceiling
                 # allows. Give it more and try again rather than losing the document;
                 # the ceiling still exists to stop a runaway on a garbled scan.
-                if attempt == self.OCR_ATTEMPTS - 1:
-                    # Still cut off at the API's own maximum: no budget will fit this
-                    # batch, so halve it. A batch of one page that still overflows is
-                    # genuinely unprocessable and is allowed to fail.
-                    if page_count > 1:
-                        return self._split_and_process(pdf_bytes, page_count)
+                if attempt < last:
+                    cap = min(cap * 2, self.MAX_OUTPUT_CEILING)
+                    continue
+                # Still cut off at the API's own maximum: no budget fits this batch.
+                if page_count > 1:
+                    return _add_spent(self._split_and_process(pdf_bytes, page_count), spent)
+                if best is None:
                     raise
-                cap = min(cap * 2, self.MAX_OUTPUT_CEILING)
-                continue
+                break
             except UnparseableResponse:
-                # A malformed reply is worth another attempt; only give up (and let
-                # the document be quarantined) if the last one is malformed too.
-                if attempt == self.OCR_ATTEMPTS - 1:
+                # A malformed reply is worth another attempt; give up only if no
+                # attempt produced anything usable.
+                if attempt == last and best is None:
                     raise
                 continue
             text = "".join(result.pages).strip()
             if len(text) >= floor and not ocr_garbled(text):
-                return result
-        return result
+                return _with_spent(result, spent)
+            if best is None or _chars(result) > _chars(best):
+                best = result
+        if page_count > 1:
+            split = self._split_and_process(pdf_bytes, page_count)
+            if best is None or _chars(split) > _chars(best):
+                return _add_spent(split, spent)
+        return _with_spent(best, spent)
 
     def _split_and_process(self, pdf_bytes: bytes, page_count: int) -> BatchResult:
         """OCR a too-large batch as two halves and stitch the results back together.
@@ -159,16 +178,7 @@ class GeminiProvider(DocumentAI):
                 writer.add_page(reader.pages[i])
             buf = io.BytesIO()
             writer.write(buf)
-            part = self.process_pdf(buf.getvalue(), hi - lo)
-            merged.pages.extend(part.pages)
-            merged.pii.extend(part.pii)
-            merged.refs.extend(part.refs)
-            merged.input_tokens += part.input_tokens
-            merged.output_tokens += part.output_tokens
-            merged.cached_tokens += part.cached_tokens
-            merged.court = merged.court or part.court
-            merged.category = merged.category or part.category
-            merged.identity = merged.identity or part.identity
+            merged = _merge_results(merged, self.process_pdf(buf.getvalue(), hi - lo))
         return merged
 
     # Below this many characters a text batch is not split further.
@@ -383,3 +393,21 @@ def _merge_results(a: BatchResult, b: BatchResult) -> BatchResult:
         output_tokens=a.output_tokens + b.output_tokens,
         cached_tokens=a.cached_tokens + b.cached_tokens,
     )
+
+
+def _chars(result: BatchResult) -> int:
+    return len("".join(result.pages).strip())
+
+
+def _with_spent(result: BatchResult, spent: list) -> BatchResult:
+    """`result` with its tokens replaced by the total over every attempt."""
+    result.input_tokens, result.output_tokens, result.cached_tokens = spent
+    return result
+
+
+def _add_spent(result: BatchResult, spent: list) -> BatchResult:
+    """`result` (already counting its own calls) plus the attempts made before it."""
+    result.input_tokens += spent[0]
+    result.output_tokens += spent[1]
+    result.cached_tokens += spent[2]
+    return result

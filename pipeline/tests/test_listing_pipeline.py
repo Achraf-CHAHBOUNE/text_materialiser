@@ -228,3 +228,32 @@ def test_requeue_sets_aside_files_with_words_cut_open(tmp_path):
     assert not out.exists() and (s.output_dir / "_superseded" / "a.docx").exists()
     Pipeline(s, FakeAI()).run(RunOptions())
     assert out.exists(), "the next normal run reprocesses it"
+
+
+def test_a_partial_transcription_is_held_not_delivered(tmp_path):
+    """Six pages in, only the ruling's closing lines out: 5 such files were delivered."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "scan.docx")
+
+    class PartialOCR(FakeAI):
+        pass
+
+    p = Pipeline(s, PartialOCR())
+    import anonymizer.pipeline as pl
+    real = pl.iter_work_batches
+
+    class _Batch:
+        kind, pdf_bytes, page_count = "image", b"", 6
+
+    p.provider.process_pdf = lambda b, n: BatchResult(
+        # ~500 characters for six pages: above the empty line, far below a ruling.
+        pages=[HEADER + " لهذه الأسباب قضت محكمة النقض برفض الطلب. " + FILLER[:330]] + [""] * 5,
+        pii=[], court="محكمة النقض", category="أحوال شخصية")
+    pl.iter_work_batches = lambda *a, **k: iter([_Batch()])
+    try:
+        p.run(RunOptions())
+    finally:
+        pl.iter_work_batches = real
+    assert not (s.output_dir / "scan.docx").exists()
+    [q] = _csv(s.output_dir / "quarantine.csv")
+    assert q["reason"] == "partial"

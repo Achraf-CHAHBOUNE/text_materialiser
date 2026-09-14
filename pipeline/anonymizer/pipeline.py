@@ -103,7 +103,9 @@ def _field_meta(llm_val: str, loc_val: str, show: Callable[[str], str] = str.str
 EMPTY_MIN_CHARS = 200
 EMPTY_MIN_CHARS_PER_PAGE = 60
 # A multi-page ruling averaging less than this per page stopped transcribing early.
-PARTIAL_MAX_CHARS_PER_PAGE = 250
+# Across 3,174 delivered rulings the lowest real ones held ~670 per page; the five
+# partial ones held 61-336. Only the conclusion of the ruling had come back.
+PARTIAL_MAX_CHARS_PER_PAGE = 400
 
 
 class Pipeline:
@@ -230,9 +232,11 @@ class Pipeline:
         garbled = _ocr_garbled(delivered)
         visible = len(re.sub(r"\s", "", delivered)) - len(re.sub(r"\s", "", title))
         empty = visible < max(EMPTY_MIN_CHARS, EMPTY_MIN_CHARS_PER_PAGE * len(all_pages))
-        quarantined = (not leak.passed) or garbled or empty
+        partial = (not empty and len(all_pages) > 1
+                   and visible / len(all_pages) < PARTIAL_MAX_CHARS_PER_PAGE)
+        quarantined = (not leak.passed) or garbled or empty or partial
         q_reason = ("leak" if not leak.passed else "poor-ocr" if garbled
-                    else "empty" if empty else "")
+                    else "empty" if empty else "partial" if partial else "")
         if quarantined:
             qdir = self.settings.output_dir / "_quarantine"
             qdir.mkdir(parents=True, exist_ok=True)
@@ -246,8 +250,9 @@ class Pipeline:
                 log.error("[POOR-OCR] %s: garbled scan — quarantined for manual review",
                           doc.doc_id)
             else:
-                log.error("[EMPTY] %s: only %d characters of text came back — held, "
-                          "not delivered; a rerun retries it", doc.doc_id, visible)
+                log.error("[%s] %s: only %d characters of text for %d page(s) — held, "
+                          "not delivered; a rerun retries it", q_reason.upper(), doc.doc_id,
+                          visible, len(all_pages))
         else:
             # This document was held by an earlier run and has now passed. Drop that
             # copy: it is the version that still contained the PII, and leaving it
@@ -431,6 +436,8 @@ class Pipeline:
             detail = "garbled OCR — manual review"
         elif extra.quarantine_reason == "empty":
             detail = "almost no text came back — a rerun retries it"
+        elif extra.quarantine_reason == "partial":
+            detail = "transcription stopped early — a rerun retries it"
         else:
             detail = ""
         data = {

@@ -206,3 +206,63 @@ def test_a_text_batch_too_large_for_one_reply_is_split_not_lost():
     result = _Provider().process_text(text)
     assert len(result.pii) >= 2, "both halves must contribute"
     assert max(calls) == len(text) and min(calls) <= 40
+
+
+_AR = "ن"   # an Arabic letter, so the garble check reads the text as Arabic
+
+
+def _ocr_provider(replies):
+    """A GeminiProvider whose model returns `replies` in turn (page lists)."""
+    from anonymizer.llm.base import BatchResult
+    from anonymizer.llm.gemini import GeminiProvider
+
+    class _Usage:
+        prompt_token_count, candidates_token_count, cached_content_token_count = 10, 5, 0
+
+    class _R:
+        def __init__(self, pages):
+            self.pages, self.usage_metadata, self.candidates, self.text = pages, _Usage(), [], ""
+
+    class _P(GeminiProvider):
+        def __init__(self):
+            self.calls = []
+            self._replies = list(replies)
+
+        def _generate(self, contents, prompt, key, max_output=0):
+            self.calls.append(key)
+            return _R(self._replies.pop(0) if self._replies else [_AR * 900])
+
+        def _to_result(self, resp, include_pages):
+            return BatchResult(pages=resp.pages, output_tokens=5, input_tokens=10)
+
+        def _split_and_process(self, pdf_bytes, page_count):
+            self.split = page_count
+            return BatchResult(pages=[_AR * 900] * page_count, input_tokens=1, output_tokens=1)
+
+    return _P()
+
+
+def test_a_thin_multi_page_transcription_is_retried_then_split():
+    """Only the last page came back on every attempt: split and read page by page."""
+    thin = ["", "", "لهذه الأسباب قضت محكمة النقض برفض الطلب"]
+    p = _ocr_provider([thin, thin, thin])
+    result = p.process_pdf(b"%PDF", page_count=3)
+    assert p.split == 3
+    assert len(result.pages) == 3 and all(len(x) == 900 for x in result.pages)
+    assert result is not None
+
+
+def test_every_attempt_is_counted_in_the_cost():
+    """Discarded attempts were paid for; leaving them out under-reports the hard scans."""
+    thin = ["", "", "short"]
+    good = [_AR * 900] * 3
+    p = _ocr_provider([thin, good])
+    result = p.process_pdf(b"%PDF", page_count=3)
+    assert result.input_tokens == 20 and result.output_tokens == 10
+
+
+def test_the_best_attempt_is_kept_when_none_is_complete():
+    one_page = [_AR * 110]           # below the single-page floor, but the most text
+    p = _ocr_provider([[_AR * 50], one_page, [_AR * 10]])
+    result = p.process_pdf(b"%PDF", page_count=1)
+    assert result.pages == one_page

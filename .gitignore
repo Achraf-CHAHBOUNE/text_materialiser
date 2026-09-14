@@ -53,3 +53,6 @@ service-account*.json
 out_statut*/
 test_statut_input/
 output_first/
+
+# Safety copies of delivered output taken before maintenance passes — real data
+backup_*/
