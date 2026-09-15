@@ -56,7 +56,7 @@ def _settings(tmp: Path, folder: str = "in", out: str = "out", db: str = "cases.
         Settings.load(), provider="fake", api_key="x", soffice_path="",
         input_dir=tmp / folder, output_dir=tmp / out,
         state_file=tmp / out / ".state.json", db_path=tmp / db,
-        max_workers=1, budget_usd=0, corpus="", default_category="",
+        max_workers=1, budget_usd=0, reader_processes=0, corpus="", default_category="",
     )
 
 
@@ -381,3 +381,32 @@ def test_a_name_flagged_in_a_later_batch_is_removed_from_earlier_pages(tmp_path)
     held = _csv(s.output_dir / "quarantine.csv")
     assert out.exists(), f"not held: the name is removed everywhere ({held})"
     assert "البناني" not in "\n".join(p.text for p in Document(str(out)).paragraphs)
+
+
+def test_reading_in_separate_processes_gives_byte_identical_output(tmp_path):
+    """The reader processes are a speed-up only: nothing delivered may change."""
+    import dataclasses
+    import hashlib
+
+    outputs = {}
+    for procs in (0, 2):
+        s = dataclasses.replace(_settings(tmp_path / f"p{procs}"), reader_processes=procs)
+        for n in ("a", "b", "c"):
+            _ruling(s.input_dir / f"{n}.docx", n)
+        Pipeline(s, FakeAI()).run(RunOptions())
+        outputs[procs] = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
+                          for f in sorted(s.output_dir.glob("*.docx"))}
+    assert len(outputs[0]) == 3
+    assert outputs[0] == outputs[2]
+
+
+def test_state_writes_are_throttled_but_nothing_is_lost(tmp_path):
+    from anonymizer.core.state import DocRecord, State
+
+    st = State(tmp_path / "s.json", save_interval=3600)
+    for i in range(50):
+        st.update(f"d{i}", DocRecord(status="done"))
+    on_disk = json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))
+    assert len(on_disk) == 1, "only the first update is written inside the interval"
+    st.flush()
+    assert len(json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))) == 50

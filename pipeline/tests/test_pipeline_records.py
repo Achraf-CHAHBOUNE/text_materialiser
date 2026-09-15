@@ -54,7 +54,7 @@ def _settings(tmp: Path) -> Settings:
         provider="fake", api_key="x", soffice_path="",
         input_dir=tmp / "in", output_dir=tmp / "out",
         state_file=tmp / "out" / ".state.json", db_path=tmp / "cases.db",
-        max_workers=1, budget_usd=0,
+        max_workers=1, budget_usd=0, reader_processes=0,
     )
     (tmp / "in").mkdir(parents=True, exist_ok=True)
     return base

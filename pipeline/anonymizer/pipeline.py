@@ -11,7 +11,7 @@ import json
 import random
 import re
 import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -114,9 +114,10 @@ class Pipeline:
     def __init__(self, settings: Settings, provider: Optional[DocumentAI] = None):
         self.settings = settings
         self.provider = provider or get_provider(settings)
-        self.state = State(settings.state_file)
+        self.state = State(settings.state_file, save_interval=2.0)
         # SQLite is used only from the main thread (workers return LinkPayloads).
         self.casedb = CaseDB(settings.db_path)
+        self._readers: Optional[ProcessPoolExecutor] = None   # set while processing
 
     def _output_path(self, doc: InputDoc) -> Path:
         return self.settings.output_dir / (doc.doc_id + ".docx")
@@ -140,8 +141,14 @@ class Pipeline:
         raw_pages: List[str] = []   # un-redacted text, for local identifier extraction
         entities: List[PIIEntity] = []   # every name flagged, across all batches
 
-        for batch in iter_work_batches(doc, self.settings.pages_per_batch,
-                                       soffice_path=self.settings.soffice_path):
+        if self._readers is not None:
+            batches = self._readers.submit(
+                _read_batches, doc, self.settings.pages_per_batch,
+                self.settings.soffice_path).result()
+        else:
+            batches = iter_work_batches(doc, self.settings.pages_per_batch,
+                                        soffice_path=self.settings.soffice_path)
+        for batch in batches:
             if batch.kind == "image":
                 result = self.provider.process_pdf(batch.pdf_bytes, batch.page_count)
                 pages = _align_pages(result.pages, batch.page_count)  # OCR text
@@ -530,7 +537,24 @@ class Pipeline:
 
     def _process_all(self, todo: List[InputDoc],
                      progress_cb: Optional[Callable[[dict], None]]) -> bool:
-        """Process `todo` concurrently. Returns True if the budget ceiling halted it."""
+        """Process `todo` concurrently. Returns True if the budget ceiling halted it.
+
+        The model calls run in threads; reading the PDFs runs in separate processes,
+        because that part is CPU-bound Python and threads share one core.
+        """
+        readers = (ProcessPoolExecutor(max_workers=self.settings.reader_processes)
+                   if self.settings.reader_processes > 0 else None)
+        self._readers = readers
+        try:
+            return self._process_with(todo, progress_cb)
+        finally:
+            self._readers = None
+            self.state.flush()
+            if readers is not None:
+                readers.shutdown(cancel_futures=True)
+
+    def _process_with(self, todo: List[InputDoc],
+                      progress_cb: Optional[Callable[[dict], None]]) -> bool:
         total = len(todo)
         done = n_failed = n_quarantined = 0
         cumulative_cost = 0.0
@@ -605,6 +629,7 @@ class Pipeline:
 
     def export(self, halted: bool = False) -> dict:
         """Write every export for this folder, covering all its documents, not one run."""
+        self.state.flush()
         out = self.settings.output_dir
         corpus = self.settings.corpus_label
 
@@ -822,6 +847,11 @@ class Pipeline:
             counts[reason] += 1
         log.info("Requeued for reprocessing: %s", counts)
         return counts
+
+
+def _read_batches(doc: InputDoc, pages_per_batch: int, soffice_path: str) -> list:
+    """All of a document's work batches, read in a separate process (see Settings)."""
+    return list(iter_work_batches(doc, pages_per_batch, soffice_path=soffice_path))
 
 
 def _ocr_garbled(text: str) -> bool:

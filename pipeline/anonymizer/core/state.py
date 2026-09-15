@@ -50,10 +50,19 @@ class DocRecord:
 
 
 class State:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, save_interval: float = 0.0):
+        """`save_interval`: write at most this often (seconds); flush() writes the rest.
+
+        Rewriting the whole file after every document took ~10% of the pipeline's
+        CPU on a 24,000-entry folder. A crash can then lose the last few seconds of
+        state -- those documents are simply processed again.
+        """
         self.path = path
         self._lock = threading.Lock()
         self._records: Dict[str, DocRecord] = {}
+        self._save_interval = save_interval
+        self._last_save = 0.0
+        self._dirty = False
         self._load()
 
     def _load(self) -> None:
@@ -78,6 +87,8 @@ class State:
                     indent=2,
                 )
             _replace(tmp, self.path)
+            self._dirty = False
+            self._last_save = time.monotonic()
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -97,7 +108,15 @@ class State:
     def update(self, doc_id: str, record: DocRecord) -> None:
         with self._lock:
             self._records[doc_id] = record
-            self._save_unlocked()
+            self._dirty = True
+            if time.monotonic() - self._last_save >= self._save_interval:
+                self._save_unlocked()
+
+    def flush(self) -> None:
+        """Write any update the save interval held back."""
+        with self._lock:
+            if self._dirty:
+                self._save_unlocked()
 
     def export_index(self, path: Path) -> int:
         """Write the side-mission index: file name + category (+ context) for every

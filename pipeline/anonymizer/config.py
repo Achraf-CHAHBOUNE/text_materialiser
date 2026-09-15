@@ -42,6 +42,10 @@ class Settings:
     # processing
     pages_per_batch: int
     max_workers: int
+    # Separate processes that read the PDFs. Reading is pure-Python (pypdf) and took
+    # 73% of the one core the threads share; spread over processes it runs in
+    # parallel. 0 reads in the worker threads, as before (used by tests).
+    reader_processes: int
     replacement_token: str
     soffice_path: str   # LibreOffice binary for legacy .doc conversion ("" if none)
 
@@ -85,6 +89,7 @@ class Settings:
             db_path=Path(_get("DB_PATH", "data/cases.db")),
             pages_per_batch=int(_get("PAGES_PER_BATCH", "5")),
             max_workers=int(_get("MAX_WORKERS", "4")),
+            reader_processes=int(_get("READER_PROCESSES", "6")),
             replacement_token=_get("REPLACEMENT_TOKEN", "XXXXXXX"),
             soffice_path=_get("SOFFICE_PATH", "") or _autodetect_soffice(),
             input_price_per_m=float(_get("INPUT_PRICE_PER_M", "0.10")),

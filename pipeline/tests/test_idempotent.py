@@ -32,7 +32,7 @@ def _run(tmp):
         Settings.load(), provider="fake", api_key="x", soffice_path="",
         input_dir=tmp / "in", output_dir=tmp / "out",
         state_file=tmp / "out" / ".state.json", db_path=tmp / "cases.db",
-        max_workers=1, budget_usd=0,
+        max_workers=1, budget_usd=0, reader_processes=0,
     )
     Pipeline(s, provider=FakeAI()).run(RunOptions(overwrite=True))
     return s.output_dir
