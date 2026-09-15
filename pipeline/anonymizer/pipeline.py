@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import random
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -45,6 +46,7 @@ class RunOptions:
     limit: Optional[int] = None
     overwrite: bool = False     # reprocess even if output exists / state says done
     resume: bool = True         # skip documents already marked done
+    sample: Optional[int] = None  # process a random N (fixed seed) instead of the first N
 
 
 @dataclass
@@ -503,6 +505,12 @@ class Pipeline:
         docs = self._drop_duplicates(docs)
         todo = [d for d in docs if not self._should_skip(d, opts)]
         skipped = len(docs) - len(todo)
+        if opts.sample is not None:
+            # The first N in name order is not a fair test: in one folder they were
+            # nearly all 1970s rulings with numeric names. A seeded draw is
+            # representative and repeatable.
+            todo = sorted(random.Random(0).sample(todo, min(opts.sample, len(todo))),
+                          key=lambda d: d.doc_id)
         if opts.limit is not None:
             todo = todo[: opts.limit]
 

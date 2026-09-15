@@ -293,3 +293,21 @@ def test_requeue_leaves_current_output_alone(tmp_path):
     d.save(str(out))
     assert Pipeline(s, FakeAI()).requeue_damaged()["cut-words"] == 0
     assert out.exists()
+
+
+def test_sample_draws_a_repeatable_random_subset(tmp_path):
+    s = _settings(tmp_path)
+    for i in range(12):
+        _ruling(s.input_dir / f"r{i:02d}.docx", f"رقم {i}")
+    seen = []
+
+    class Recording(FakeAI):
+        def process_text(self, text):
+            seen.append(text)
+            return super().process_text(text)
+
+    Pipeline(s, Recording()).run(RunOptions(sample=4))
+    done = sorted(d for d, st in json.loads(
+        (s.output_dir / ".state.json").read_text(encoding="utf-8")).items() if st["status"] == "done")
+    assert len(done) == 4
+    assert done != ["r00", "r01", "r02", "r03"], "not simply the first four by name"

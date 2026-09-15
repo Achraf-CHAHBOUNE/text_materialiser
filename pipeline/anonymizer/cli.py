@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--workers", type=int, help="Parallel documents (default from .env)")
     p.add_argument("--batch-size", type=int, help="Pages per LLM call (default from .env)")
     p.add_argument("--limit", type=int, default=None, help="Process at most N documents")
+    p.add_argument("--sample", type=int, default=None,
+                   help="Process a random N documents (fixed seed) -- a fair test of a folder")
     p.add_argument("--overwrite", action="store_true", help="Reprocess even if already done")
     p.add_argument("--no-resume", action="store_true", help="Do not skip done documents")
     p.add_argument("--budget", type=float, default=None,
@@ -97,7 +99,8 @@ def main() -> int:
         log.info("Maintenance done — exports rewritten for %d documents.", totals["documents"])
         return 0
 
-    opts = RunOptions(limit=limit, overwrite=args.overwrite, resume=not args.no_resume)
+    opts = RunOptions(limit=limit, overwrite=args.overwrite, resume=not args.no_resume,
+                      sample=args.sample)
     totals = pipeline.run(opts)
 
     processed = totals["documents"]
