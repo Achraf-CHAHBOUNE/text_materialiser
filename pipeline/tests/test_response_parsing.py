@@ -266,3 +266,54 @@ def test_the_best_attempt_is_kept_when_none_is_complete():
     p = _ocr_provider([[_AR * 50], one_page, [_AR * 10]])
     result = p.process_pdf(b"%PDF", page_count=1)
     assert result.pages == one_page
+
+
+
+# --- quotes the model forgot to escape -----------------------------------------
+def test_a_quotation_with_an_unescaped_closing_quote_is_repaired():
+    """The shape that made 32 rulings unprocessable (and, before, 63 empty files).
+
+    The model escapes the opening quote of a quoted legal text but not the closing
+    one, which ends the JSON string early.
+    """
+    reply = ('{"pages": ["بعلة: \\"أنه طبقا لمقتضيات الفصل 1241 من ق. ل.ع"، تعتبر أموال '
+             'المدين ضمانا عاما"], "pii": [{"text": "محمد العلوي", "type": "name"}]}')
+    d = _parse_json(reply)
+    assert "الفصل 1241" in d["pages"][0] and "ضمانا عاما" in d["pages"][0]
+    assert [e["text"] for e in d["pii"]] == ["محمد العلوي"]
+
+
+def test_several_stray_quotes_across_pages_are_all_repaired():
+    reply = ('{"pages": ["قال \\"أولا" ثم", "وقال \\"ثانيا" أيضا"], '
+             '"pii": [{"text": "زيد"}, {"text": "عمرو"}]}')
+    d = _parse_json(reply)
+    assert len(d["pages"]) == 2 and len(d["pii"]) == 2
+
+
+def test_a_repair_that_would_lose_a_name_entry_is_refused():
+    """Better no document than one redacted for fewer names than the model found."""
+    from anonymizer.llm.gemini import _require_every_entry
+
+    raw = '{"pages": ["x"], "pii": [{"text": "زيد"}, {"text": "عمرو"}]}'
+    with pytest.raises(UnparseableResponse):
+        _require_every_entry(raw, {"pages": ["x"], "pii": [{"text": "زيد"}]})
+
+
+def test_well_formed_json_never_goes_through_the_repair():
+    from anonymizer.llm import gemini
+
+    called = []
+    real = gemini._repair_stray_quotes
+    gemini._repair_stray_quotes = lambda t: called.append(t) or real(t)
+    try:
+        _parse_json('{"pages": ["نص"], "pii": []}')
+    finally:
+        gemini._repair_stray_quotes = real
+    assert called == []
+
+
+def test_the_guard_refuses_a_repair_that_glues_two_names_into_one():
+    """A missing comma is not a stray quote; blindly "repairing" it folds two
+    entries into one mangled value, and the second name would never be redacted."""
+    with pytest.raises(UnparseableResponse, match="kept 1 of 2"):
+        _parse_json('{"pages": ["x"], "pii": [{"text": "زيد"} {"text": "عمرو"}]}')

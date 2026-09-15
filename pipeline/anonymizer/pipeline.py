@@ -713,7 +713,8 @@ class Pipeline:
             self.casedb.update_listing(
                 doc_id, category=category, category_source=source,
                 decision_display=decision, date_display=date,
-                origin_city=city, origin_city_source=city_source)
+                origin_city=city, origin_city_source=city_source,
+                corpus=self.settings.corpus_label)
             if category != old_cat:
                 counts["chamber_changed"] += 1
                 st.category = category

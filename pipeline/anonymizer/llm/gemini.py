@@ -6,6 +6,7 @@ Structured JSON is requested via response_mime_type; parsing is defensive.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from tenacity import (
@@ -366,7 +367,72 @@ def _parse_json(text: str) -> dict:
                 return _coerce(json.loads(text[start : end + 1]))
             except json.JSONDecodeError:
                 continue
+    # Stray quotes inside the transcription (see _repair_stray_quotes).
+    start, end = text.find("{"), text.rfind("}")
+    for candidate in dict.fromkeys([text] + ([text[start:end + 1]] if end > start >= 0 else [])):
+        repaired = _repair_stray_quotes(candidate)
+        if repaired is not None:
+            data = _coerce(repaired)
+            _require_every_entry(candidate, data)
+            return data
     raise UnparseableResponse("no JSON object found in response")
+
+
+# JSON errors that mean "a string ended early": the parser finished a value and
+# then met ordinary text where a delimiter belonged.
+_EARLY_END = ("Expecting ',' delimiter", "Expecting ':' delimiter", "Expecting property name")
+_MAX_QUOTE_REPAIRS = 200
+_ENTRY = re.compile(r'"text"\s*:')
+
+
+def _last_unescaped_quote(text: str, before: int) -> int:
+    i = text.rfind('"', 0, before)
+    while i > 0:
+        slashes = len(text[:i]) - len(text[:i].rstrip("\\"))
+        if slashes % 2 == 0:
+            return i
+        i = text.rfind('"', 0, i)
+    return i
+
+
+def _repair_stray_quotes(text: str):
+    """Parse JSON whose strings contain unescaped quotation marks, or return None.
+
+    Transcribing a ruling that quotes the law, the model escapes the opening quote
+    and not the closing one: \\"أنه طبقا لمقتضيات الفصل 1241 من ق. ل.ع"، ... The
+    stray quote ends the string early and the reply is invalid JSON. At temperature
+    0 every retry returns the same reply, so 32 rulings could never be processed --
+    and before replies were checked, the old fallback read them as "no pages, no
+    names" and delivered 63 empty files as clean.
+
+    Each time the parser meets text where a delimiter belonged, the last unescaped
+    quote before that point is the one that ended the string early; escape it and
+    parse again.
+    """
+    for _ in range(_MAX_QUOTE_REPAIRS):
+        try:
+            return json.loads(text, strict=False)
+        except json.JSONDecodeError as e:
+            if not e.msg.startswith(_EARLY_END):
+                return None
+            q = _last_unescaped_quote(text, e.pos)
+            if q <= 0:
+                return None
+            text = text[:q] + "\\" + text[q:]
+    return None
+
+
+def _require_every_entry(raw: str, data: dict) -> None:
+    """Reject a repair that lost any name entry the raw reply contained.
+
+    A wrong repair can fold the "pii" list into a page's text and still parse. The
+    document would then be redacted for fewer names than the model found, and the
+    leak gate would not notice, because it only re-scans the names it is handed.
+    """
+    found = len(_ENTRY.findall(raw))
+    kept = len(data.get("pii") or []) if isinstance(data, dict) else 0
+    if found and kept < found:
+        raise UnparseableResponse(f"quote repair kept {kept} of {found} name entries")
 
 
 def _split_text(text: str) -> tuple[str, str]:
