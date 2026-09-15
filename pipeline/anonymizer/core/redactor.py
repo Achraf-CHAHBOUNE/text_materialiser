@@ -52,6 +52,11 @@ def is_initials(value: str) -> bool:
     runs = [r for r in re.split(r"[\W_]+", _NOISE.sub(" ", value)) if r]
     return bool(runs) and all(len(r) == 1 for r in runs)
 
+# Marks a page boundary in text redacted as one piece. It is whitespace, so a name
+# split across two pages still matches; a boundary inside a redacted span is put
+# back after the token, so the pages come out as they went in.
+PAGE_BREAK = "\f"
+
 # Interchangeable Arabic letters (key char -> all equivalent forms).
 _EQUIV = {c: "اأإآٱ" for c in "اأإآٱ"}
 _EQUIV.update({c: "يى" for c in "يى"})
@@ -172,7 +177,8 @@ def redact_text(text: str, entities: List[PIIEntity], token: str) -> tuple[str, 
         for variant in _variants(value):
             if not variant.strip():
                 continue
-            text, n = _flex_pattern(variant).subn(token, text)
+            text, n = _flex_pattern(variant).subn(
+                lambda m: token + PAGE_BREAK * m.group(0).count(PAGE_BREAK), text)
             if n:
                 report.total_hits += n
                 matched = True

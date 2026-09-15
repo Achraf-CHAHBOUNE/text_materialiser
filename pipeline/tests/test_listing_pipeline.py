@@ -422,3 +422,42 @@ def test_a_pdf_pypdf_cannot_parse_goes_to_the_model_whole(tmp_path):
     [batch] = list(iter_work_batches(InputDoc(doc_id="broken", path=broken, ext=".pdf"), 5))
     assert batch.kind == "image" and batch.page_count == 1
     assert batch.pdf_bytes == broken.read_bytes()
+
+
+def test_a_name_split_across_a_page_break_is_redacted(tmp_path):
+    """First name ends one page, family name starts the next: most civil leak holds."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "split.docx")
+
+    class _Batch:
+        kind, page_count = "text", 2
+        pages = [HEADER + " " + FILLER * 2 + " وحضر عبد الكريم",
+                 "البوعزاوي أمام المحكمة. " + FILLER * 2]
+
+    class Flags(FakeAI):
+        def process_text(self, text):
+            r = super().process_text(text)
+            r.pii = [PIIEntity("عبد الكريم البوعزاوي", "name")]
+            return r
+
+    import anonymizer.pipeline as pl
+    real = pl.iter_work_batches
+    pl.iter_work_batches = lambda *a, **k: iter([_Batch()])
+    try:
+        Pipeline(s, Flags()).run(RunOptions())
+    finally:
+        pl.iter_work_batches = real
+    out = s.output_dir / "split.docx"
+    assert out.exists(), _csv(s.output_dir / "quarantine.csv")
+    text = "\n".join(p.text for p in Document(str(out)).paragraphs)
+    assert "البوعزاوي" not in text and "عبد الكريم" not in text
+
+
+def test_the_page_break_survives_inside_a_redacted_name():
+    from anonymizer.core.redactor import PAGE_BREAK, redact_text
+
+    text = "صفحة أولى حضر عبد الكريم" + PAGE_BREAK + "البوعزاوي في الصفحة الثانية"
+    out, _ = redact_text(text, [PIIEntity("عبد الكريم البوعزاوي", "name")], "XXXXXXX")
+    assert out.count(PAGE_BREAK) == 1 and "البوعزاوي" not in out
+    first, second = out.split(PAGE_BREAK)
+    assert first.startswith("صفحة أولى") and second.endswith("الصفحة الثانية")

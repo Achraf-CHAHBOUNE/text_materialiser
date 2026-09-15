@@ -28,7 +28,7 @@ from .core.fields import (chamber_from_text, display_date, display_decision_no,
 from .core.identifiers import Ident, local_extract, split_file_numbers
 from .core.leaktest import leak_scan
 from .core.quality import ocr_garbled
-from .core.redactor import redact_structured, redact_text
+from .core.redactor import PAGE_BREAK, redact_structured, redact_text
 from .core.state import DocRecord, State
 from .documents import records as records_mod
 from .documents.records import F_CHAMBER, F_CITY, F_DATE, F_DECISION, F_FILE
@@ -186,13 +186,20 @@ class Pipeline:
         # its own findings left a name first flagged on page 8 standing on pages 1-5:
         # the leak gate (which checks every name against every page) held 2 of the
         # first 100 civil rulings for exactly that.
-        for page_text in raw_pages:
-            clean, report = redact_text(page_text, entities, self.settings.replacement_token)
+        #
+        # The whole ruling is redacted as one text, pages joined by PAGE_BREAK. Page by
+        # page, a name whose first word ends one page and whose family name starts the
+        # next could never match -- the leak gate, reading the whole document, caught
+        # it: most of the leak holds in the civil folder were exactly this.
+        token = self.settings.replacement_token
+        joined = PAGE_BREAK.join(p.replace(PAGE_BREAK, "\n") for p in raw_pages)
+        redacted, report = redact_text(joined, entities, token)
+        matched_values.update(report.replaced)
+        for clean in redacted.split(PAGE_BREAK):
             # deterministic backstop: strip structured PII the model may have missed
-            clean, n_struct = redact_structured(clean, self.settings.replacement_token)
+            clean, n_struct = redact_structured(clean, token)
             struct_hits += n_struct
             all_pages.append(clean)
-            matched_values.update(report.replaced)
 
         unmatched_values = sorted(flagged_values - matched_values)
         for value in unmatched_values:

@@ -193,7 +193,13 @@ class GeminiProvider(DocumentAI):
         # Text is already extracted locally; the model only detects PII + classifies.
         resp = self._generate([text], PII_TEXT_PROMPT, "text")
         try:
-            return self._to_result(resp, include_pages=False)
+            try:
+                return self._to_result(resp, include_pages=False)
+            except UnparseableResponse:
+                # An empty or unreadable reply is usually transient; the scanned-PDF
+                # path already retried it, the text path failed the ruling outright.
+                resp = self._generate([text], PII_TEXT_PROMPT, "text")
+                return self._to_result(resp, include_pages=False)
         except TruncatedResponse:
             # The reply would not fit: halve the text and detect in each half. The
             # scanned-PDF path already did this; without it here, a dense text batch
