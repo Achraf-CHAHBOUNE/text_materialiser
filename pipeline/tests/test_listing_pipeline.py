@@ -311,3 +311,23 @@ def test_sample_draws_a_repeatable_random_subset(tmp_path):
         (s.output_dir / ".state.json").read_text(encoding="utf-8")).items() if st["status"] == "done")
     assert len(done) == 4
     assert done != ["r00", "r01", "r02", "r03"], "not simply the first four by name"
+
+
+def test_state_survives_windows_briefly_locking_the_file(tmp_path, monkeypatch):
+    """A scanner holding the state file made one replace fail and killed a run."""
+    import os
+    from anonymizer.core import state as state_mod
+
+    real, calls = os.replace, []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise PermissionError(5, "Access is denied")
+        return real(src, dst)
+
+    monkeypatch.setattr(state_mod.os, "replace", flaky)
+    st = state_mod.State(tmp_path / ".state.json")
+    st.mark_duplicates({f"copy{i}": "orig" for i in range(1000)})
+    assert len(calls) == 3, "one save for all copies, retried past the lock"
+    assert json.loads((tmp_path / ".state.json").read_text(encoding="utf-8"))["copy999"]["status"] == "duplicate"

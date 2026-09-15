@@ -10,9 +10,27 @@ import json
 import os
 import tempfile
 import threading
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
+
+
+def _replace(src: str, dst: Path, attempts: int = 8) -> None:
+    """os.replace, retried while Windows briefly holds the target open.
+
+    A virus scanner or the search indexer opening the state file for a moment makes
+    a replace fail with "Access is denied"; the state is saved after every document,
+    so over a long run that is near-certain to happen at least once.
+    """
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.05 * (2 ** i))
 
 
 @dataclass
@@ -59,7 +77,7 @@ class State:
                     ensure_ascii=False,
                     indent=2,
                 )
-            os.replace(tmp, self.path)
+            _replace(tmp, self.path)
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -93,14 +111,21 @@ class State:
                 writer.writerow([doc_id, r.category, r.court, r.pages, r.pii_count])
         return len(done)
 
-    def mark_duplicate(self, doc_id: str, original: str) -> None:
-        """Record that `doc_id` is a copy of `original`, keeping any cost already spent."""
+    def mark_duplicates(self, copies: Dict[str, str]) -> None:
+        """Record each {copy: original}, keeping any cost already spent, in one save.
+
+        One save per copy rewrote the whole file ten thousand times for one folder --
+        slow, and enough rapid replaces that Windows refused one and the run died.
+        """
+        if not copies:
+            return
         with self._lock:
-            rec = self._records.get(doc_id) or DocRecord(status="duplicate")
-            rec.status = "duplicate"
-            rec.output = ""
-            rec.error = f"copy of {original}"
-            self._records[doc_id] = rec
+            for doc_id, original in copies.items():
+                rec = self._records.get(doc_id) or DocRecord(status="duplicate")
+                rec.status = "duplicate"
+                rec.output = ""
+                rec.error = f"copy of {original}"
+                self._records[doc_id] = rec
             self._save_unlocked()
 
     def totals(self) -> dict:

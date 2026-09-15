@@ -390,6 +390,9 @@ class Pipeline:
                                         self.state.is_done)
         for copy_id, original in copies.items():
             self._retire_copy(copy_id, original)
+        # Recorded in one save: per-copy saves meant ten thousand rewrites of the file.
+        self.state.mark_duplicates({c: o for c, o in copies.items()
+                                    if (self.state.get(c) or DocRecord("")).status != "duplicate"})
 
         # Rulings already in the database from an earlier run carry no fingerprint
         # or folder label yet; stamp them so later folders can find their copies.
@@ -415,9 +418,6 @@ class Pipeline:
             sidecar.unlink()
         if self.casedb.document(copy_id):
             self.casedb.remove(copy_id)
-        rec = self.state.get(copy_id)
-        if rec is None or rec.status != "duplicate":
-            self.state.mark_duplicate(copy_id, original)
 
     # --- per-document records -------------------------------------------------
     def _sidecar(self, doc_id: str) -> Path:
