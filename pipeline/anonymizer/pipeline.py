@@ -138,6 +138,7 @@ class Pipeline:
         identity = None
         refs = []
         raw_pages: List[str] = []   # un-redacted text, for local identifier extraction
+        entities: List[PIIEntity] = []   # every name flagged, across all batches
 
         for batch in iter_work_batches(doc, self.settings.pages_per_batch,
                                        soffice_path=self.settings.soffice_path):
@@ -170,17 +171,21 @@ class Pipeline:
             ):
                 identity = result.identity
             refs.extend(result.refs)
+            entities.extend(result.pii)
+            raw_pages.extend(pages)
 
-            for page_text in pages:
-                raw_pages.append(page_text)
-                clean, report = redact_text(
-                    page_text, result.pii, self.settings.replacement_token
-                )
-                # deterministic backstop: strip structured PII the model may have missed
-                clean, n_struct = redact_structured(clean, self.settings.replacement_token)
-                struct_hits += n_struct
-                all_pages.append(clean)
-                matched_values.update(report.replaced)
+        # Redact every page with the names found anywhere in the document. A long
+        # ruling is read in batches of a few pages, and redacting each batch with only
+        # its own findings left a name first flagged on page 8 standing on pages 1-5:
+        # the leak gate (which checks every name against every page) held 2 of the
+        # first 100 civil rulings for exactly that.
+        for page_text in raw_pages:
+            clean, report = redact_text(page_text, entities, self.settings.replacement_token)
+            # deterministic backstop: strip structured PII the model may have missed
+            clean, n_struct = redact_structured(clean, self.settings.replacement_token)
+            struct_hits += n_struct
+            all_pages.append(clean)
+            matched_values.update(report.replaced)
 
         unmatched_values = sorted(flagged_values - matched_values)
         for value in unmatched_values:

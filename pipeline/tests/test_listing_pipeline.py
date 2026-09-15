@@ -345,3 +345,39 @@ def test_a_legacy_record_carries_the_listing_fields_into_records_json(tmp_path):
     f = rec["fields"]
     assert f["رقم القرار"]["value"] == "53" and f["تاريخ القرار"]["value"] == "08/02/2022"
     assert f["المدينة"]["value"] == "طنجة" and f["الغرفة"]["value"] == "أحوال شخصية"
+
+
+def test_a_name_flagged_in_a_later_batch_is_removed_from_earlier_pages(tmp_path):
+    """Long rulings are read in batches; each page used to get only its batch's names.
+
+    Here the name is flagged only while reading the second batch, but it also
+    stands on the first page.
+    """
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "long.docx")
+
+    class _Batch:
+        def __init__(self, text):
+            self.kind, self.pages, self.page_count = "text", [text], 1
+
+    # Two full pages each (short pages would be held as a partial transcription).
+    first = HEADER + " حضر خالد البناني أمام المحكمة. " + FILLER * 2
+    second = "وبعد المداولة أكد خالد البناني طلبه. " + FILLER * 2
+
+    class SecondBatchOnly(FakeAI):
+        def process_text(self, text):
+            r = super().process_text(text)
+            r.pii = [PIIEntity("خالد البناني", "name")] if text.startswith("وبعد") else []
+            return r
+
+    import anonymizer.pipeline as pl
+    real = pl.iter_work_batches
+    pl.iter_work_batches = lambda *a, **k: iter([_Batch(first), _Batch(second)])
+    try:
+        Pipeline(s, SecondBatchOnly()).run(RunOptions())
+    finally:
+        pl.iter_work_batches = real
+    out = s.output_dir / "long.docx"
+    held = _csv(s.output_dir / "quarantine.csv")
+    assert out.exists(), f"not held: the name is removed everywhere ({held})"
+    assert "البناني" not in "\n".join(p.text for p in Document(str(out)).paragraphs)
