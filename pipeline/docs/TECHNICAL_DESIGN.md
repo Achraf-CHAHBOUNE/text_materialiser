@@ -3,7 +3,7 @@
 **Anonymization & extraction of Moroccan court decisions**
 Pipeline that turns raw `.doc`/`.docx`/`.pdf`/image files into anonymized files + structured metadata.
 
-Brief: [`../../Script.md`](../../Script.md). This document is delivered for review **before**
+Brief: [`../../docs/Script.md`](../../docs/Script.md). This document is delivered for review **before**
 production hardening, per §5. It states what we found, how we will build each feature, where AI
 is and isn't used, the cost and how we cut it, what we expect to get wrong, how we test, the
 output schema, and the plan.

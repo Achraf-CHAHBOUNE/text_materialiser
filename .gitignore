@@ -56,3 +56,8 @@ output_first/
 
 # Safety copies of delivered output taken before maintenance passes — real data
 backup_*/
+
+# ALL real data lives here: raw client folders, working state, old handoffs.
+data/
+# The generated client hand-off (anonymized, but still the client's data).
+results/

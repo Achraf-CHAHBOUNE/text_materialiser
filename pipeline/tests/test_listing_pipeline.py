@@ -331,3 +331,17 @@ def test_state_survives_windows_briefly_locking_the_file(tmp_path, monkeypatch):
     st.mark_duplicates({f"copy{i}": "orig" for i in range(1000)})
     assert len(calls) == 3, "one save for all copies, retried past the lock"
     assert json.loads((tmp_path / ".state.json").read_text(encoding="utf-8"))["copy999"]["status"] == "duplicate"
+
+
+def test_a_legacy_record_carries_the_listing_fields_into_records_json(tmp_path):
+    """records.json is what the platform imports; rebuilt records had no fields."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    Pipeline(s, FakeAI()).run(RunOptions())
+    (s.output_dir / "_records" / "a.json").unlink()      # processed before sidecars
+    p = Pipeline(s, FakeAI())
+    p.export()
+    [rec] = json.loads((s.output_dir / "records.json").read_text(encoding="utf-8"))
+    f = rec["fields"]
+    assert f["رقم القرار"]["value"] == "53" and f["تاريخ القرار"]["value"] == "08/02/2022"
+    assert f["المدينة"]["value"] == "طنجة" and f["الغرفة"]["value"] == "أحوال شخصية"

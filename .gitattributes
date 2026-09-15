@@ -1,0 +1,3 @@
+# Line endings the interpreters need, whatever the checkout platform.
+*.bat text eol=crlf
+*.sh  text eol=lf

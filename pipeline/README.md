@@ -3,7 +3,7 @@
 Batch CLI that turns raw Moroccan court decisions (`.doc`, `.docx`, `.pdf`, images)
 into **anonymized files + structured metadata**, safe to hand to the web platform.
 
-Brief: [`../Script.md`](../Script.md).
+Brief: [`../docs/Script.md`](../docs/Script.md).
 
 ## What it does (per file)
 

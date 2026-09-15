@@ -645,6 +645,17 @@ class Pipeline:
             rec["review"] = "check" if rec.get("review_notes") else (cdoc.get("review") or "ok")
             rec["links"] = self.casedb.links_for(doc_id)
             rec["city"] = cdoc.get("origin_city") or ""
+            # The listing fields too: the database holds the current values (after any
+            # --refresh-fields), and a rebuilt legacy record has none of its own --
+            # without this, records.json, which the platform imports, carried a
+            # decision number and date for under a fifth of one folder's rulings.
+            fields = rec.setdefault("fields", {})
+            for label, col in ((F_DECISION, "decision_display"), (F_DATE, "date_display"),
+                               (F_CITY, "origin_city"), (F_CHAMBER, "category")):
+                if cdoc.get(col):
+                    fields.setdefault(label, {})["value"] = cdoc[col]
+            if cdoc.get("file_no") and not (fields.get(F_FILE) or {}).get("value"):
+                fields[F_FILE] = {"value": cdoc["file_no"], "source": "database"}
             date = cdoc.get("date_display") or ""
             rec["year"] = date[-4:] if date else ""
             rec["status"] = "quarantined" if rec.get("quarantined") else "done"

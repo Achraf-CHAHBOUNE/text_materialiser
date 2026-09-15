@@ -4,7 +4,7 @@ Web platform for consulting **anonymized** Moroccan court decisions. Three parts
 admin integration (import/review/publish), admin clients (accounts), and the client
 space (browse/search/view).
 
-Brief: [`../website_brief.md`](../website_brief.md).
+Brief: [`../docs/website_brief.md`](../docs/website_brief.md).
 
 ## The boundary
 
