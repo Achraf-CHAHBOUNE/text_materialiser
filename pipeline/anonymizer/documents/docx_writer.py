@@ -134,6 +134,31 @@ def _blocks(page_text: str) -> List[tuple]:
     return out
 
 
+
+def _save(doc, out_path: Path) -> None:
+    """Save with fixed zip timestamps, so the same content gives the same bytes.
+
+    A .docx is a zip, and each entry records when it was written, in 2-second
+    steps. Two runs over the same ruling therefore produced identical text but
+    different bytes whenever they straddled a 2-second boundary -- the
+    byte-identical rerun guarantee held only by luck of timing.
+    """
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    out = io.BytesIO()
+    with zipfile.ZipFile(buf) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            fixed = zipfile.ZipInfo(info.filename, date_time=(1980, 1, 1, 0, 0, 0))
+            fixed.compress_type = zipfile.ZIP_DEFLATED
+            fixed.external_attr = info.external_attr
+            dst.writestr(fixed, src.read(info.filename))
+    out_path.write_bytes(out.getvalue())
+
+
 def write_docx(pages: List[str], out_path: Path, title: str = "") -> None:
     """Write one unified-layout .docx; optional bold/underlined centered title."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +182,7 @@ def write_docx(pages: List[str], out_path: Path, title: str = "") -> None:
             br = doc.add_paragraph()
             br.add_run().add_break(WD_BREAK.PAGE)
 
-    doc.save(str(out_path))
+    _save(doc, out_path)
 
 
 def retitle_docx(out_path: Path, new_title: str) -> bool:
@@ -176,5 +201,5 @@ def retitle_docx(out_path: Path, new_title: str) -> bool:
     first.runs[0].text = new_title
     for run in first.runs[1:]:
         run.text = ""
-    doc.save(str(out_path))
+    _save(doc, out_path)
     return True

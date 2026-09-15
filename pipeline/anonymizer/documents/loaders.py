@@ -12,6 +12,7 @@ it's treated as a scan. .docx is always text; legacy binary .doc is converted to
 from __future__ import annotations
 
 import io
+import re
 import tempfile
 from collections import Counter
 from dataclasses import dataclass, field
@@ -142,7 +143,23 @@ def iter_work_batches(doc: InputDoc, pages_per_batch: int, soffice_path: str = "
             text = "\n".join(_docx_lines(doc.path))
         yield WorkBatch(kind="text", pages=[text], page_count=1)
         return
+    try:
+        batches = list(_pdf_batches(doc, pages_per_batch))
+    except Exception:
+        # A PDF whose internal structure pypdf cannot parse -- a corrupt page tree
+        # or object table ("invalid literal for int() with base 16", "list index out
+        # of range", "'NoneType' object has no attribute 'get_object'"). It can break
+        # while counting, reading or cutting pages, so the whole read is guarded.
+        # The vision model reads PDFs itself and is more forgiving: hand it the
+        # file as a scan rather than failing the ruling.
+        raw = doc.path.read_bytes()
+        pages = max(1, len(re.findall(rb"/Type\s*/Page(?![a-zA-Z])", raw)))
+        yield WorkBatch(kind="image", pdf_bytes=raw, page_count=pages)
+        return
+    yield from batches
 
+
+def _pdf_batches(doc: InputDoc, pages_per_batch: int) -> Iterator[WorkBatch]:
     # PDF: decide text vs scan from the embedded text layer.
     # Only SAMPLE the first few pages — extract_text() parses the whole page content
     # stream and is the single most expensive local step; a document is uniformly a

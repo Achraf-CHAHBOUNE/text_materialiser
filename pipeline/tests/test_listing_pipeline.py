@@ -410,3 +410,15 @@ def test_state_writes_are_throttled_but_nothing_is_lost(tmp_path):
     assert len(on_disk) == 1, "only the first update is written inside the interval"
     st.flush()
     assert len(json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))) == 50
+
+
+def test_a_pdf_pypdf_cannot_parse_goes_to_the_model_whole(tmp_path):
+    """A corrupt page tree used to fail the ruling outright."""
+    from anonymizer.documents.loaders import InputDoc, iter_work_batches
+
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"%PDF-1.4\n1 0 obj << /Type /Pages /Kids [2 0 R] /Count 1 >> endobj\n"
+                       b"2 0 obj << /Type /Page /Contents <ZZ/T> >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF")
+    [batch] = list(iter_work_batches(InputDoc(doc_id="broken", path=broken, ext=".pdf"), 5))
+    assert batch.kind == "image" and batch.page_count == 1
+    assert batch.pdf_bytes == broken.read_bytes()
