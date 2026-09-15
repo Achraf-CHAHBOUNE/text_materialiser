@@ -413,6 +413,12 @@ def _repair_stray_quotes(text: str):
         try:
             return json.loads(text, strict=False)
         except json.JSONDecodeError as e:
+            if e.msg.startswith("Invalid \\escape"):
+                # A backslash JSON does not allow ("\iota" -- the model misread part
+                # of a scan as LaTeX). Doubling it keeps it as literal text and cannot
+                # change the reply's structure.
+                text = text[:e.pos] + "\\" + text[e.pos:]
+                continue
             if not e.msg.startswith(_EARLY_END):
                 return None
             q = _last_unescaped_quote(text, e.pos)

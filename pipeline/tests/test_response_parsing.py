@@ -317,3 +317,11 @@ def test_the_guard_refuses_a_repair_that_glues_two_names_into_one():
     entries into one mangled value, and the second name would never be redacted."""
     with pytest.raises(UnparseableResponse, match="kept 1 of 2"):
         _parse_json('{"pages": ["x"], "pii": [{"text": "زيد"} {"text": "عمرو"}]}')
+
+
+def test_a_backslash_json_does_not_allow_is_kept_as_text():
+    """The model once read part of a scan as LaTeX: "$\iota(J_{1};\omega$"."""
+    reply = '{"pages": ["ابن أخيه $\iota(J_{1};\omega$ وارث"], "pii": [{"text": "زيد"}]}'
+    d = _parse_json(reply)
+    assert "ابن أخيه" in d["pages"][0] and "وارث" in d["pages"][0]
+    assert d["pii"] == [{"text": "زيد"}]
