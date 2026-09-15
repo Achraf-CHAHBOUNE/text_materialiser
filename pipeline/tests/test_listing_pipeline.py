@@ -222,6 +222,7 @@ def test_requeue_sets_aside_files_with_words_cut_open(tmp_path):
     d = Document(str(out))
     d.add_paragraph("قضت XXXXXXXحكمة بما يلي")          # the old over-redaction
     d.save(str(out))
+    (s.output_dir / "_records" / "a.json").unlink()      # i.e. written by the old code
 
     counts = Pipeline(s, FakeAI()).requeue_damaged()
     assert counts["cut-words"] == 1
@@ -257,3 +258,38 @@ def test_a_partial_transcription_is_held_not_delivered(tmp_path):
     assert not (s.output_dir / "scan.docx").exists()
     [q] = _csv(s.output_dir / "quarantine.csv")
     assert q["reason"] == "partial"
+
+
+def test_the_listing_shows_only_delivered_rulings(tmp_path):
+    """A held file has no document behind it for a reader to open."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "good.docx")
+    _docx(s.input_dir / "blank.docx", "حضر محمد العلوي")      # held as empty
+    Pipeline(s, FakeAI()).run(RunOptions())
+    assert [r["file"] for r in _csv(s.output_dir / "listing.csv")] == ["good"]
+
+
+def test_refresh_rebuilds_a_ruling_missing_from_the_database(tmp_path):
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    Pipeline(s, FakeAI()).run(RunOptions())
+    p = Pipeline(s, FakeAI())
+    p.casedb.remove("a")                     # as if processed before the DB moved here
+    counts = p.refresh_listing()
+    p.export()
+    assert counts.get("rows_rebuilt") == 1
+    [row] = _csv(s.output_dir / "listing.csv")
+    assert row["file"] == "a" and row["الغرفة"] == "أحوال شخصية" and row["رقم القرار"] == "53"
+
+
+def test_requeue_leaves_current_output_alone(tmp_path):
+    """A full name glued to its neighbour in today's output is the intended redaction."""
+    s = _settings(tmp_path)
+    _ruling(s.input_dir / "a.docx")
+    Pipeline(s, FakeAI()).run(RunOptions())
+    out = s.output_dir / "a.docx"
+    d = Document(str(out))
+    d.add_paragraph("حضر XXXXXXXبمقال افتتاحي")
+    d.save(str(out))
+    assert Pipeline(s, FakeAI()).requeue_damaged()["cut-words"] == 0
+    assert out.exists()

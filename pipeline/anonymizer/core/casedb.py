@@ -328,7 +328,8 @@ class CaseDB:
                             d["case_id"] or "", d["review"] or ""])
         return len(rows)
 
-    def export_listing_csv(self, path: Path, corpus: str = "") -> int:
+    def export_listing_csv(self, path: Path, corpus: str = "",
+                           only: Optional[set] = None) -> int:
         """The court-portal listing: Court > Chamber > Year > (number, date, city).
 
         One row per ruling, in the order a portal lists them. This is the data a
@@ -336,6 +337,8 @@ class CaseDB:
         """
         path.parent.mkdir(parents=True, exist_ok=True)
         rows = self._rows(corpus)
+        if only is not None:
+            rows = [d for d in rows if d["doc_id"] in only]
 
         def key(d):
             date = d["date_display"] or ""

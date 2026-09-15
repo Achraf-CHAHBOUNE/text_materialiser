@@ -134,3 +134,10 @@ def test_splitting_leaves_an_ordinary_single_file_number_alone():
 
     assert split_file_numbers("1622/95") == ["1622/95"]
     assert split_file_numbers("") == [""]
+
+
+def test_the_decision_number_is_read_from_both_header_forms():
+    from anonymizer.core.identifiers import local_extract
+
+    assert local_extract("القرار عدد 53 الصادر بتاريخ")[1].decision_no == "53"
+    assert local_extract("قرار محكمة النقض رقم 252 الصادر بتاريخ")[1].decision_no == "252"

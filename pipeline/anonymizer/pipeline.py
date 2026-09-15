@@ -603,7 +603,11 @@ class Pipeline:
         self.casedb.relink()
         c = self.casedb.export_cases_csv(out / "cases.csv", corpus=corpus)
         self.casedb.export_documents_csv(out / "documents.csv", corpus=corpus)
-        listed = self.casedb.export_listing_csv(out / "listing.csv", corpus=corpus)
+        # The listing is what a reader browses: only rulings actually delivered.
+        delivered = {d for d, st in self.state.items()
+                     if st.status == "done" and "_quarantine" not in (st.output or "")}
+        listed = self.casedb.export_listing_csv(out / "listing.csv", corpus=corpus,
+                                                only=delivered)
         log.info("Linked cases -> %s (%d cases); listing.csv (%d rulings)",
                  out / "cases.csv", c, listed)
 
@@ -684,12 +688,22 @@ class Pipeline:
         for doc_id, st in self.state.items():
             if st.status != "done":
                 continue
-            cdoc = self.casedb.document(doc_id)
             path = self._delivered_path(doc_id)
-            if not cdoc or path is None:
+            if path is None:
                 continue
             lines = _docx_lines(path)
             text = "\n".join(lines[1:])          # line 0 is our own title
+            cdoc = self.casedb.document(doc_id)
+            if not cdoc:
+                # Processed before the case database lived beside this output: rebuild
+                # its row from the delivered text so it is not missing from listings.
+                level, own, refs = local_extract(text)
+                self.casedb.ingest(doc_id, source="", level=level, own=own,
+                                   category=st.category or UNKNOWN, outcome="", refs=refs,
+                                   pii_count=st.pii_count,
+                                   listing={"corpus": self.settings.corpus_label})
+                cdoc = self.casedb.document(doc_id)
+                counts["rows_rebuilt"] = counts.get("rows_rebuilt", 0) + 1
             counts["rulings"] += 1
 
             stated = chamber_from_text(text)
@@ -768,7 +782,10 @@ class Pipeline:
                 reason = "empty"
             elif pages > 1 and visible / pages < PARTIAL_MAX_CHARS_PER_PAGE:
                 reason = "partial"
-            elif glued.search(text):
+            elif not self._sidecar(doc_id).exists() and glued.search(text):
+                # Only output from before the whole-word rule. A current file can show
+                # a full name glued to its neighbour by OCR ("XXXXXXXبمقال") -- that is
+                # the intended redaction, and requeuing it would loop forever.
                 reason = "cut-words"
             else:
                 continue

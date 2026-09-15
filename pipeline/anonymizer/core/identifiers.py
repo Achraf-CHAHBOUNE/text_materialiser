@@ -176,7 +176,9 @@ def local_extract(text: str) -> tuple[str, Ident, list[Ident]]:
     head = text[:900]
     level = _level_from_text(head)
     mc = re.search(_COURT, head)
-    dec = re.search(r"(?:القرار|الحكم|قرار|حكم)\s*(?:عدد|رقم)\s*(" + _NUM + ")", head)
+    # "القرار عدد 53", and the equally common "قرار محكمة النقض رقم 252".
+    dec = re.search(r"(?:القرار|الحكم|قرار|حكم)(?:\s*محكمة\s*النقض)?\s*(?:عدد|رقم)\s*("
+                    + _NUM + ")", head)
     fil = re.search(r"ملف[^\d\n]{0,20}(?:عدد|رقم)\s*(" + _FILE + ")", head)
     dat = re.search(r"(?:المؤرخ في|بتاريخ|الصادر (?:بتاريخ|في))\s*(" + _DATE + ")", head)
     own_court = mc.group(1).strip() if mc else ""
