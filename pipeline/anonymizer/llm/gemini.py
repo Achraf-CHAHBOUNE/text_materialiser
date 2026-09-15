@@ -59,10 +59,14 @@ class GeminiProvider(DocumentAI):
                 self._caches[key] = None   # too small / unsupported -> inline fallback
         return self._caches[key]
 
+    # Gemini 2.x on Vertex has no fixed per-project cap: capacity is shared, and at
+    # busy moments it answers 429 "Resource exhausted, try again later". Four tries
+    # over ~14 seconds gave up too soon -- 24 rulings in one 32-worker run failed that
+    # way and had to be rerun. Six tries backing off to a minute ride it out.
     @retry(
         reraise=True,
-        stop=stop_after_attempt(4),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
+        stop=stop_after_attempt(6),
+        wait=wait_exponential(multiplier=2, min=2, max=60),
         retry=retry_if_exception_type(Exception),
     )
     def _generate(self, contents: list, prompt: str, key: str, max_output: int = 0) -> Any:
