@@ -120,6 +120,31 @@ The storage keys have no default: anyone holding them can read every ruling, so
 docker-compose refuses to start until they are set in `platform/.env`. The older
 `MINIO_*` names still work everywhere.
 
+## Show it to someone
+
+The delivery is 667 MB; a demo does not need it. Build a small pack and run the site
+from it on any machine with Docker:
+
+```bash
+cd platform
+python scripts/make_demo.py                      # -> demo-pack/ (60 rulings, ~2.5 MB)
+python scripts/make_demo.py --count 30 --zip     # -> demo-pack.zip, small enough to send
+docker compose -f docker-compose.demo.yml up --build
+```
+
+Then open <http://127.0.0.1:8080> and sign in as `admin@demo.local` / `demo-admin`
+(corrects rulings) or `client@demo.local` / `demo-client` (browses, searches, reports a
+problem). `docker compose -f docker-compose.demo.yml down -v` removes everything.
+
+The pack is a spread, not the first sixty: every chamber, a range of years and cities,
+and only rulings carrying a number and a date. Its contents are anonymized and passed
+the pipeline's leak check, like everything in `results/` — but they are still the
+client's documents, so the pack is git-ignored. Send it directly.
+
+The demo uses fixed passwords, a file-backed database and a folder for the documents.
+For a real deployment use `docker-compose.yml`, which wants Postgres, object storage
+and keys of your own.
+
 ## Run (local, without docker)
 
 ```bash

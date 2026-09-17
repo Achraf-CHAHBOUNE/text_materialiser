@@ -1,0 +1,49 @@
+# The platform, for showing to someone on their own machine.
+#
+#   python scripts/make_demo.py                       # build demo-pack/ from results/
+#   docker compose -f docker-compose.demo.yml up --build
+#   open http://127.0.0.1:8080
+#
+# Sign in as admin@demo.local / demo-admin (corrects rulings) or
+# client@demo.local / demo-client (browses, searches, reports a problem).
+#
+# Demo only: fixed passwords, no Postgres, no object storage, files in a folder
+# inside the container. For a real deployment use docker-compose.yml.
+services:
+  backend:
+    build: ./backend
+    environment:
+      DB_DIR: /data
+      FILESTORE_DIR: /data/files
+      AUTH_SECRET: demo-only-do-not-use-in-production
+      SEED_EMAIL: admin@demo.local
+      SEED_PASSWORD: demo-admin
+      SEED_CLIENT_EMAIL: client@demo.local
+      SEED_CLIENT_PASSWORD: demo-client
+      ALLOW_ORIGINS: "*"
+      AUTO_PUBLISH: "1"
+    # Load the demo pack, then serve. Importing again on restart changes nothing,
+    # and a ruling corrected in the demo is left as corrected.
+    command: >
+      sh -c "python import_results.py /demo --actor demo-pack &&
+             uvicorn server:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - ./demo-pack:/demo:ro
+      - demo-data:/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # 127.0.0.1, not localhost: on Windows the browser tries IPv6 first and
+        # waits out the refusal, which adds about 230 ms to every request.
+        VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:8000}
+    ports:
+      - "8080:3000"
+    depends_on:
+      - backend
+
+volumes:
+  demo-data:

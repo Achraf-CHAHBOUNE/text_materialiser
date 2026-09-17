@@ -61,3 +61,7 @@ backup_*/
 data/
 # The generated client hand-off (anonymized, but still the client's data).
 results/
+
+# Demo pack: real (anonymized) rulings, built on demand from results/
+platform/demo-pack/
+platform/demo-pack.zip
