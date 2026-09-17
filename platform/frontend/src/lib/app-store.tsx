@@ -25,6 +25,8 @@ type Store = {
   email: string;
   role: string;
   authed: boolean;
+  /** false until the saved session has been read (nothing is known before that) */
+  ready: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<string>; // resolves to role
   logout: () => void;
@@ -37,10 +39,21 @@ const Ctx = createContext<Store | null>(null);
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
-  const [email, setEmail] = useState<string>(getEmail());
-  const [role, setRole] = useState<string>(getRole());
-  const [authed, setAuthed] = useState<boolean>(apiIsAuthed());
+  // Empty to start, even in the browser: the server renders the page first and
+  // cannot see the saved session, so reading it here made the two disagree and
+  // React threw the whole page away and drew it again. It is read after mount.
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [ready, setReady] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    setEmail(getEmail());
+    setRole(getRole());
+    setAuthed(apiIsAuthed());
+    setReady(true);
+  }, []);
 
   useEffect(() => {
     const stored = (typeof window !== "undefined" && localStorage.getItem("theme")) as Theme | null;
@@ -87,13 +100,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       email,
       role,
       authed,
+      ready,
       isAdmin: role === "admin",
       login,
       logout,
       categories,
       refreshCategories,
     }),
-    [theme, toggleTheme, email, role, authed, login, logout, categories, refreshCategories],
+    [theme, toggleTheme, email, role, authed, ready, login, logout, categories, refreshCategories],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

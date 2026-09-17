@@ -94,6 +94,32 @@ python -m anonymizer.assemble --work ../data/work --out ../results --edits edits
 The edits are re-applied on every rebuild, and never written into the pipeline's
 own working folders.
 
+## Where the files live
+
+The anonymized `.docx` files sit either in a folder or in object storage. The backend
+speaks one protocol (S3) to AWS S3, Google Cloud Storage and MinIO alike, so moving
+between them is a change of settings, never of code.
+
+| | set | used for |
+| --- | --- | --- |
+| a folder | nothing (default `FILESTORE_DIR=data/files`) | development, and a single server |
+| MinIO | `S3_ENDPOINT=minio:9000`, `S3_SECURE=false`, `S3_CREATE_BUCKET=true` | the docker-compose stack |
+| AWS S3 | `S3_ENDPOINT=s3.amazonaws.com`, `S3_REGION`, keys | more than one server |
+| Google Cloud Storage | `S3_ENDPOINT=storage.googleapis.com`, `S3_REGION`, **HMAC** keys | same, on Google |
+
+`S3_BUCKET` names the bucket (default `anonymized`). For GCS the keys are HMAC keys,
+made in Cloud Storage's settings for a service account — not a JSON key file.
+
+Create the bucket yourself once: on S3 and GCS the application's key normally may not
+create buckets, and a bucket created by accident is rulings written somewhere nobody
+is watching. If the bucket is missing, or the storage cannot be reached, the backend
+says so at startup instead of failing on the first download. `S3_VERIFY_BUCKET=false`
+skips that check for a key that may read and write objects but not look buckets up.
+
+The storage keys have no default: anyone holding them can read every ruling, so
+docker-compose refuses to start until they are set in `platform/.env`. The older
+`MINIO_*` names still work everywhere.
+
 ## Run (local, without docker)
 
 ```bash

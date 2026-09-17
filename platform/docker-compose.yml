@@ -1,10 +1,14 @@
 services:
+  # File storage for the anonymized documents, self-hosted. To use AWS S3 or Google
+  # Cloud Storage instead, set S3_ENDPOINT and the keys in .env and delete this
+  # service (and its depends_on below) -- the backend speaks the same protocol to all
+  # three. See "Where the files live" in README.md.
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in platform/.env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in platform/.env}
     ports:
       - "9000:9000"     # S3 API
       - "9001:9001"     # web console
@@ -28,11 +32,13 @@ services:
     build: ./backend
     environment:
       # Ingest-only: NO engine, NO Gemini key. Stores only anonymized content.
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_SECURE: "false"
-      MINIO_ANON_BUCKET: anonymized
+      S3_ENDPOINT: ${S3_ENDPOINT:-minio:9000}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in platform/.env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in platform/.env}
+      S3_BUCKET: ${S3_BUCKET:-anonymized}
+      S3_REGION: ${S3_REGION:-}
+      S3_SECURE: ${S3_SECURE:-false}          # plain HTTP is for the local MinIO only
+      S3_CREATE_BUCKET: ${S3_CREATE_BUCKET:-true}   # local MinIO starts empty
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anon}:${POSTGRES_PASSWORD:-anon}@postgres:5432/${POSTGRES_DB:-anonymize}
       ALLOW_ORIGINS: "*"
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}

@@ -177,15 +177,20 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { authed, refreshCategories } = useStore();
+  const { authed, ready, refreshCategories } = useStore();
 
   useEffect(() => {
+    if (!ready) return;                    // the saved session has not been read yet
     if (!authed) {
       navigate({ to: "/" });
       return;
     }
     void refreshCategories();
-  }, [authed, refreshCategories, navigate]);
+  }, [ready, authed, refreshCategories, navigate]);
+
+  // Nothing is known about the reader until the session is read: showing a
+  // signed-out page for one frame would flicker on every load.
+  if (!ready) return <div className="min-h-screen bg-background" />;
 
   return (
     <TooltipProvider delayDuration={200}>

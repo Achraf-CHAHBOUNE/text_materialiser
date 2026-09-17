@@ -22,12 +22,13 @@ export const Route = createFileRoute("/ruling/$docId")({
 
 function RulingPage() {
   const { docId } = Route.useParams();
-  const { isAdmin } = useStore();
+  const { isAdmin, ready } = useStore();
   const { t, dir, lang, num, chamber: chamberName, court: courtName, city: cityName } = useI18n();
   // An admin reads through the admin route: it also opens rulings not yet published.
   const ruling = useQuery({
     queryKey: rulingKey(docId, isAdmin),
     queryFn: () => (isAdmin ? adminGetDecision(docId) : getDecision(docId)),
+    enabled: ready,          // which route to use depends on who is reading
   });
   const d = ruling.data;
   const style = chamberStyle(d?.category ?? "");
@@ -60,7 +61,7 @@ function RulingPage() {
           )}
         </nav>
 
-        {ruling.isLoading && <Skeleton className="h-40 w-full rounded-2xl" />}
+        {(ruling.isLoading || !ready) && <Skeleton className="h-40 w-full rounded-2xl" />}
         {ruling.error && (
           <p className="rounded-2xl border bg-card px-5 py-10 text-center text-sm text-destructive">
             {t("ruling.error")}

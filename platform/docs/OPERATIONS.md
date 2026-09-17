@@ -13,7 +13,7 @@ every file for personal-data patterns before it is stored.
 
 ```bash
 cd platform
-cp .env.example .env          # set AUTH_SECRET, SEED_EMAIL, SEED_PASSWORD, DB/MinIO creds
+cp .env.example .env          # set AUTH_SECRET, SEED_EMAIL, SEED_PASSWORD, DB + S3 keys
 docker compose up --build -d
 # frontend  http://localhost:8080
 # backend   http://localhost:8000/health
