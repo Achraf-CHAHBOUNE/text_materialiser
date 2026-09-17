@@ -22,6 +22,39 @@ docs/        design notes and prompts
 docker-compose.yml   backend + frontend + MinIO + Postgres
 ```
 
+## Browse (the client space)
+
+Rulings are read the way a court portal is read — **court → chamber → year → ruling** —
+following the layout the client asked for:
+
+| Page | What it shows |
+| --- | --- |
+| `/browse` | every court with its chambers, each in its own colour, with counts |
+| `/browse/$chamber` | the listing: رقم القرار · تاريخ القرار · المدينة · الغرفة, with year chips, a city filter, search and paging |
+| `/ruling/$docId` | the ruling's text and fields, with download and print |
+
+**المدينة** is the city of the lower court the appeal came from: the Court of
+Cassation sits only in Rabat, so its own city would say nothing.
+
+## Load a pipeline results folder
+
+```bash
+cd backend
+python import_results.py ../../results          # import and publish
+python import_results.py ../../results --no-publish   # import for review instead
+```
+
+Reads the folder directly (no browser upload), applying the same rules as the HTTP
+import: files the pipeline held back are refused, every file is re-scanned by the PII
+gate, and re-importing a ruling updates it rather than duplicating it.
+
+## Run (local, without docker)
+
+```bash
+cd backend && DB_DIR=data FILESTORE_DIR=data/files AUTH_SECRET=dev-secret   SEED_EMAIL=admin@x.com SEED_PASSWORD=admin-pass   SEED_CLIENT_EMAIL=client@x.com SEED_CLIENT_PASSWORD=client-pass   python -m uvicorn server:app --port 8000
+cd frontend && npm run dev        # http://localhost:8080
+```
+
 ## Run (local, docker)
 
 ```bash
