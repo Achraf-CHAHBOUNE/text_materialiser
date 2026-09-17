@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { FileCheck2, FolderOpen, Layers, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { useI18n } from "@/lib/i18n";
 import { useStore } from "@/lib/app-store";
 import { adminStats } from "@/lib/api";
 
@@ -27,6 +28,7 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: n
 }
 
 function Dashboard() {
+  const { t } = useI18n();
   const { isAdmin, email, categories } = useStore();
   const [stats, setStats] = useState<{ decisions: number; published: number; pending: number; clients: number } | null>(null);
 
@@ -35,17 +37,17 @@ function Dashboard() {
   }, [isAdmin]);
 
   return (
-    <AppShell title="Dashboard" description={isAdmin ? "Platform overview" : "Browse anonymized court decisions"}>
+    <AppShell title={t("dash.title")} description={isAdmin ? t("dash.overview") : t("dash.forClient")}>
       {isAdmin ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat icon={Layers} label="Decisions" value={stats?.decisions ?? "—"} />
-            <Stat icon={FileCheck2} label="Published" value={stats?.published ?? "—"} />
-            <Stat icon={FolderOpen} label="Pending review" value={stats?.pending ?? "—"} />
-            <Stat icon={Users} label="Clients" value={stats?.clients ?? "—"} />
+            <Stat icon={Layers} label={t("dash.decisions")} value={stats?.decisions ?? "—"} />
+            <Stat icon={FileCheck2} label={t("dash.published")} value={stats?.published ?? "—"} />
+            <Stat icon={FolderOpen} label={t("dash.pending")} value={stats?.pending ?? "—"} />
+            <Stat icon={Users} label={t("dash.clients")} value={stats?.clients ?? "—"} />
           </div>
           <div className="mt-6 rounded-2xl border bg-card p-6 shadow-soft">
-            <h2 className="text-sm font-semibold">Integration</h2>
+            <h2 className="text-sm font-semibold">{t("dash.integration")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Import a pipeline batch, review the work queue, publish decisions, and manage client accounts.
             </p>

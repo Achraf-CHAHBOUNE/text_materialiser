@@ -7,8 +7,9 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { browseCities, browseRulings, browseYears } from "@/lib/api";
-import { arabicNumber, chamberLabel, chamberStyle } from "@/lib/chambers";
+import { browseCities, browseRulings, browseYears, type ListingRow } from "@/lib/api";
+import { chamberStyle } from "@/lib/chambers";
+import { useI18n } from "@/lib/i18n";
 
 const PAGE = 50;
 const ALL = "الكل";
@@ -29,9 +30,11 @@ function ChamberListing() {
   const { chamber } = Route.useParams();
   const { q, year, city, page = 1 } = Route.useSearch();
   const navigate = useNavigate({ from: "/browse/$chamber" });
+  const { t, dir, lang, num, chamber: chamberName, city: cityName } = useI18n();
   const [draft, setDraft] = useState(q ?? "");
   const filterChamber = chamber === ALL ? "" : chamber;
   const style = chamberStyle(chamber);
+  const title = chamber === ALL ? t("listing.allChambers") : chamberName(chamber);
 
   const setSearch = (next: Partial<SearchParams>) =>
     navigate({ search: (old) => ({ ...old, page: undefined, ...next }) });
@@ -56,20 +59,18 @@ function ChamberListing() {
 
   return (
     <AppShell>
-      <div dir="rtl" className="font-arabic mx-auto w-full max-w-6xl">
+      <div dir={dir} className="font-arabic mx-auto w-full max-w-6xl">
         <nav className="mb-3 flex items-center gap-1 text-sm text-muted-foreground">
-          <Link to="/browse" className="hover:text-foreground">الاجتهادات القضائية</Link>
-          <ChevronRight className="size-4 rotate-180" aria-hidden />
-          <span className="text-foreground">{chamber === ALL ? "كل الغرف" : chamberLabel(chamber)}</span>
+          <Link to="/browse" className="hover:text-foreground">{t("browse.title")}</Link>
+          <ChevronRight className={`size-4 ${lang === "ar" ? "rotate-180" : ""}`} aria-hidden />
+          <span className="text-foreground">{title}</span>
         </nav>
 
         <div className={`flex flex-col gap-3 rounded-2xl px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${style.solid}`}>
           <div>
-            <h1 className="text-lg font-semibold sm:text-xl">
-              {chamber === ALL ? "كل الغرف" : chamberLabel(chamber)}
-            </h1>
+            <h1 className="text-lg font-semibold sm:text-xl">{title}</h1>
             <p className="mt-0.5 text-xs opacity-90">
-              محكمة النقض — {arabicNumber(total)} قرار
+              {t("court.cassation")} — {num(total)} {t("browse.rulingsCount")}
             </p>
           </div>
           <form
@@ -80,30 +81,30 @@ function ChamberListing() {
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="ابحث برقم القرار أو بكلمة من نصه…"
-              aria-label="بحث"
+              placeholder={t("listing.search")}
+              aria-label={t("listing.search")}
               className="h-10 border-white/30 bg-white/15 pe-10 text-white placeholder:text-white/70"
             />
           </form>
         </div>
 
-        {/* Years, as chips: the reference portal uses a dropdown, but the whole range
+        {/* Years as chips: the reference portal uses a dropdown, but the whole range
             fits here and one click is quicker than opening a menu. */}
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <Chip active={!year} onClick={() => setSearch({ year: undefined })}>كل السنوات</Chip>
+          <Chip active={!year} onClick={() => setSearch({ year: undefined })}>{t("listing.allYears")}</Chip>
           {(years.data ?? []).map((y) => (
             <Chip key={y.year} active={year === y.year} onClick={() => setSearch({ year: y.year })}>
-              {y.year} <span className="opacity-60">({arabicNumber(y.count)})</span>
+              {num(y.year)} <span className="opacity-60">({num(y.count)})</span>
             </Chip>
           ))}
         </div>
 
         {(q || city || year) && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-muted-foreground">التصفية:</span>
-            {q && <Pill onClear={() => { setDraft(""); setSearch({ q: undefined }); }}>بحث: {q}</Pill>}
-            {year && <Pill onClear={() => setSearch({ year: undefined })}>السنة: {year}</Pill>}
-            {city && <Pill onClear={() => setSearch({ city: undefined })}>المدينة: {city}</Pill>}
+            <span className="text-muted-foreground">{t("listing.filters")}</span>
+            {q && <Pill onClear={() => { setDraft(""); setSearch({ q: undefined }); }} label={t("listing.clear")}>{t("listing.filterSearch")}: {q}</Pill>}
+            {year && <Pill onClear={() => setSearch({ year: undefined })} label={t("listing.clear")}>{t("listing.filterYear")}: {num(year)}</Pill>}
+            {city && <Pill onClear={() => setSearch({ city: undefined })} label={t("listing.clear")}>{t("listing.filterCity")}: {cityName(city)}</Pill>}
           </div>
         )}
 
@@ -115,7 +116,7 @@ function ChamberListing() {
               </div>
             ) : total === 0 ? (
               <p className="rounded-2xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
-                لا توجد قرارات مطابقة.
+                {t("listing.none")}
               </p>
             ) : (
               <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} />
@@ -125,14 +126,14 @@ function ChamberListing() {
               <div className="mt-4 flex items-center justify-center gap-2">
                 <Button variant="outline" size="sm" disabled={page <= 1}
                         onClick={() => navigate({ search: (o) => ({ ...o, page: page - 1 }) })}>
-                  السابق
+                  {t("listing.prev")}
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  صفحة {arabicNumber(page)} من {arabicNumber(pages)}
+                  {t("listing.page")} {num(page)} {t("listing.of")} {num(pages)}
                 </span>
                 <Button variant="outline" size="sm" disabled={page >= pages}
                         onClick={() => navigate({ search: (o) => ({ ...o, page: page + 1 }) })}>
-                  التالي
+                  {t("listing.next")}
                 </Button>
               </div>
             )}
@@ -142,18 +143,18 @@ function ChamberListing() {
               appeal came from is the question a lawyer actually asks. */}
           <aside className="hidden lg:block">
             <div className="rounded-2xl border bg-card p-3">
-              <h2 className="px-1 pb-2 text-sm font-semibold">المدينة</h2>
+              <h2 className="px-1 pb-2 text-sm font-semibold">{t("listing.city")}</h2>
               <ul className="max-h-[28rem] space-y-0.5 overflow-auto pe-1">
                 <li>
-                  <FilterRow active={!city} onClick={() => setSearch({ city: undefined })} label="الكل" />
+                  <FilterRow active={!city} onClick={() => setSearch({ city: undefined })} label={t("listing.all")} />
                 </li>
                 {(cities.data ?? []).map((c) => (
                   <li key={c.city}>
                     <FilterRow
                       active={city === c.city}
                       onClick={() => setSearch({ city: c.city })}
-                      label={c.city}
-                      count={c.count}
+                      label={cityName(c.city)}
+                      count={num(c.count)}
                     />
                   </li>
                 ))}
@@ -166,7 +167,8 @@ function ChamberListing() {
   );
 }
 
-function RulingTable({ rows, chamber }: { rows: import("@/lib/api").ListingRow[]; chamber: string }) {
+function RulingTable({ rows, chamber }: { rows: ListingRow[]; chamber: string }) {
+  const { t, num, chamber: chamberName, city: cityName } = useI18n();
   const style = chamberStyle(chamber);
   return (
     <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -174,28 +176,25 @@ function RulingTable({ rows, chamber }: { rows: import("@/lib/api").ListingRow[]
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <thead>
             <tr className="text-white">
-              <Th className="bg-rose-600">رقم القرار</Th>
-              <Th className="bg-violet-600">تاريخ القرار</Th>
-              <Th className="bg-teal-600">المدينة</Th>
-              <Th className="bg-amber-600">الغرفة</Th>
-              <th className="w-10 bg-slate-700" aria-label="فتح" />
+              <Th className="bg-rose-600">{t("col.number")}</Th>
+              <Th className="bg-violet-600">{t("col.date")}</Th>
+              <Th className="bg-teal-600">{t("col.city")}</Th>
+              <Th className="bg-amber-600">{t("col.chamber")}</Th>
+              <th className="w-10 bg-slate-700" aria-label={t("listing.open")} />
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr
-                key={r.doc_id}
-                className={`border-t transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}
-              >
-                <td className="px-3 py-2.5 font-semibold tabular-nums">{r.decision_no || "—"}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.date || "—"}</td>
-                <td className="px-3 py-2.5">{r.city || <span className="text-muted-foreground">—</span>}</td>
-                <td className={`px-3 py-2.5 ${chamberStyle(r.chamber).text}`}>{chamberLabel(r.chamber)}</td>
+              <tr key={r.doc_id} className={`border-t transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}>
+                <td className="px-3 py-2.5 font-semibold tabular-nums">{r.decision_no ? num(r.decision_no) : "—"}</td>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.date ? num(r.date) : "—"}</td>
+                <td className="px-3 py-2.5">{r.city ? cityName(r.city) : <span className="text-muted-foreground">—</span>}</td>
+                <td className={`px-3 py-2.5 ${chamberStyle(r.chamber).text}`}>{chamberName(r.chamber)}</td>
                 <td className="px-2 py-2.5">
                   <Link
                     to="/ruling/$docId"
                     params={{ docId: r.doc_id }}
-                    aria-label={`فتح القرار ${r.decision_no}`}
+                    aria-label={`${t("listing.open")} ${r.decision_no}`}
                     className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                   >
                     <FileText className="size-4" aria-hidden />
@@ -230,11 +229,13 @@ function Chip({ active, onClick, children }: {
   );
 }
 
-function Pill({ children, onClear }: { children: React.ReactNode; onClear: () => void }) {
+function Pill({ children, onClear, label }: {
+  children: React.ReactNode; onClear: () => void; label: string;
+}) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
       {children}
-      <button type="button" onClick={onClear} aria-label="إزالة" className="hover:text-destructive">
+      <button type="button" onClick={onClear} aria-label={label} className="hover:text-destructive">
         <X className="size-3" aria-hidden />
       </button>
     </span>
@@ -242,7 +243,7 @@ function Pill({ children, onClear }: { children: React.ReactNode; onClear: () =>
 }
 
 function FilterRow({ active, onClick, label, count }: {
-  active?: boolean; onClick: () => void; label: string; count?: number;
+  active?: boolean; onClick: () => void; label: string; count?: string;
 }) {
   return (
     <button
@@ -253,7 +254,7 @@ function FilterRow({ active, onClick, label, count }: {
       }`}
     >
       <span>{label}</span>
-      {count !== undefined && <span className="text-xs opacity-70">{arabicNumber(count)}</span>}
+      {count !== undefined && <span className="text-xs opacity-70">{count}</span>}
     </button>
   );
 }

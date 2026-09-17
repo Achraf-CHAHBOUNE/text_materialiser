@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Wordmark } from "@/components/Brand";
 import { useStore } from "@/lib/app-store";
+import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
@@ -29,16 +30,23 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { t, dir, lang, setLang } = useI18n();
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="flex items-center justify-center px-4 py-12 sm:px-8">
+    <div dir={dir} className="grid min-h-screen lg:grid-cols-2">
+      <div className="relative flex items-center justify-center px-4 py-12 sm:px-8">
+        {/* Language first: someone who cannot read the form cannot sign in. */}
+        <button
+          type="button"
+          onClick={() => setLang(lang === "ar" ? "fr" : "ar")}
+          className="absolute end-4 top-4 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+        >
+          {lang === "ar" ? "Français" : "العربية"}
+        </button>
         <div className="w-full max-w-sm animate-rise-in">
           <Wordmark className="mb-8" />
-          <h1 className="text-h1 font-semibold">Sign in to your workspace</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Anonymize Arabic court rulings and map case trajectories.
-          </p>
+          <h1 className="text-h1 font-semibold">{t("login.title")}</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">{t("login.subtitle")}</p>
 
           <form
             className="mt-8 space-y-4"
@@ -48,17 +56,17 @@ function LoginPage() {
               setBusy(true);
               try {
                 const role = await login(email, password);
-                toast.success("Welcome back", { description: email });
+                toast.success(t("login.welcome"), { description: email });
                 navigate({ to: role === "admin" ? "/admin" : "/dashboard" });
               } catch (ex) {
-                setErr(ex instanceof Error ? ex.message : "Login failed");
+                setErr(ex instanceof Error ? ex.message : t("login.failed"));
               } finally {
                 setBusy(false);
               }
             }}
           >
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("login.email")}</Label>
               <div className="relative">
                 <Mail
                   className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -76,7 +84,7 @@ function LoginPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("login.password")}</Label>
               <div className="relative">
                 <Lock
                   className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -101,7 +109,7 @@ function LoginPage() {
             )}
 
             <Button type="submit" disabled={busy} className="h-11 w-full shadow-sm">
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? t("login.busy") : t("login.submit")}
             </Button>
           </form>
         </div>
@@ -114,7 +122,7 @@ function LoginPage() {
           className="pointer-events-none absolute inset-0 opacity-[0.5] [background-image:linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]"
         />
         <div dir="rtl" className="relative m-10 max-w-md rounded-2xl border bg-card p-7 shadow-lg">
-          <p className="font-ar text-xs font-medium text-teal">معاينة النص المجهول</p>
+          <p className="font-ar text-xs font-medium text-teal">{t("login.preview")}</p>
           <p className="font-ar mt-4 text-[15px] leading-loose">
             ينوب عنها الأساتذة{" "}
             <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> و

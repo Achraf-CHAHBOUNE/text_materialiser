@@ -27,18 +27,20 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStore } from "@/lib/app-store";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export { Wordmark, BrandMark };
 
 function useNav() {
   const { isAdmin } = useStore();
+  const { t } = useI18n();
   const items = [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/results", label: "Decisions", icon: ScrollText },
-    { to: "/browse", label: "الاجتهادات", icon: Scale },
+    { to: "/browse", label: t("nav.browse"), icon: Scale },
+    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard },
+    { to: "/results", label: t("nav.decisions"), icon: ScrollText },
   ];
-  if (isAdmin) items.push({ to: "/admin", label: "Admin console", icon: ShieldCheck });
+  if (isAdmin) items.push({ to: "/admin", label: t("nav.admin"), icon: ShieldCheck });
   return items;
 }
 
@@ -83,28 +85,50 @@ function NavList({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useStore();
+  const { t } = useI18n();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="icon" onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          aria-label={theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}
           className="min-h-11 min-w-11 rounded-xl">
           {theme === "dark" ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
+      <TooltipContent>{theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}</TooltipContent>
     </Tooltip>
   );
 }
 
+function LanguageToggle() {
+  const { lang, setLang, t } = useI18n();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          onClick={() => setLang(lang === "ar" ? "fr" : "ar")}
+          aria-label={t("lang.switch")}
+          className="min-h-11 rounded-xl px-3 text-sm font-medium"
+        >
+          {lang === "ar" ? "FR" : "ع"}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("lang.switch")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+
 function AvatarMenu() {
   const navigate = useNavigate();
   const { email, role, logout } = useStore();
+  const { t } = useI18n();
   const initials = (email || "?").slice(0, 2).toUpperCase();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label="Account menu"
+        <button type="button" aria-label={t("shell.accountMenu")}
           className="grid size-10 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-transform duration-200 hover:scale-105">
           {initials}
         </button>
@@ -116,18 +140,18 @@ function AvatarMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/settings"><User className="size-4" />Profile</Link>
+          <Link to="/settings"><User className="size-4" />{t("shell.profile")}</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => {
             logout();
-            toast.success("Signed out");
+            toast.success(t("login.signedOut"));
             navigate({ to: "/" });
           }}
         >
           <LogOut className="size-4" />
-          Sign out
+          {t("nav.signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -147,6 +171,7 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { authed, refreshCategories } = useStore();
 
@@ -168,9 +193,9 @@ export function AppShell({
           )}
         >
           <div className={cn("mb-8 flex items-center", collapsed ? "justify-center" : "justify-between px-1")}>
-            <Link to="/dashboard" aria-label="Home"><Wordmark compact={collapsed} /></Link>
+            <Link to="/dashboard" aria-label={t("shell.home")}><Wordmark compact={collapsed} /></Link>
             {!collapsed && (
-              <Button variant="ghost" size="icon" aria-label="Collapse sidebar"
+              <Button variant="ghost" size="icon" aria-label={t("shell.collapse")}
                 className="size-8 rounded-lg text-muted-foreground" onClick={() => setCollapsed(true)}>
                 <PanelLeftClose className="size-4" />
               </Button>
@@ -178,7 +203,7 @@ export function AppShell({
           </div>
 
           {collapsed && (
-            <Button variant="ghost" size="icon" aria-label="Expand sidebar"
+            <Button variant="ghost" size="icon" aria-label={t("shell.expand")}
               className="mb-4 size-9 rounded-lg text-muted-foreground" onClick={() => setCollapsed(false)}>
               <PanelLeftOpen className="size-4" />
             </Button>
@@ -193,20 +218,20 @@ export function AppShell({
               <div className="flex min-w-0 items-center gap-3">
                 <Sheet open={open} onOpenChange={setOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Open navigation"
+                    <Button variant="ghost" size="icon" aria-label={t("shell.openNav")}
                       className="min-h-11 min-w-11 rounded-xl lg:hidden">
                       <Menu className="size-5" />
                     </Button>
                   </SheetTrigger>
                   <SheetContent side="left" className="w-72 bg-sidebar p-4">
-                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                    <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>
                     <Link to="/dashboard" className="mb-8 block" onClick={() => setOpen(false)}><Wordmark /></Link>
                     <NavList onNavigate={() => setOpen(false)} />
                   </SheetContent>
                 </Sheet>
                 <div className="min-w-0">
                   <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Link to="/dashboard" className="transition-colors hover:text-foreground">القرارات</Link>
+                    <Link to="/browse" className="transition-colors hover:text-foreground">{t("browse.title")}</Link>
                     <span aria-hidden>/</span>
                     <span className="truncate text-foreground/70">{title}</span>
                   </nav>
@@ -217,6 +242,7 @@ export function AppShell({
               <div className="flex shrink-0 items-center gap-1.5">
                 {action}
                 <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
+                <LanguageToggle />
                 <ThemeToggle />
                 <AvatarMenu />
               </div>

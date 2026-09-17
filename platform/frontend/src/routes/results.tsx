@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useI18n } from "@/lib/i18n";
 import { ChamberBadge, LevelBadge } from "@/components/chips";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/results")({
 });
 
 function Decisions() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { categories } = useStore();
   const [query, setQuery] = useState("");
@@ -38,24 +40,24 @@ function Decisions() {
   }, [query, filters]);
 
   return (
-    <AppShell title="Decisions" description="Browse and search published anonymized decisions">
+    <AppShell title={t("results.title")} description={t("results.subtitle")}>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
         <div className="relative">
           <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="بحث في القرارات…" aria-label="Search decisions" className="h-11 ps-9 font-ar" />
+            placeholder={t("results.search")} aria-label={t("results.search")} className="h-11 ps-9 font-ar" />
         </div>
         <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger className="h-11" aria-label="Filter by chamber"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-11" aria-label={t("results.filterChamber")}><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All chambers</SelectItem>
+            <SelectItem value="all">{t("results.allChambers")}</SelectItem>
             {categories.map((c) => <SelectItem key={c} value={c} className="font-ar">{c}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={level} onValueChange={setLevel}>
-          <SelectTrigger className="h-11" aria-label="Filter by level"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-11" aria-label={t("results.filterLevel")}><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All levels</SelectItem>
+            <SelectItem value="all">{t("results.allLevels")}</SelectItem>
             <SelectItem value="ابتدائي" className="font-ar">ابتدائي</SelectItem>
             <SelectItem value="استئناف" className="font-ar">استئناف</SelectItem>
             <SelectItem value="نقض" className="font-ar">نقض</SelectItem>
