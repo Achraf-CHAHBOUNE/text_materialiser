@@ -61,7 +61,7 @@ function BrowsePage() {
 
         {total > 0 && (
           <p className="mt-3 text-center text-sm text-muted-foreground">
-            {num(total.toLocaleString("en-US"))} {t("browse.available")}
+            {num(total)} {t("browse.available")}
           </p>
         )}
 

@@ -93,7 +93,3 @@ export function byChamberOrder<T extends { chamber: string }>(a: T, b: T): numbe
   const ib = CHAMBER_ORDER.indexOf(b.chamber);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
 }
-
-/** Arabic-Indic digits read more naturally in an Arabic table. */
-export const arabicNumber = (n: number | string): string =>
-  String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)] ?? d);

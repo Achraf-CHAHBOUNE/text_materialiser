@@ -2,10 +2,10 @@
  * Arabic / French, the two languages Moroccan legal work is done in.
  *
  * Arabic is the default: the rulings themselves are Arabic. Switching language
- * flips the whole page direction (Arabic reads right to left), the chamber and
- * city names, and the digits — Arabic-Indic (٥٨) reads naturally in an Arabic
- * table, Western (58) in a French one. The ruling's own text is never
- * translated: it is the court's wording and must stay as the court wrote it.
+ * flips the whole page direction (Arabic reads right to left) and the chamber
+ * and city names. Digits stay Latin in both: Morocco writes Arabic with 0-9,
+ * and a ruling's number is part of its identity anyway. The ruling's own text
+ * is never translated: it is the court's wording and must stay as written.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -192,14 +192,17 @@ type Ctx = {
   chamber: (value: string) => string;
   court: (value: string) => string;
   city: (value: string) => string;
-  /** digits in the script the language reads */
+  /** a number as the reader expects to see it */
   num: (value: number | string) => string;
 };
 
 const LanguageContext = createContext<Ctx | null>(null);
 
-const toArabicDigits = (v: number | string) =>
-  String(v).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)] ?? d);
+// Morocco writes Arabic with Latin digits -- a ruling numbered 90 is "90" on the
+// court's own paper, not "٩٠". Only counts are grouped; a decision number, a
+// file number and a date are passed through exactly as the court wrote them.
+const asRead = (v: number | string) =>
+  typeof v === "number" ? v.toLocaleString("en-US") : String(v);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("ar");
@@ -235,7 +238,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     chamber: (v) => CHAMBERS[v]?.[lang] ?? v,
     court: (v) => COURTS[v]?.[lang] ?? v,
     city: (v) => (lang === "fr" ? (CITIES[v] ?? v) : v),
-    num: (v) => (lang === "ar" ? toArabicDigits(v) : String(v)),
+    num: asRead,
   }), [lang, dir, setLang]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
