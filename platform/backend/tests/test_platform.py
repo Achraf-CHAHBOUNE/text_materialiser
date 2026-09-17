@@ -279,3 +279,23 @@ def test_searching_a_decision_number_puts_that_ruling_first():
     rows = client.get("/api/browse/rulings?q=853", headers=_h(_admin())).json()
     assert rows["total"] >= 2
     assert rows["items"][0]["decision_no"] == "853", "the exact decision comes first"
+
+
+def test_search_follows_a_reimported_ruling(db_fts_note="the word index is kept in step by triggers"):
+    """Re-importing a ruling with different text must change what search finds."""
+    rec = _browse_record("resync1", "مدنية", "2015", "فاس", "7")
+    first = _zip([rec], {"resync1.docx": _docx("محكمة النقض\nقرار يتعلق بالتحفيظ العقاري XXXXXXX")})
+    client.post("/api/admin/import", headers=_h(_admin()),
+                files={"file": ("a.zip", first, "application/zip")})
+    client.post("/api/admin/decisions/resync1/state", headers=_h(_admin()), json={"state": "published"})
+    found = client.get("/api/browse/rulings?q=التحفيظ", headers=_h(_admin())).json()
+    assert any(r["doc_id"] == "resync1" for r in found["items"])
+
+    second = _zip([rec], {"resync1.docx": _docx("محكمة النقض\nقرار يتعلق بالكراء التجاري XXXXXXX")})
+    client.post("/api/admin/import", headers=_h(_admin()),
+                files={"file": ("b.zip", second, "application/zip")})
+    client.post("/api/admin/decisions/resync1/state", headers=_h(_admin()), json={"state": "published"})
+    again = client.get("/api/browse/rulings?q=التحفيظ", headers=_h(_admin())).json()
+    assert not any(r["doc_id"] == "resync1" for r in again["items"]), "old text still matches"
+    now = client.get("/api/browse/rulings?q=الكراء", headers=_h(_admin())).json()
+    assert any(r["doc_id"] == "resync1" for r in now["items"]), "new text does not match"

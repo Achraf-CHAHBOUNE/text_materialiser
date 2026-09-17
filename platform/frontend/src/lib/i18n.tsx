@@ -105,6 +105,12 @@ const STRINGS = {
   "listing.next": { ar: "التالي", fr: "Suivant" },
   "listing.page": { ar: "صفحة", fr: "Page" },
   "listing.of": { ar: "من", fr: "sur" },
+  "listing.first": { ar: "الأولى", fr: "Première" },
+  "listing.last": { ar: "الأخيرة", fr: "Dernière" },
+  "listing.perPage": { ar: "لكل صفحة", fr: "par page" },
+  "listing.showing": { ar: "عرض", fr: "Affichage" },
+  "listing.to": { ar: "إلى", fr: "à" },
+  "listing.results": { ar: "من أصل", fr: "sur" },
   "listing.open": { ar: "فتح القرار", fr: "Ouvrir l'arrêt" },
 
   // table headers
@@ -193,7 +199,7 @@ type Ctx = {
 const LanguageContext = createContext<Ctx | null>(null);
 
 const toArabicDigits = (v: number | string) =>
-  String(v).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]);
+  String(v).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)] ?? d);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("ar");

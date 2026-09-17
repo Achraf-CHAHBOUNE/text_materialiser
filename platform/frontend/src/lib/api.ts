@@ -35,6 +35,7 @@ export type Decision = {
   decision_no: string;
   file_no: string;
   date: string;
+  city?: string;
   case_id: string;
   outcome: string;
   pii_removed: number;
@@ -189,7 +190,8 @@ export const browseCities = (chamber = "") =>
   j<CityCount[]>(`/api/browse/cities?chamber=${encodeURIComponent(chamber)}`);
 
 export function browseRulings(p: {
-  chamber?: string; year?: string; city?: string; q?: string;
+  chamber?: string | undefined; year?: string | undefined;
+  city?: string | undefined; q?: string | undefined;
   limit?: number; offset?: number;
 } = {}) {
   const q = new URLSearchParams();

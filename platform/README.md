@@ -55,6 +55,13 @@ cd backend && DB_DIR=data FILESTORE_DIR=data/files AUTH_SECRET=dev-secret   SEED
 cd frontend && npm run dev        # http://localhost:8080
 ```
 
+The frontend calls the API at `127.0.0.1`, not `localhost`: on Windows `localhost`
+resolves to IPv6 first, the API listens on IPv4, and every request pays ~230 ms
+waiting for that attempt to fail.
+
+```bash
+```
+
 ## Run (local, docker)
 
 ```bash

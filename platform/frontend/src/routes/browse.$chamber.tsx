@@ -1,7 +1,7 @@
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ChevronRight, FileText, Search, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, ChevronsLeft, ChevronsRight, FileText, Search, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -11,27 +11,37 @@ import { browseCities, browseRulings, browseYears, type ListingRow } from "@/lib
 import { chamberStyle } from "@/lib/chambers";
 import { useI18n } from "@/lib/i18n";
 
-const PAGE = 50;
+const PAGE_SIZES = [25, 50, 100, 200];
+const DEFAULT_PAGE = 50;
 const ALL = "الكل";
 
-type SearchParams = { q?: string; year?: string; city?: string; page?: number };
+type SearchParams = {
+  q?: string | undefined;
+  year?: string | undefined;
+  city?: string | undefined;
+  page?: number | undefined;
+  size?: number | undefined;
+};
 
 export const Route = createFileRoute("/browse/$chamber")({
   validateSearch: (s: Record<string, unknown>): SearchParams => ({
-    q: typeof s.q === "string" && s.q ? s.q : undefined,
-    year: typeof s.year === "string" && s.year ? s.year : undefined,
-    city: typeof s.city === "string" && s.city ? s.city : undefined,
-    page: Number(s.page) > 1 ? Number(s.page) : undefined,
+    q: typeof s["q"] === "string" && s["q"] ? (s["q"] as string) : undefined,
+    year: typeof s["year"] === "string" && s["year"] ? (s["year"] as string) : undefined,
+    city: typeof s["city"] === "string" && s["city"] ? (s["city"] as string) : undefined,
+    page: Number(s["page"]) > 1 ? Number(s["page"]) : undefined,
+    size: PAGE_SIZES.includes(Number(s["size"])) ? Number(s["size"]) : undefined,
   }),
   component: ChamberListing,
 });
 
 function ChamberListing() {
   const { chamber } = Route.useParams();
-  const { q, year, city, page = 1 } = Route.useSearch();
+  const { q, year, city, page = 1, size } = Route.useSearch();
   const navigate = useNavigate({ from: "/browse/$chamber" });
   const { t, dir, lang, num, chamber: chamberName, city: cityName } = useI18n();
   const [draft, setDraft] = useState(q ?? "");
+  const queryClient = useQueryClient();
+  const perPage = size ?? DEFAULT_PAGE;
   const filterChamber = chamber === ALL ? "" : chamber;
   const style = chamberStyle(chamber);
   const title = chamber === ALL ? t("listing.allChambers") : chamberName(chamber);
@@ -47,15 +57,22 @@ function ChamberListing() {
     queryKey: ["browse", "cities", filterChamber],
     queryFn: () => browseCities(filterChamber),
   });
-  const rulings = useQuery({
-    queryKey: ["browse", "rulings", filterChamber, year, city, q, page],
-    queryFn: () =>
-      browseRulings({ chamber: filterChamber, year, city, q, limit: PAGE, offset: (page - 1) * PAGE }),
-    placeholderData: keepPreviousData,
+  const listQuery = (p: number) => ({
+    queryKey: ["browse", "rulings", filterChamber, year, city, q, p, perPage] as const,
+    queryFn: () => browseRulings({
+      chamber: filterChamber, year, city, q, limit: perPage, offset: (p - 1) * perPage,
+    }),
   });
+  const rulings = useQuery({ ...listQuery(page), placeholderData: keepPreviousData });
 
   const total = rulings.data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const pages = Math.max(1, Math.ceil(total / perPage));
+
+  // Fetch the next page while this one is being read, so "next" lands instantly.
+  useEffect(() => {
+    if (page < pages) queryClient.prefetchQuery(listQuery(page + 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pages, filterChamber, year, city, q, perPage]);
 
   return (
     <AppShell>
@@ -122,20 +139,15 @@ function ChamberListing() {
               <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} />
             )}
 
-            {pages > 1 && (
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1}
-                        onClick={() => navigate({ search: (o) => ({ ...o, page: page - 1 }) })}>
-                  {t("listing.prev")}
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  {t("listing.page")} {num(page)} {t("listing.of")} {num(pages)}
-                </span>
-                <Button variant="outline" size="sm" disabled={page >= pages}
-                        onClick={() => navigate({ search: (o) => ({ ...o, page: page + 1 }) })}>
-                  {t("listing.next")}
-                </Button>
-              </div>
+            {total > 0 && (
+              <Pager
+                page={page}
+                pages={pages}
+                total={total}
+                perPage={perPage}
+                onPage={(p) => navigate({ search: (o) => ({ ...o, page: p > 1 ? p : undefined }) })}
+                onSize={(n) => navigate({ search: (o) => ({ ...o, page: undefined, size: n }) })}
+              />
             )}
           </div>
 
@@ -256,5 +268,80 @@ function FilterRow({ active, onClick, label, count }: {
       <span>{label}</span>
       {count !== undefined && <span className="text-xs opacity-70">{count}</span>}
     </button>
+  );
+}
+
+
+/** Page numbers with a sliding window, both ends always reachable, and a page size. */
+function Pager({ page, pages, total, perPage, onPage, onSize }: {
+  page: number; pages: number; total: number; perPage: number;
+  onPage: (p: number) => void; onSize: (n: number) => void;
+}) {
+  const { t, num } = useI18n();
+  const from = (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, total);
+  const span = 2;
+  const numbers: (number | "gap")[] = [];
+  for (let p = 1; p <= pages; p++) {
+    if (p === 1 || p === pages || Math.abs(p - page) <= span) numbers.push(p);
+    else if (numbers[numbers.length - 1] !== "gap") numbers.push("gap");
+  }
+  return (
+    <div className="mt-4 flex flex-col items-center gap-3">
+      <p className="text-xs text-muted-foreground">
+        {t("listing.showing")} {num(from)} {t("listing.to")} {num(to)} {t("listing.results")} {num(total)}
+      </p>
+      {pages > 1 && (
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          <Button variant="ghost" size="icon" aria-label={t("listing.first")}
+                  disabled={page <= 1} onClick={() => onPage(1)} className="size-9">
+            <ChevronsRight className="size-4 rtl:hidden" aria-hidden />
+            <ChevronsLeft className="hidden size-4 rtl:block" aria-hidden />
+          </Button>
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            {t("listing.prev")}
+          </Button>
+          {numbers.map((n, i) =>
+            n === "gap" ? (
+              <span key={`gap${i}`} className="px-1 text-muted-foreground">…</span>
+            ) : (
+              <Button
+                key={n}
+                variant={n === page ? "default" : "ghost"}
+                size="sm"
+                aria-current={n === page ? "page" : undefined}
+                onClick={() => onPage(n)}
+                className="min-w-9 tabular-nums"
+              >
+                {num(n)}
+              </Button>
+            ),
+          )}
+          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+            {t("listing.next")}
+          </Button>
+          <Button variant="ghost" size="icon" aria-label={t("listing.last")}
+                  disabled={page >= pages} onClick={() => onPage(pages)} className="size-9">
+            <ChevronsLeft className="size-4 rtl:hidden" aria-hidden />
+            <ChevronsRight className="hidden size-4 rtl:block" aria-hidden />
+          </Button>
+        </div>
+      )}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        {PAGE_SIZES.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onSize(n)}
+            className={`rounded-md px-2 py-1 transition-colors ${
+              n === perPage ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+            }`}
+          >
+            {num(n)}
+          </button>
+        ))}
+        <span>{t("listing.perPage")}</span>
+      </div>
+    </div>
   );
 }

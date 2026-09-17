@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy import (
-    DateTime, case, ForeignKey, Integer, String, Text, create_engine, func, or_, select,
+    DateTime, case, literal_column, ForeignKey, Integer, String, Text, create_engine, func, or_, select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -63,6 +63,11 @@ class Decision(Base):
     # and the year, kept as its own column so a year filter needs no date parsing.
     city: Mapped[str] = mapped_column(String, default="", index=True)
     year: Mapped[str] = mapped_column(String, default="", index=True)
+    # "YYYYMMDD" + the padded decision number: one comparable string, so a listing
+    # sorts newest-first straight off an index. Sorting by substr() of the date and
+    # length() of the number could use no index at all, so every deeper page cost
+    # more than the last.
+    sort_key: Mapped[str] = mapped_column(String, default="", index=True)
     case_id: Mapped[str] = mapped_column(String, default="", index=True)
     outcome: Mapped[str] = mapped_column(String, default="")
     pii_removed: Mapped[int] = mapped_column(Integer, default=0)
@@ -118,15 +123,101 @@ def _add_missing_columns() -> None:
     from sqlalchemy import inspect, text as _sql
 
     have = {c["name"] for c in inspect(_engine).get_columns("decisions")}
-    for name in ("city", "year"):
+    for name in ("city", "year", "sort_key"):
         if name not in have:
             with _engine.begin() as c:
                 c.execute(_sql(f"ALTER TABLE decisions ADD COLUMN {name} VARCHAR DEFAULT ''"))
 
 
+# ---------------- full-text search ----------------
+# LIKE '%word%' reads every ruling's text on every search: 1.9 s over 15,923 rulings,
+# and worse as the corpus grows. SQLite's FTS5 indexes the words instead. The index is
+# "external content": it stores no copy of the text and its row ids ARE the decisions'
+# row ids, so a match joins back by primary key (86 ms -> 2 ms for a count). Triggers
+# keep it in step with every write. Postgres has its own path (pg_trgm, see init_db).
+_FTS = {"ok": False}
+
+_FTS_SETUP = (
+    # tokenize='trigram' indexes three-character sequences, so a search matches
+    # *inside* a word. Arabic attaches prefixes -- و، ب، ال -- and a word-based index
+    # would not find "بالتحفيظ" when someone searches "التحفيظ", which the old
+    # (slow) LIKE search did find.
+    "CREATE VIRTUAL TABLE decisions_fts USING fts5("
+    "  search_text, content='decisions', content_rowid='rowid', tokenize='trigram')",
+    "CREATE TRIGGER IF NOT EXISTS decisions_fts_ai AFTER INSERT ON decisions BEGIN"
+    "  INSERT INTO decisions_fts(rowid, search_text) VALUES (new.rowid, new.search_text);"
+    " END",
+    "CREATE TRIGGER IF NOT EXISTS decisions_fts_ad AFTER DELETE ON decisions BEGIN"
+    "  INSERT INTO decisions_fts(decisions_fts, rowid, search_text)"
+    "  VALUES ('delete', old.rowid, old.search_text);"
+    " END",
+    "CREATE TRIGGER IF NOT EXISTS decisions_fts_au AFTER UPDATE ON decisions BEGIN"
+    "  INSERT INTO decisions_fts(decisions_fts, rowid, search_text)"
+    "  VALUES ('delete', old.rowid, old.search_text);"
+    "  INSERT INTO decisions_fts(rowid, search_text) VALUES (new.rowid, new.search_text);"
+    " END",
+    "INSERT INTO decisions_fts(decisions_fts) VALUES ('rebuild')",
+)
+
+
+def _fts_enabled() -> bool:
+    return _engine.dialect.name == "sqlite" and _FTS["ok"]
+
+
+def _init_fts() -> None:
+    """Create the word index (once) and keep it current through triggers."""
+    if _engine.dialect.name != "sqlite":
+        return
+    from sqlalchemy import text as _sql
+    try:
+        with _engine.begin() as c:
+            shape = c.execute(_sql(
+                "SELECT sql FROM sqlite_master WHERE name = 'decisions_fts'")).scalar()
+            if shape and ("content='decisions'" not in shape or "trigram" not in shape):
+                c.execute(_sql("DROP TABLE decisions_fts"))   # earlier, slower shape
+                shape = None
+            if not shape:
+                for statement in _FTS_SETUP:
+                    c.execute(_sql(statement))
+        _FTS["ok"] = True
+    except Exception:
+        _FTS["ok"] = False      # no FTS5 in this build: searches fall back to LIKE
+
+
+def _fts_rowids(query: str):
+    """A subquery of matching row ids, or None if full-text search is unavailable."""
+    if not _fts_enabled():
+        return None
+    from sqlalchemy import text as _sql
+    words = [w for w in textnorm.normalize(query).split() if w]
+    # A trigram index cannot match anything shorter than three characters; those
+    # fall back to LIKE, which is fine because such a query is rare.
+    if not words or any(len(w) < 3 for w in words):
+        return None
+    # Every word must appear, each matched as a substring.
+    expr = " AND ".join('"' + w.replace('"', "") + '"' for w in words)
+    return _sql("SELECT rowid FROM decisions_fts WHERE decisions_fts MATCH :fts_q").bindparams(
+        fts_q=expr)
+
+
+def _add_browse_indexes() -> None:
+    """Composite indexes matching how a listing filters and sorts."""
+    from sqlalchemy import text as _sql
+
+    for name, cols in (
+        ("ix_dec_browse_chamber", "state, category, sort_key DESC"),
+        ("ix_dec_browse_year", "state, category, year, sort_key DESC"),
+        ("ix_dec_browse_city", "state, category, city, sort_key DESC"),
+    ):
+        with _engine.begin() as c:
+            c.execute(_sql(f"CREATE INDEX IF NOT EXISTS {name} ON decisions ({cols})"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(_engine)
     _add_missing_columns()
+    _add_browse_indexes()
+    _init_fts()
     # Scale path (website_brief §S-5): on Postgres, a pg_trgm GIN index makes the
     # normalized `LIKE '%q%'` search fast well beyond 2,000 rows. SQLite (dev) uses a
     # plain scan — fine at dev scale. Best-effort: needs the extension to be creatable.
@@ -206,6 +297,14 @@ def touch_login(email: str) -> None:
 
 
 # ---------------- decisions ----------------
+def _sort_key(date: str, decision_no: str) -> str:
+    """'28/12/2021' + '853' -> '20211228000853' (sorts newest and highest first)."""
+    parts = (date or "").split("/")
+    ymd = f"{parts[2]}{parts[1]}{parts[0]}" if len(parts) == 3 else "00000000"
+    digits = "".join(ch for ch in (decision_no or "") if ch.isdigit())
+    return ymd + digits.rjust(6, "0")[:6]
+
+
 def upsert_decision(data: dict, body_text: str, file_name: str) -> None:
     """Insert or UPDATE (never duplicate) a decision, keyed by doc_id (§I-8)."""
     with session() as s:
@@ -218,6 +317,7 @@ def upsert_decision(data: dict, body_text: str, file_name: str) -> None:
                   "outcome", "pii_removed", "review"):
             if k in data:
                 setattr(d, k, data[k])
+        d.sort_key = _sort_key(d.decision_date, d.decision_no)
         d.file_name = file_name
         d.body_text = body_text
         d.search_text = textnorm.normalize(body_text)
@@ -457,28 +557,36 @@ def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str 
         exact_first = None
         if q.strip():
             nq = textnorm.normalize(q)
-            where.append(or_(Decision.search_text.like(f"%{nq}%"),
-                             Decision.decision_no.like(f"%{q.strip()}%")))
+            matches = _fts_rowids(q)
+            text_match = (Decision.search_text.like(f"%{nq}%") if matches is None
+                          else literal_column("decisions.rowid").in_(matches))
+            if q.strip().isdigit():
+                # A number could be a decision number or appear in the text: allow both.
+                where.append(or_(text_match, Decision.decision_no.like(f"%{q.strip()}%")))
+            else:
+                # Words only. OR-ing a LIKE on the number here would force a scan of
+                # every ruling and undo the word index (190 ms -> a few).
+                where.append(text_match)
             if q.strip().isdigit():
                 # Someone typing a bare number wants that decision, not every ruling
                 # whose text happens to contain those digits.
                 exact_first = case((Decision.decision_no == q.strip(), 0), else_=1)
         total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
-        # Newest first: by year, then by the date's month and day, then decision number.
+        # Newest first, straight off the sort key.
         order = [] if exact_first is None else [exact_first]
-        rows = s.scalars(
-            select(Decision).where(*where)
-            .order_by(*order,
-                      Decision.year.desc(),
-                      func.substr(Decision.decision_date, 4, 2).desc(),
-                      func.substr(Decision.decision_date, 1, 2).desc(),
-                      func.length(Decision.decision_no).desc(),
-                      Decision.decision_no.desc())
+        # Only the eight columns a row shows. Selecting whole objects dragged every
+        # ruling's full text (kilobytes each) out of the database to print a table.
+        rows = s.execute(
+            select(Decision.doc_id, Decision.decision_no, Decision.decision_date,
+                   Decision.city, Decision.category, Decision.court, Decision.year,
+                   Decision.case_id)
+            .where(*where)
+            .order_by(*order, Decision.sort_key.desc())
             .limit(limit).offset(offset)
         ).all()
-        items = [{"doc_id": d.doc_id, "decision_no": d.decision_no, "date": d.decision_date,
-                  "city": d.city, "chamber": d.category, "court": d.court or "محكمة النقض",
-                  "year": d.year, "case_id": d.case_id} for d in rows]
+        items = [{"doc_id": r[0], "decision_no": r[1], "date": r[2], "city": r[3],
+                  "chamber": r[4], "court": r[5] or "محكمة النقض", "year": r[6],
+                  "case_id": r[7]} for r in rows]
     return {"total": total, "items": items}
 
 

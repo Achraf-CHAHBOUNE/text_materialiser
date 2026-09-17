@@ -164,7 +164,7 @@ export function AppShell({
   action,
   children,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   action?: ReactNode;
   children: ReactNode;
@@ -229,15 +229,17 @@ export function AppShell({
                     <NavList onNavigate={() => setOpen(false)} />
                   </SheetContent>
                 </Sheet>
-                <div className="min-w-0">
-                  <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Link to="/browse" className="transition-colors hover:text-foreground">{t("browse.title")}</Link>
-                    <span aria-hidden>/</span>
-                    <span className="truncate text-foreground/70">{title}</span>
-                  </nav>
-                  <h1 className="mt-0.5 truncate text-h2 font-semibold sm:text-h1">{title}</h1>
-                  {description && <p className="truncate text-sm text-muted-foreground">{description}</p>}
-                </div>
+                {title && (
+                  <div className="min-w-0">
+                    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Link to="/browse" className="transition-colors hover:text-foreground">{t("browse.title")}</Link>
+                      <span aria-hidden>/</span>
+                      <span className="truncate text-foreground/70">{title}</span>
+                    </nav>
+                    <h1 className="mt-0.5 truncate text-h2 font-semibold sm:text-h1">{title}</h1>
+                    {description && <p className="truncate text-sm text-muted-foreground">{description}</p>}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {action}
