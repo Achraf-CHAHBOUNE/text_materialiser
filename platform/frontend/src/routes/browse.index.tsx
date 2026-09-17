@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browseCourts, type CourtNode } from "@/lib/api";
 import { arabicNumber, byChamberOrder, chamberLabel, chamberStyle } from "@/lib/chambers";
 
-export const Route = createFileRoute("/browse")({
+export const Route = createFileRoute("/browse/")({
   head: () => ({
     meta: [
       { title: "الاجتهادات القضائية — الاطلاع" },

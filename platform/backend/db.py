@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from sqlalchemy import (
-    DateTime, ForeignKey, Integer, String, Text, create_engine, func, or_, select,
+    DateTime, case, ForeignKey, Integer, String, Text, create_engine, func, or_, select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -454,15 +454,22 @@ def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str 
             where.append(Decision.year == year)
         if city:
             where.append(Decision.city == city)
+        exact_first = None
         if q.strip():
             nq = textnorm.normalize(q)
             where.append(or_(Decision.search_text.like(f"%{nq}%"),
                              Decision.decision_no.like(f"%{q.strip()}%")))
+            if q.strip().isdigit():
+                # Someone typing a bare number wants that decision, not every ruling
+                # whose text happens to contain those digits.
+                exact_first = case((Decision.decision_no == q.strip(), 0), else_=1)
         total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
         # Newest first: by year, then by the date's month and day, then decision number.
+        order = [] if exact_first is None else [exact_first]
         rows = s.scalars(
             select(Decision).where(*where)
-            .order_by(Decision.year.desc(),
+            .order_by(*order,
+                      Decision.year.desc(),
                       func.substr(Decision.decision_date, 4, 2).desc(),
                       func.substr(Decision.decision_date, 1, 2).desc(),
                       func.length(Decision.decision_no).desc(),

@@ -264,3 +264,18 @@ def test_browse_never_shows_an_unpublished_ruling():
                 files={"file": ("h.zip", payload, "application/zip")})   # imported, not published
     rows = client.get("/api/browse/rulings?year=2019", headers=_h(_admin())).json()
     assert rows["total"] == 0
+
+
+def test_searching_a_decision_number_puts_that_ruling_first():
+    """A bare number means "this decision", not "any text containing these digits"."""
+    recs = [_browse_record("num1", "مدنية", "2018", "فاس", "853")]
+    files = {"num1.docx": _docx("محكمة النقض\nنص يشير إلى القرار 853 وإلى XXXXXXX")}
+    recs.append(_browse_record("num2", "مدنية", "2022", "سطات", "12"))
+    files["num2.docx"] = _docx("محكمة النقض\nهذا النص يذكر الرقم 853 عرضا بعد XXXXXXX")
+    client.post("/api/admin/import", headers=_h(_admin()),
+                files={"file": ("n.zip", _zip(recs, files), "application/zip")})
+    for doc in ("num1", "num2"):
+        client.post(f"/api/admin/decisions/{doc}/state", headers=_h(_admin()), json={"state": "published"})
+    rows = client.get("/api/browse/rulings?q=853", headers=_h(_admin())).json()
+    assert rows["total"] >= 2
+    assert rows["items"][0]["decision_no"] == "853", "the exact decision comes first"
