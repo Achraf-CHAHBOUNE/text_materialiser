@@ -179,7 +179,10 @@ async def import_batch(file: UploadFile = File(...), user: dict = Depends(requir
             "category": cat or "غير محدد", "level": rec.get("level", ""),
             "court": rec.get("court", ""),
             "decision_no": fv("رقم القرار"), "file_no": fv("رقم الملف"),
-            "decision_date": fv("تاريخ القرار"), "case_id": rec.get("case_id", ""),
+            "decision_date": fv("تاريخ القرار"),
+            "city": rec.get("city") or fv("المدينة"),
+            "year": rec.get("year") or fv("تاريخ القرار")[-4:],
+            "case_id": rec.get("case_id", ""),
             "outcome": rec.get("outcome", ""),
             "pii_removed": rec.get("pii", {}).get("removed_count", 0),
             "review": rec.get("review", "ok"),
@@ -372,6 +375,34 @@ def client_search(q: str = Query(""), category: str = "", level: str = "",
                   user: dict = Depends(current_user)) -> list:
     db.log_activity(user["email"], "search", q[:80])
     return db.search_decisions(q, states=("published",), category=category, level=level)
+
+
+# ---------------- client: browse (court > chamber > year > ruling) ----------------
+@app.get("/api/browse/courts")
+def browse_courts(_: dict = Depends(current_user)) -> list:
+    """Every court with its chambers and their counts -- the menu page."""
+    return db.browse_tree()
+
+
+@app.get("/api/browse/years")
+def browse_years(chamber: str = "", _: dict = Depends(current_user)) -> list:
+    return db.browse_years(chamber)
+
+
+@app.get("/api/browse/cities")
+def browse_cities(chamber: str = "", _: dict = Depends(current_user)) -> list:
+    return db.browse_cities(chamber)
+
+
+@app.get("/api/browse/rulings")
+def browse_rulings(chamber: str = "", year: str = "", city: str = "",
+                   q: str = Query(""), limit: int = 50, offset: int = 0,
+                   user: dict = Depends(current_user)) -> dict:
+    """One page of the listing: number, date, city, chamber -- and the total."""
+    if q.strip():
+        db.log_activity(user["email"], "search", q[:80])
+    return db.browse_rulings(chamber=chamber, year=year, city=city, q=q,
+                             limit=min(limit, 200), offset=offset)
 
 
 @app.get("/api/decisions/{doc_id}")

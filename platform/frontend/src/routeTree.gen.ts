@@ -12,12 +12,15 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as BillingRouteImport } from './routes/billing'
+import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as NewJobRouteImport } from './routes/new-job'
 import { Route as ProcessingRouteImport } from './routes/processing'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as BrowseChamberRouteImport } from './routes/browse.$chamber'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
+import { Route as RulingDocIdRouteImport } from './routes/ruling.$docId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -32,6 +35,11 @@ const AdminRoute = AdminRouteImport.update({
 const BillingRoute = BillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrowseRoute = BrowseRouteImport.update({
+  id: '/browse',
+  path: '/browse',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -59,9 +67,19 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BrowseChamberRoute = BrowseChamberRouteImport.update({
+  id: '/$chamber',
+  path: '/$chamber',
+  getParentRoute: () => BrowseRoute,
+} as any)
 const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   id: '/cases/$caseId',
   path: '/cases/$caseId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RulingDocIdRoute = RulingDocIdRouteImport.update({
+  id: '/ruling/$docId',
+  path: '/ruling/$docId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -69,35 +87,44 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/browse': typeof BrowseRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
+  '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/ruling/$docId': typeof RulingDocIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/browse': typeof BrowseRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
+  '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/ruling/$docId': typeof RulingDocIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/browse': typeof BrowseRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
+  '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/ruling/$docId': typeof RulingDocIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -105,46 +132,57 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/billing'
+    | '/browse'
     | '/dashboard'
     | '/new-job'
     | '/processing'
     | '/results'
     | '/settings'
+    | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/ruling/$docId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
     | '/billing'
+    | '/browse'
     | '/dashboard'
     | '/new-job'
     | '/processing'
     | '/results'
     | '/settings'
+    | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/ruling/$docId'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/billing'
+    | '/browse'
     | '/dashboard'
     | '/new-job'
     | '/processing'
     | '/results'
     | '/settings'
+    | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/ruling/$docId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   BillingRoute: typeof BillingRoute
+  BrowseRoute: typeof BrowseRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   NewJobRoute: typeof NewJobRoute
   ProcessingRoute: typeof ProcessingRoute
   ResultsRoute: typeof ResultsRoute
   SettingsRoute: typeof SettingsRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
+  RulingDocIdRoute: typeof RulingDocIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -168,6 +206,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/billing'
       preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/browse': {
+      id: '/browse'
+      path: '/browse'
+      fullPath: '/browse'
+      preLoaderRoute: typeof BrowseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -205,6 +250,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/browse/$chamber': {
+      id: '/browse/$chamber'
+      path: '/$chamber'
+      fullPath: '/browse/$chamber'
+      preLoaderRoute: typeof BrowseChamberRouteImport
+      parentRoute: typeof BrowseRoute
+    }
     '/cases/$caseId': {
       id: '/cases/$caseId'
       path: '/cases/$caseId'
@@ -212,19 +264,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ruling/$docId': {
+      id: '/ruling/$docId'
+      path: '/ruling/$docId'
+      fullPath: '/ruling/$docId'
+      preLoaderRoute: typeof RulingDocIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface BrowseRouteChildren {
+  BrowseChamberRoute: typeof BrowseChamberRoute
+}
+
+const BrowseRouteChildren: BrowseRouteChildren = {
+  BrowseChamberRoute: BrowseChamberRoute,
+}
+
+const BrowseRouteWithChildren =
+  BrowseRoute._addFileChildren(BrowseRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   BillingRoute: BillingRoute,
+  BrowseRoute: BrowseRouteWithChildren,
   DashboardRoute: DashboardRoute,
   NewJobRoute: NewJobRoute,
   ProcessingRoute: ProcessingRoute,
   ResultsRoute: ResultsRoute,
   SettingsRoute: SettingsRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
+  RulingDocIdRoute: RulingDocIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

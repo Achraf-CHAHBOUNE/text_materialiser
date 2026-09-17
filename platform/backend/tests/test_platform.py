@@ -193,3 +193,74 @@ def test_a_file_the_pipeline_held_back_is_never_imported():
     assert body["imported"] == 0
     assert any(q["doc_id"] == "held1" for q in body["quarantined"])
     assert client.get("/api/admin/decisions/held1", headers=_h(_admin())).status_code == 404
+
+
+# ---------- browse: court > chamber > year > ruling ----------
+def _browse_record(doc_id, chamber, year, city, no):
+    r = _record(doc_id, category=chamber)
+    r["fields"]["رقم القرار"] = {"value": no}
+    r["fields"]["تاريخ القرار"] = {"value": f"08/02/{year}"}
+    r["city"], r["year"] = city, year
+    return r
+
+
+def _chamber_counts():
+    courts = client.get("/api/browse/courts", headers=_h(_admin())).json()
+    out = {}
+    for c in courts:
+        for ch in c["chambers"]:
+            out[ch["chamber"]] = out.get(ch["chamber"], 0) + ch["count"]
+    return out
+
+
+def test_browse_lists_courts_chambers_years_and_rows():
+    # Other tests share this database, so compare against a baseline.
+    before = _chamber_counts()
+    recs, files = [], {}
+    for i, (chamber, year, city) in enumerate([
+        ("مدنية", "2021", "فاس"), ("مدنية", "2021", "طنجة"),
+        ("مدنية", "2020", "فاس"), ("أحوال شخصية", "2021", "تازة"),
+    ]):
+        doc = f"b{i}"
+        recs.append(_browse_record(doc, chamber, year, city, str(100 + i)))
+        files[f"{doc}.docx"] = _docx(f"محكمة النقض\nنص القرار رقم {100 + i} بعد إزالة XXXXXXX")
+    r = client.post("/api/admin/import", headers=_h(_admin()),
+                    files={"file": ("b.zip", _zip(recs, files), "application/zip")})
+    assert r.status_code == 200 and r.json()["imported"] == 4
+    for doc in ("b0", "b1", "b2", "b3"):
+        client.post(f"/api/admin/decisions/{doc}/state", headers=_h(_admin()), json={"state": "published"})
+
+    after = _chamber_counts()
+    assert after.get("مدنية", 0) - before.get("مدنية", 0) == 3
+    assert after.get("أحوال شخصية", 0) - before.get("أحوال شخصية", 0) == 1
+    courts = client.get("/api/browse/courts", headers=_h(_admin())).json()
+    assert any(c["court"] == "محكمة النقض" for c in courts)
+
+    years = client.get("/api/browse/years?chamber=مدنية", headers=_h(_admin())).json()
+    ours = [y for y in years if y["year"] in ("2021", "2020")]
+    assert [y["year"] for y in ours] == ["2021", "2020"]      # newest first
+    assert {y["year"]: y["count"] for y in ours}["2021"] == 2
+
+    rows = client.get("/api/browse/rulings?chamber=مدنية&year=2021", headers=_h(_admin())).json()
+    assert rows["total"] == 2
+    assert {x["city"] for x in rows["items"]} == {"فاس", "طنجة"}
+    assert all(x["date"].endswith("2021") for x in rows["items"])
+
+    cities = client.get("/api/browse/cities?chamber=مدنية", headers=_h(_admin())).json()
+    assert {c["city"]: c["count"] for c in cities}["فاس"] == 2
+
+
+def test_browse_filters_by_city_and_searches_the_text():
+    only_taza = client.get("/api/browse/rulings?city=تازة", headers=_h(_admin())).json()
+    assert only_taza["total"] == 1 and only_taza["items"][0]["chamber"] == "أحوال شخصية"
+    found = client.get("/api/browse/rulings?q=103", headers=_h(_admin())).json()
+    assert found["total"] == 1 and found["items"][0]["decision_no"] == "103"
+
+
+def test_browse_never_shows_an_unpublished_ruling():
+    rec = _browse_record("hidden1", "مدنية", "2019", "فاس", "999")
+    payload = _zip([rec], {"hidden1.docx": _docx("محكمة النقض\nنص غير منشور XXXXXXX")})
+    client.post("/api/admin/import", headers=_h(_admin()),
+                files={"file": ("h.zip", payload, "application/zip")})   # imported, not published
+    rows = client.get("/api/browse/rulings?year=2019", headers=_h(_admin())).json()
+    assert rows["total"] == 0

@@ -6,6 +6,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Scale,
   ScrollText,
   ShieldCheck,
   Sun,
@@ -35,6 +36,7 @@ function useNav() {
   const items = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/results", label: "Decisions", icon: ScrollText },
+    { to: "/browse", label: "الاجتهادات", icon: Scale },
   ];
   if (isAdmin) items.push({ to: "/admin", label: "Admin console", icon: ShieldCheck });
   return items;

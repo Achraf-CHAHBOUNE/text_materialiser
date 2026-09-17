@@ -159,3 +159,45 @@ export const updateClient = (email: string, body: { status?: string; password?: 
   });
 export const deleteClient = (email: string) =>
   j<{ deleted: string }>(`/api/admin/clients/${encodeURIComponent(email)}`, { method: "DELETE" });
+
+// ---------- browse: court > chamber > year > ruling ----------
+// Mirrors how a court portal is read (the JURISMAROC layout the client asked for).
+export type CourtNode = {
+  court: string;
+  total: number;
+  chambers: { chamber: string; count: number }[];
+};
+export type YearCount = { year: string; count: number };
+export type CityCount = { city: string; count: number };
+export type ListingRow = {
+  doc_id: string;
+  decision_no: string;
+  date: string;      // DD/MM/YYYY
+  city: string;
+  chamber: string;
+  court: string;
+  year: string;
+  case_id: string;
+};
+
+export const browseCourts = () => j<CourtNode[]>("/api/browse/courts");
+
+export const browseYears = (chamber = "") =>
+  j<YearCount[]>(`/api/browse/years?chamber=${encodeURIComponent(chamber)}`);
+
+export const browseCities = (chamber = "") =>
+  j<CityCount[]>(`/api/browse/cities?chamber=${encodeURIComponent(chamber)}`);
+
+export function browseRulings(p: {
+  chamber?: string; year?: string; city?: string; q?: string;
+  limit?: number; offset?: number;
+} = {}) {
+  const q = new URLSearchParams();
+  if (p.chamber) q.set("chamber", p.chamber);
+  if (p.year) q.set("year", p.year);
+  if (p.city) q.set("city", p.city);
+  if (p.q) q.set("q", p.q);
+  q.set("limit", String(p.limit ?? 50));
+  q.set("offset", String(p.offset ?? 0));
+  return j<{ total: number; items: ListingRow[] }>(`/api/browse/rulings?${q}`);
+}

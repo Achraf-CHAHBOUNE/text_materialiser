@@ -57,7 +57,12 @@ class Decision(Base):
     court: Mapped[str] = mapped_column(String, default="")
     decision_no: Mapped[str] = mapped_column(String, default="")
     file_no: Mapped[str] = mapped_column(String, default="")
-    decision_date: Mapped[str] = mapped_column(String, default="")
+    decision_date: Mapped[str] = mapped_column(String, default="")   # DD/MM/YYYY
+    # What a court-portal listing shows beside the number and date: the city of the
+    # lower court the appeal came from (the Court of Cassation sits only in Rabat),
+    # and the year, kept as its own column so a year filter needs no date parsing.
+    city: Mapped[str] = mapped_column(String, default="", index=True)
+    year: Mapped[str] = mapped_column(String, default="", index=True)
     case_id: Mapped[str] = mapped_column(String, default="", index=True)
     outcome: Mapped[str] = mapped_column(String, default="")
     pii_removed: Mapped[int] = mapped_column(Integer, default=0)
@@ -104,8 +109,24 @@ class ClientActivity(Base):
 _engine = create_engine(_url(), future=True)
 
 
+def _add_missing_columns() -> None:
+    """Add columns that post-date an existing database, in place.
+
+    create_all() only creates missing *tables*, so a database made before the
+    listing fields existed would keep failing every query that mentions them.
+    """
+    from sqlalchemy import inspect, text as _sql
+
+    have = {c["name"] for c in inspect(_engine).get_columns("decisions")}
+    for name in ("city", "year"):
+        if name not in have:
+            with _engine.begin() as c:
+                c.execute(_sql(f"ALTER TABLE decisions ADD COLUMN {name} VARCHAR DEFAULT ''"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(_engine)
+    _add_missing_columns()
     # Scale path (website_brief §S-5): on Postgres, a pg_trgm GIN index makes the
     # normalized `LIKE '%q%'` search fast well beyond 2,000 rows. SQLite (dev) uses a
     # plain scan — fine at dev scale. Best-effort: needs the extension to be creatable.
@@ -193,8 +214,8 @@ def upsert_decision(data: dict, body_text: str, file_name: str) -> None:
             d = Decision(doc_id=data["doc_id"])
             s.add(d)
         for k in ("source_file", "fmt", "read_method", "category", "level", "court",
-                  "decision_no", "file_no", "decision_date", "case_id", "outcome",
-                  "pii_removed", "review"):
+                  "decision_no", "file_no", "decision_date", "city", "year", "case_id",
+                  "outcome", "pii_removed", "review"):
             if k in data:
                 setattr(d, k, data[k])
         d.file_name = file_name
@@ -236,6 +257,7 @@ def _dec_dict(d: Decision, *, body: bool = False) -> dict:
     r = {"doc_id": d.doc_id, "source_file": d.source_file, "format": d.fmt,
          "category": d.category, "level": d.level, "court": d.court,
          "decision_no": d.decision_no, "file_no": d.file_no, "date": d.decision_date,
+         "city": d.city, "year": d.year,
          "case_id": d.case_id, "outcome": d.outcome, "pii_removed": d.pii_removed,
          "review": d.review, "state": d.state, "file_name": d.file_name,
          "updated_at": d.updated_at.isoformat() if d.updated_at else ""}
@@ -380,3 +402,85 @@ def counts() -> dict:
                            .where(User.role == "client")) or 0
         return {"decisions": total, "published": published, "pending": pending,
                 "clients": clients}
+
+
+# ---------------- browse (court > chamber > year > rulings) ----------------
+def browse_tree(states: tuple = ("published",)) -> List[dict]:
+    """Courts, each with its chambers and how many rulings each holds."""
+    with session() as s:
+        rows = s.execute(
+            select(Decision.court, Decision.level, Decision.category,
+                   func.count(Decision.doc_id))
+            .where(Decision.state.in_(states))
+            .group_by(Decision.court, Decision.level, Decision.category)
+        ).all()
+    courts: dict = {}
+    for court, level, chamber, n in rows:
+        name = court or {"نقض": "محكمة النقض", "استئناف": "محكمة الاستئناف",
+                         "ابتدائي": "المحكمة الابتدائية"}.get(level, "محكمة النقض")
+        entry = courts.setdefault(name, {"court": name, "total": 0, "chambers": {}})
+        entry["total"] += n
+        entry["chambers"][chamber] = entry["chambers"].get(chamber, 0) + n
+    out = []
+    for c in courts.values():
+        chambers = [{"chamber": k, "count": v} for k, v in c["chambers"].items()]
+        chambers.sort(key=lambda x: -x["count"])
+        out.append({"court": c["court"], "total": c["total"], "chambers": chambers})
+    out.sort(key=lambda x: -x["total"])
+    return out
+
+
+def browse_years(chamber: str = "", states: tuple = ("published",)) -> List[dict]:
+    """Years present for a chamber (or for everything), newest first."""
+    with session() as s:
+        q = (select(Decision.year, func.count(Decision.doc_id))
+             .where(Decision.state.in_(states), Decision.year != "")
+             .group_by(Decision.year))
+        if chamber:
+            q = q.where(Decision.category == chamber)
+        rows = s.execute(q).all()
+    return [{"year": y, "count": n} for y, n in sorted(rows, key=lambda r: r[0], reverse=True)]
+
+
+def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str = "",
+                   states: tuple = ("published",), limit: int = 50,
+                   offset: int = 0) -> dict:
+    """One page of listing rows, plus the total, ordered as a portal lists them."""
+    with session() as s:
+        where = [Decision.state.in_(states)]
+        if chamber:
+            where.append(Decision.category == chamber)
+        if year:
+            where.append(Decision.year == year)
+        if city:
+            where.append(Decision.city == city)
+        if q.strip():
+            nq = textnorm.normalize(q)
+            where.append(or_(Decision.search_text.like(f"%{nq}%"),
+                             Decision.decision_no.like(f"%{q.strip()}%")))
+        total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
+        # Newest first: by year, then by the date's month and day, then decision number.
+        rows = s.scalars(
+            select(Decision).where(*where)
+            .order_by(Decision.year.desc(),
+                      func.substr(Decision.decision_date, 4, 2).desc(),
+                      func.substr(Decision.decision_date, 1, 2).desc(),
+                      func.length(Decision.decision_no).desc(),
+                      Decision.decision_no.desc())
+            .limit(limit).offset(offset)
+        ).all()
+        items = [{"doc_id": d.doc_id, "decision_no": d.decision_no, "date": d.decision_date,
+                  "city": d.city, "chamber": d.category, "court": d.court or "محكمة النقض",
+                  "year": d.year, "case_id": d.case_id} for d in rows]
+    return {"total": total, "items": items}
+
+
+def browse_cities(chamber: str = "", states: tuple = ("published",)) -> List[dict]:
+    with session() as s:
+        q = (select(Decision.city, func.count(Decision.doc_id))
+             .where(Decision.state.in_(states), Decision.city != "")
+             .group_by(Decision.city))
+        if chamber:
+            q = q.where(Decision.category == chamber)
+        rows = s.execute(q).all()
+    return [{"city": c, "count": n} for c, n in sorted(rows, key=lambda r: -r[1])]
