@@ -48,6 +48,52 @@ Reads the folder directly (no browser upload), applying the same rules as the HT
 import: files the pipeline held back are refused, every file is re-scanned by the PII
 gate, and re-importing a ruling updates it rather than duplicating it.
 
+## Correcting a ruling
+
+Admins correct a ruling on its own page; the Word file is changed with it.
+
+- **Hide**: select a name in the text, then *Hide* (this occurrence) or *Hide
+  everywhere* (every whole-word match, previewed with a count and context first).
+  Live immediately.
+- **Edit text**: edit the whole text, review the change (removed in red, added in
+  green), save.
+- **Edit details**: number, date, city, file number, chamber. A new chamber also
+  retitles the Word file.
+
+What happens on save is decided by what the change does, not by who makes it:
+
+| the change | result |
+| --- | --- |
+| only removes text (hiding, deleting) | live at once |
+| adds any text (a corrected word, a restored name) | a **draft**, published only when an admin approves it |
+| contains an e-mail, phone, ID or IBAN pattern | refused |
+
+The text a reader sees *is* the Word file: an edit rewrites only the paragraphs whose
+line changed (title, headings and page breaks untouched), and the text is read back
+from the saved file. Every applied change is a version; **Restore** goes back to one
+(as a draft if it would show hidden text again). **Delete older versions** removes the
+last copy of a name once a hide is certain. An edit made on a version someone has
+since replaced is refused, never merged silently.
+
+Readers cannot edit: they select text and **Report a problem**. Reports and drafts
+from every ruling are listed under **Corrections**; the quoted text of a report is
+erased once it is handled.
+
+**Re-imports never undo a correction.** A hand-edited ruling is skipped by both
+imports and listed as `kept_edited`.
+
+**Getting corrections into the client's folder.** `results/` is built by the
+pipeline, so corrections made here reach it through an export: *Corrections →
+Export edited rulings* downloads `edits.zip`, then
+
+```bash
+cd pipeline
+python -m anonymizer.assemble --work ../data/work --out ../results --edits edits.zip
+```
+
+The edits are re-applied on every rebuild, and never written into the pipeline's
+own working folders.
+
 ## Run (local, without docker)
 
 ```bash

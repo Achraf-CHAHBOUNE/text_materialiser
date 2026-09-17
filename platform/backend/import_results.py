@@ -7,7 +7,8 @@ the HTTP import:
 
   - a record the pipeline held back is never imported;
   - every file is re-scanned by the PII gate before it is stored;
-  - re-importing the same ruling updates it instead of duplicating it.
+  - re-importing the same ruling updates it instead of duplicating it;
+  - a ruling edited by hand on the site is left exactly as edited.
 
     python import_results.py ../../results            # import and publish
     python import_results.py ../../results --no-publish
@@ -54,7 +55,7 @@ def _row(rec: dict) -> dict:
 def import_folder(results: Path, publish: bool, actor: str) -> dict:
     records = json.loads((results / "records.json").read_text(encoding="utf-8"))
     counts = {"imported": 0, "updated": 0, "held_by_pipeline": 0, "no_file": 0,
-              "gate_quarantined": 0}
+              "gate_quarantined": 0, "kept_edited": 0}
     started = time.time()
     for i, rec in enumerate(records, 1):
         if rec.get("quarantined") or rec.get("status") != "done":
@@ -71,7 +72,9 @@ def import_folder(results: Path, publish: bool, actor: str) -> dict:
             counts["gate_quarantined"] += 1
             continue
         existed = db.get_decision(rec["doc_id"]) is not None
-        db.upsert_decision(_row(rec), body_text=text, file_name=name)
+        if not db.upsert_decision(_row(rec), body_text=text, file_name=name):
+            counts["kept_edited"] += 1       # edited by hand on the site: left as edited
+            continue
         db.set_links(rec["doc_id"], rec.get("links", []))
         STORE.put(name, data)
         if publish:

@@ -2,6 +2,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   LogOut,
+  ListChecks,
   Menu,
   Moon,
   PanelLeftClose,
@@ -40,7 +41,10 @@ function useNav() {
     { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard },
     { to: "/results", label: t("nav.decisions"), icon: ScrollText },
   ];
-  if (isAdmin) items.push({ to: "/admin", label: t("nav.admin"), icon: ShieldCheck });
+  if (isAdmin) {
+    items.push({ to: "/corrections", label: t("nav.review"), icon: ListChecks });
+    items.push({ to: "/admin", label: t("nav.admin"), icon: ShieldCheck });
+  }
   return items;
 }
 

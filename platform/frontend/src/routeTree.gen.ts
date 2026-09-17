@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as BillingRouteImport } from './routes/billing'
+import { Route as CorrectionsRouteImport } from './routes/corrections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as NewJobRouteImport } from './routes/new-job'
 import { Route as ProcessingRouteImport } from './routes/processing'
@@ -35,6 +36,11 @@ const AdminRoute = AdminRouteImport.update({
 const BillingRoute = BillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CorrectionsRoute = CorrectionsRouteImport.update({
+  id: '/corrections',
+  path: '/corrections',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/billing': typeof BillingRoute
+  '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/new-job': typeof NewJobRoute
   '/processing': typeof ProcessingRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/billing'
+    | '/corrections'
     | '/dashboard'
     | '/new-job'
     | '/processing'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/billing'
+    | '/corrections'
     | '/dashboard'
     | '/new-job'
     | '/processing'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/billing'
+    | '/corrections'
     | '/dashboard'
     | '/new-job'
     | '/processing'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   BillingRoute: typeof BillingRoute
+  CorrectionsRoute: typeof CorrectionsRoute
   DashboardRoute: typeof DashboardRoute
   NewJobRoute: typeof NewJobRoute
   ProcessingRoute: typeof ProcessingRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/billing'
       preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/corrections': {
+      id: '/corrections'
+      path: '/corrections'
+      fullPath: '/corrections'
+      preLoaderRoute: typeof CorrectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   BillingRoute: BillingRoute,
+  CorrectionsRoute: CorrectionsRoute,
   DashboardRoute: DashboardRoute,
   NewJobRoute: NewJobRoute,
   ProcessingRoute: ProcessingRoute,

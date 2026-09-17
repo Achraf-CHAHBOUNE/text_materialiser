@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import csv
 import json
+import zipfile
 
 import pytest
 
-from anonymizer.assemble import assemble
+from anonymizer.assemble import assemble, load_edits
 from anonymizer.pipeline import Pipeline, RunOptions
 from test_listing_pipeline import FakeAI, _docx, _ruling, _settings
 
@@ -56,3 +57,31 @@ def test_the_same_file_delivered_by_two_folders_is_an_error(tmp_path):
     Pipeline(s, FakeAI()).run(RunOptions())
     with pytest.raises(SystemExit, match="delivered by both"):
         assemble(tmp_path / "work", tmp_path / "results")
+
+
+def test_hand_edits_from_the_platform_are_applied_and_never_reach_the_work_folder(tmp_path):
+    _process(tmp_path, "02_statut", "a", "b")
+    work_file = next((tmp_path / "work" / "02_statut").rglob("a.docx"))
+    before = work_file.read_bytes()
+
+    export = tmp_path / "edits.zip"
+    with zipfile.ZipFile(export, "w") as z:
+        z.writestr("edits.json", json.dumps([
+            {"doc_id": "a", "file_name": "a.docx", "version": 3, "edited_at": "2026-09-17",
+             "edited_by": "admin@x.com", "court": "محكمة النقض", "category": "جنائية",
+             "decision_no": "901", "file_no": "", "date": "01/02/2020", "city": "فاس"},
+            {"doc_id": "gone", "file_name": "gone.docx", "category": "مدنية"},
+        ], ensure_ascii=False))
+        z.writestr("files/a.docx", b"edited file")
+        z.writestr("files/gone.docx", b"x")
+
+    for _ in range(2):                          # and again: a rebuild keeps the edit
+        counts = assemble(tmp_path / "work", tmp_path / "results", load_edits(export))
+        assert counts["edited"] == 1 and counts["edits_not_found"] == ["gone"]
+        out = tmp_path / "results" / "documents" / "criminal" / "a.docx"   # moved chamber
+        assert out.read_bytes() == b"edited file"
+    assert work_file.read_bytes() == before, "the edit must not write through a hard link"
+    recs = json.loads((tmp_path / "results" / "records.json").read_text(encoding="utf-8"))
+    rec = next(r for r in recs if r["doc_id"] == "a")
+    assert rec["fields"]["رقم القرار"]["value"] == "901" and rec["city"] == "فاس"
+    assert rec["edited"]["version"] == 3

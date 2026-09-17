@@ -15,7 +15,12 @@ working folders on demand, so it is always complete and never stale:
 Only delivered rulings are included. Documents are hard-linked where the disk
 allows it (no second copy of the data), copied otherwise.
 
+Corrections made by hand on the platform (a name hidden, a chamber fixed) come back
+as the platform's edits export, and are applied here on every build -- so rebuilding
+results/ never loses them:
+
     python -m anonymizer.assemble --work ../data/work --out ../results
+    python -m anonymizer.assemble --work ../data/work --out ../results --edits edits.zip
 """
 from __future__ import annotations
 
@@ -25,12 +30,13 @@ import datetime as _dt
 import json
 import os
 import shutil
+import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 from .documents import records as records_mod
-from .documents.records import F_DATE, F_DECISION
+from .documents.records import F_CITY, F_DATE, F_DECISION, F_FILE
 
 # Folder names are Latin: Arabic names are mangled by some unzip tools.
 CHAMBER_FOLDERS = {
@@ -50,12 +56,48 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def load_edits(path: Path) -> Dict[str, Tuple[dict, bytes]]:
+    """The platform's edits export -- a zip, or the same unpacked: edits.json plus
+    files/<name>.docx. Returns {doc_id: (edit, edited file)}."""
+    if path.is_dir():
+        def read(name: str) -> bytes:
+            return (path / name).read_bytes()
+    else:
+        read = zipfile.ZipFile(path).read
+    edits = {}
+    for e in json.loads(read("edits.json").decode("utf-8")):
+        edits[e["doc_id"]] = (e, read(f"files/{e['file_name']}"))
+    return edits
+
+
+def _apply_edit(rec: dict, edit: dict) -> dict:
+    """The record as corrected on the platform. What the platform does not hold
+    (links, PII counts, sources) is kept from the pipeline."""
+    rec = json.loads(json.dumps(rec))
+    fields = rec.setdefault("fields", {})
+    for label, key in ((F_DECISION, "decision_no"), (F_FILE, "file_no"), (F_DATE, "date"),
+                       (F_CITY, "city")):
+        if (fields.get(label) or {}).get("value", "") != edit.get(key, ""):
+            fields[label] = {"value": edit.get(key, ""), "source": "edited"}
+    if (rec.get("category") or {}).get("value", "") != edit.get("category", ""):
+        rec["category"] = {"value": edit.get("category", ""), "source": "edited"}
+    rec["city"] = edit.get("city", "")
+    if edit.get("court"):
+        rec["court"] = edit["court"]
+    rec["edited"] = {"version": edit.get("version"), "at": edit.get("edited_at", ""),
+                     "by": edit.get("edited_by", "")}
+    return rec
+
+
 def _field(rec: dict, label: str) -> str:
     return ((rec.get("fields") or {}).get(label) or {}).get("value", "") or ""
 
 
-def assemble(work: Path, out: Path) -> dict:
+def assemble(work: Path, out: Path,
+             edits: Optional[Dict[str, Tuple[dict, bytes]]] = None) -> dict:
     """Rebuild `out` from every working folder under `work`. Returns counts."""
+    edits = edits or {}
+    applied = set()
     folders = sorted(p for p in work.iterdir() if (p / "records.json").exists())
     if not folders:
         raise SystemExit(f"No processed folders (with records.json) under {work}")
@@ -78,9 +120,19 @@ def assemble(work: Path, out: Path) -> dict:
             if name in seen:
                 raise SystemExit(f"{name} is delivered by both {seen[name]} and {folder.name}")
             seen[name] = folder.name
+            edit = edits.get(rec["doc_id"])
+            if edit:
+                rec = _apply_edit(rec, edit[0])
             chamber = (rec.get("category") or {}).get("value", "")
             rel = Path("documents") / CHAMBER_FOLDERS.get(chamber, "undetermined") / name
-            _link_or_copy(src, out / rel)
+            if edit:
+                # Written, never linked: a hard link shares the working folder's copy,
+                # and the edit must not reach back into the pipeline's own output.
+                (out / rel).parent.mkdir(parents=True, exist_ok=True)
+                (out / rel).write_bytes(edit[1])
+                applied.add(rec["doc_id"])
+            else:
+                _link_or_copy(src, out / rel)
             rec = dict(rec, corpus=folder.name, file_path=rel.as_posix())
             records.append(rec)
 
@@ -104,6 +156,8 @@ def assemble(work: Path, out: Path) -> dict:
                         _field(r, F_DECISION), date, r.get("city", ""), r["file_path"]])
 
     counts = _write_readme(records, folders, out)
+    counts["edited"] = len(applied)
+    counts["edits_not_found"] = sorted(set(edits) - applied)
     return counts
 
 
@@ -125,6 +179,9 @@ def _write_readme(records: List[dict], folders: List[Path], out: Path) -> dict:
         "",
         f"**{n:,} rulings**, every one anonymized and passed by the leak check. Files the "
         "check held back, and duplicate copies, are not included.",
+        "",
+        f"{sum(1 for r in records if r.get('edited')):,} of them were corrected by hand on the "
+        "platform after anonymization; their record carries an `edited` entry.",
         "",
         "| File | What it is |", "| --- | --- |",
         "| `listing.csv` | one row per ruling: court, chamber, year, number, date, city, file |",
@@ -158,9 +215,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gather every delivered ruling into one results folder")
     ap.add_argument("--work", default="../data/work", help="Folder holding one working folder per input")
     ap.add_argument("--out", default="../results", help="The results folder to (re)build")
+    ap.add_argument("--edits", default="", help="The platform's edits export (edits.zip) to apply")
     args = ap.parse_args()
-    counts = assemble(Path(args.work), Path(args.out))
+    edits = load_edits(Path(args.edits)) if args.edits else None
+    counts = assemble(Path(args.work), Path(args.out), edits)
     print(f"results: {counts['rulings']:,} rulings -> {args.out}")
+    if edits is not None:
+        print(f"  hand edits applied: {counts['edited']:,}")
+        for doc_id in counts["edits_not_found"]:
+            print(f"  ! edit for {doc_id} matches no delivered ruling -- not applied")
     for c, k in sorted(counts["folders"].items()):
         print(f"  {c}: {k:,}")
     return 0
