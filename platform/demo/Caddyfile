@@ -1,0 +1,14 @@
+# One address for the whole demo: the site and its API behind a single port, so a
+# tunnel or a free host only has to expose one thing — and the browser calls the API
+# on the address it is already on, with no CORS and no baked-in URL.
+:8080 {
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

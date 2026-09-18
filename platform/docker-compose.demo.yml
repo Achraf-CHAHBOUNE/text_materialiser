@@ -31,19 +31,28 @@ services:
       - ./demo-pack:/demo:ro
       - demo-data:/data
     ports:
-      - "8000:8000"
+      - "8000:8000"          # direct API, handy locally; not needed once proxied
 
   frontend:
     build:
       context: ./frontend
       args:
-        # 127.0.0.1, not localhost: on Windows the browser tries IPv6 first and
-        # waits out the refusal, which adds about 230 ms to every request.
-        VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:8000}
-    ports:
-      - "8080:3000"
+        # Empty: the browser calls the API at whatever address it loaded the site
+        # from, so the same image works on localhost, a tunnel or a host.
+        VITE_API_URL: ${VITE_API_URL-}
     depends_on:
       - backend
+
+  # Puts the site and the API on one address (see demo/Caddyfile).
+  proxy:
+    image: caddy:2-alpine
+    volumes:
+      - ./demo/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+      - frontend
 
 volumes:
   demo-data:

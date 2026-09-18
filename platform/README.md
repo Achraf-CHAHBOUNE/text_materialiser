@@ -141,9 +141,15 @@ and only rulings carrying a number and a date. Its contents are anonymized and p
 the pipeline's leak check, like everything in `results/` — but they are still the
 client's documents, so the pack is git-ignored. Send it directly.
 
+The site and the API share one address (`:8080`, with the API under `/api`), so a
+tunnel or a host only has to expose one port and no API URL is baked into the build.
+
 The demo uses fixed passwords, a file-backed database and a folder for the documents.
 For a real deployment use `docker-compose.yml`, which wants Postgres, object storage
 and keys of your own.
+
+To put the demo online for a few days without deciding anything — a tunnel from your
+own machine, or a free host — see [docs/HOSTING-DEMO.md](docs/HOSTING-DEMO.md).
 
 ## Run (local, without docker)
 

@@ -94,6 +94,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Sign in to Anonymize: automatic PII redaction for Arabic court rulings and case-trajectory linking across first instance, appeal and cassation.",
       },
       { name: "author", content: "Anonymize" },
+      // The rulings are anonymized, but they are still the client's documents and
+      // the site is private: no search engine should list it, wherever it is hosted.
+      { name: "robots", content: "noindex, nofollow" },
       { property: "og:title", content: "Anonymize — PII redaction for Arabic court rulings" },
       {
         property: "og:description",
