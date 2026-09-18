@@ -65,3 +65,4 @@ results/
 # Demo pack: real (anonymized) rulings, built on demand from results/
 platform/demo-pack/
 platform/demo-pack.zip
+platform/demo-logins.txt
