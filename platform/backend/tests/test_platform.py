@@ -299,3 +299,28 @@ def test_search_follows_a_reimported_ruling(db_fts_note="the word index is kept 
     assert not any(r["doc_id"] == "resync1" for r in again["items"]), "old text still matches"
     now = client.get("/api/browse/rulings?q=الكراء", headers=_h(_admin())).json()
     assert any(r["doc_id"] == "resync1" for r in now["items"]), "new text does not match"
+
+
+def test_guessing_a_password_is_cut_off_after_a_few_tries(monkeypatch):
+    """A site holding court rulings must not let anyone guess passwords all day."""
+    monkeypatch.setattr(server, "LOGIN_MAX_TRIES", 3)
+    server._failures.clear()
+    codes = [client.post("/api/auth/login",
+                         json={"email": "admin@x.com", "password": "wrong"}).status_code
+             for _ in range(5)]
+    assert codes == [401, 401, 401, 429, 429], codes
+
+    # the real password is refused too while the lockout stands
+    blocked = client.post("/api/auth/login", json={"email": "admin@x.com", "password": "admin-pass"})
+    assert blocked.status_code == 429 and "minute" in blocked.json()["detail"]
+
+    # another account from the same place is unaffected
+    server._failures.clear()
+    ok = client.post("/api/auth/login", json={"email": "admin@x.com", "password": "admin-pass"})
+    assert ok.status_code == 200
+    # and a success clears the count: wrong, wrong, right, then wrong again is not a lockout
+    for _ in range(2):
+        client.post("/api/auth/login", json={"email": "admin@x.com", "password": "wrong"})
+    assert client.post("/api/auth/login", json={"email": "admin@x.com", "password": "admin-pass"}).status_code == 200
+    assert client.post("/api/auth/login", json={"email": "admin@x.com", "password": "wrong"}).status_code == 401
+    server._failures.clear()

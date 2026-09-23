@@ -17,10 +17,11 @@ import json
 import mimetypes
 import os
 import re
+import time
 import zipfile
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -93,11 +94,57 @@ class LoginBody(BaseModel):
     password: str
 
 
+# ---------------- guarding the sign-in ----------------
+# Passwords could be guessed without limit: every attempt got the same prompt answer,
+# as fast as the network allowed. A site holding court rulings cannot leave that open.
+# After LOGIN_MAX_TRIES wrong passwords, that email and that address are turned away
+# for LOGIN_LOCKOUT_SECONDS whether or not the next password is right, and a correct
+# password clears the count. Held in memory: one server, and a restart is a fresh
+# start, which is the safe direction (it locks nobody out).
+LOGIN_MAX_TRIES = int(os.getenv("LOGIN_MAX_TRIES", "8"))
+LOGIN_LOCKOUT_SECONDS = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "900"))
+_failures: dict = {}
+
+
+def _login_key(email: str, request: Request) -> tuple:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    caller = forwarded or (request.client.host if request.client else "?")
+    return (email.strip().lower(), caller)
+
+
+def _locked_for(key: tuple) -> int:
+    """Seconds still to wait, 0 if the caller may try."""
+    tries, until = _failures.get(key, (0, 0.0))
+    left = int(until - time.time())
+    return left if tries >= LOGIN_MAX_TRIES and left > 0 else 0
+
+
+def _note_failure(key: tuple) -> None:
+    tries, _ = _failures.get(key, (0, 0.0))
+    if _locked_for(key) == 0 and tries >= LOGIN_MAX_TRIES:
+        tries = 0                                   # the lockout expired: start over
+    _failures[key] = (tries + 1, time.time() + LOGIN_LOCKOUT_SECONDS)
+    if len(_failures) > 10000:                      # nobody floods us with addresses
+        cutoff = time.time()
+        for k, (_, until) in list(_failures.items()):
+            if until < cutoff:
+                _failures.pop(k, None)
+
+
 @app.post("/api/auth/login")
-def login(body: LoginBody) -> dict:
+def login(body: LoginBody, request: Request) -> dict:
+    key = _login_key(body.email, request)
+    wait = _locked_for(key)
+    if wait:
+        raise HTTPException(status_code=429, detail=f"Too many attempts. Try again in "
+                                                    f"{max(1, wait // 60)} minute(s).",
+                            headers={"Retry-After": str(wait)})
     user = db.get_user(body.email)
     if not user or not authmod.verify_password(body.password, user["password_hash"]):
+        _note_failure(key)
+        db.add_audit(body.email, "login_failed", "user", body.email, new=key[1])
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    _failures.pop(key, None)
     if user["status"] != "active":
         raise HTTPException(status_code=403, detail="Account suspended")
     db.touch_login(body.email)

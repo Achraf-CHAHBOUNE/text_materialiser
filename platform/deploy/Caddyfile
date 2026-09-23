@@ -1,0 +1,22 @@
+# One address for the site and its API, with a certificate fetched and renewed
+# automatically. SITE_ADDRESS is the hostname (or :80 while there is no name yet).
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}
