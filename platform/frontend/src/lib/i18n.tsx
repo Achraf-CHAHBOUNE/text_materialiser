@@ -135,6 +135,27 @@ const STRINGS = {
   "ruling.decisionOf": { ar: "قرار عدد", fr: "Arrêt n°" },
   "ruling.noDate": { ar: "بدون تاريخ", fr: "Sans date" },
 
+  // reading it in French
+  "tr.button": { ar: "الترجمة الفرنسية", fr: "Traduction française" },
+  "tr.hide": { ar: "إخفاء الترجمة", fr: "Masquer la traduction" },
+  "tr.working": { ar: "جارٍ الترجمة…", fr: "Traduction en cours…" },
+  "tr.wait": {
+    ar: "تُترجَم هذه المرة فقط؛ بعدها تظهر فورًا لكل القرّاء.",
+    fr: "La traduction n'est faite qu'une fois ; ensuite elle s'affiche immédiatement pour tous.",
+  },
+  "tr.original": { ar: "النص الأصلي (عربي)", fr: "Texte original (arabe)" },
+  "tr.french": { ar: "الترجمة (فرنسية)", fr: "Traduction (français)" },
+  "tr.notice": {
+    ar: "ترجمة آلية للاطّلاع فقط. النص العربي هو الأصل وهو المعتمد قانونًا.",
+    fr: "Traduction automatique, fournie à titre indicatif. Seul le texte arabe fait foi.",
+  },
+  "tr.stale": {
+    ar: "عُدِّل هذا القرار بعد ترجمته. اطلب ترجمة جديدة.",
+    fr: "Cet arrêt a été corrigé après sa traduction. Demandez une nouvelle traduction.",
+  },
+  "tr.retry": { ar: "إعادة الترجمة", fr: "Retraduire" },
+  "tr.failed": { ar: "تعذّرت الترجمة", fr: "La traduction a échoué" },
+
   // editing a ruling
   "edit.hide": { ar: "إخفاء", fr: "Masquer" },
   "edit.hideAll": { ar: "إخفاء في كل النص", fr: "Masquer partout" },

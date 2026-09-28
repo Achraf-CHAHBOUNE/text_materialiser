@@ -94,6 +94,33 @@ python -m anonymizer.assemble --work ../data/work --out ../results --edits edits
 The edits are re-applied on every rebuild, and never written into the pipeline's
 own working folders.
 
+## Reading a ruling in French
+
+A reader opens a ruling and presses **الترجمة الفرنسية / Traduction française**. The
+Arabic and the French then sit side by side, so a lawyer can check one against the
+other; on a phone they stack, Arabic first.
+
+A ruling is translated **once**: the first reader waits about five seconds, everyone
+after that gets it in milliseconds from the database. It costs roughly $0.001 per
+ruling actually read, and rulings nobody opens cost nothing.
+
+This is the one place the platform talks to an AI service, and the exception is
+narrow: it sends the **anonymized text already on the reader's screen** -- never a
+file, never an original, never anything the leak gate has not passed. Set
+`TRANSLATE_API_KEY` (or `GEMINI_API_KEY`) to switch it on; without a key the button
+reports that translation is not configured and nothing else changes.
+
+A machine translation of a court ruling is a reading aid, not an official text, and
+the page says so: *"Traduction automatique... Seul le texte arabe fait foi."* When a
+ruling is corrected, its translation is marked out of date and offered again rather
+than shown as if it still matched.
+
+| setting | |
+| --- | --- |
+| `TRANSLATE_API_KEY` | the Gemini key (falls back to `GEMINI_API_KEY`) |
+| `TRANSLATE_MODEL` | default `gemini-2.5-flash-lite` |
+| `TRANSLATE_MAX_CHARS` | refuse rulings longer than this (default 120,000) |
+
 ## Where the files live
 
 The anonymized `.docx` files sit either in a folder or in object storage. The backend

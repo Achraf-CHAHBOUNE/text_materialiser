@@ -54,13 +54,14 @@ def pick(records: list, count: int) -> list:
         by_chamber[chamber] = spread + [r for r in rows if r not in spread]
 
     chosen, chambers = [], sorted(by_chamber, key=lambda c: -len(by_chamber[c]))
-    for i in range(count):                     # round-robin: small chambers get in too
-        chamber = chambers[i % len(chambers)]
-        pool = by_chamber[chamber]
+    turn = 0
+    while len(chosen) < count and any(by_chamber.values()):
+        # Round-robin, so a chamber holding 13 rulings is represented as surely as one
+        # holding 11,746; empty ones drop out and the big ones keep filling the rest.
+        pool = by_chamber[chambers[turn % len(chambers)]]
+        turn += 1
         if pool:
             chosen.append(pool.pop(0))
-        if len(chosen) >= count:
-            break
     return chosen
 
 

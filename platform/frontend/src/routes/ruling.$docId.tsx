@@ -8,6 +8,7 @@ import { DetailsForm } from "@/components/ruling/DetailsForm";
 import { HideAllDialog, ReportDialog, TextEditorDialog } from "@/components/ruling/EditDialogs";
 import { HistoryPanel } from "@/components/ruling/HistoryPanel";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
+import { TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
 import { rulingKey, useEdits } from "@/components/ruling/useEdits";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,6 +40,7 @@ function RulingPage() {
   const [editing, setEditing] = useState(false);
   const [details, setDetails] = useState(false);
   const [report, setReport] = useState<string | null>(null);
+  const [french, setFrench] = useState(false);
 
   const hide = useMutation({
     mutationFn: (s: Selected) => hideText(docId, { value: s.value, occurrence: s.occurrence ?? 0, base_version: version }),
@@ -102,6 +104,10 @@ function RulingPage() {
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="size-4" aria-hidden /> {t("ruling.print")}
                 </Button>
+                {d.body_text && (
+                  <TranslateButton docId={d.doc_id} shown={french}
+                                   onShow={() => setFrench(true)} onHide={() => setFrench(false)} />
+                )}
                 {isAdmin ? (
                   <>
                     <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={!d.body_text}>
@@ -123,8 +129,11 @@ function RulingPage() {
                 <p className="mt-3 text-xs text-muted-foreground">{t("edit.selectHint")}</p>
               )}
 
-              {/* The ruling's own words: always Arabic, never translated. */}
-              {d.body_text ? (
+              {/* The court's own words. A translation sits beside them, never in place
+                  of them: the Arabic is the ruling, the French is a reading aid. */}
+              {d.body_text && french ? (
+                <TranslationView docId={d.doc_id} arabic={d.body_text} />
+              ) : d.body_text ? (
                 <RulingText
                   text={d.body_text}
                   canEdit={isAdmin}

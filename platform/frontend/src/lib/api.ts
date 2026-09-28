@@ -310,6 +310,23 @@ export const resolveReport = (reportId: number, status: "resolved" | "dismissed"
   post<{ ok: boolean }>(`/api/admin/reports/${reportId}`, { status });
 export const editsExportUrl = () => `${BASE}/api/admin/edits/export?${tokenQ()}`;
 
+// ---------- reading a ruling in French ----------
+// Translated once, then stored: the first reader waits a few seconds, everyone after
+// gets it instantly. "stale" means the ruling was corrected after it was translated.
+export type Translation = {
+  ready: boolean;
+  lang?: string;
+  text?: string;
+  model?: string;
+  created_at?: string;
+  stale?: boolean;
+};
+
+export const getTranslation = (id: string) =>
+  j<Translation>(`/api/decisions/${encodeURIComponent(id)}/translation?lang=fr`);
+export const makeTranslation = (id: string) =>
+  post<Translation>(`/api/decisions/${encodeURIComponent(id)}/translation?lang=fr`);
+
 // ---------- a reader reports a problem ----------
 export const reportProblem = (id: string, quote: string, note: string) =>
   post<{ id: number }>(`/api/decisions/${encodeURIComponent(id)}/reports`, { quote, note });

@@ -31,6 +31,7 @@ import db
 import docedit
 import piigate
 import textnorm
+import translate
 from filestore import get_filestore
 
 app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0")
@@ -745,6 +746,43 @@ def client_decision(doc_id: str, user: dict = Depends(current_user)) -> dict:
                   if (db.get_decision(l["to"]) or {}).get("state") == "published"]
     db.log_activity(user["email"], "view", doc_id)
     return d
+
+
+# ---------------- reading a ruling in French ----------------
+# The one place this platform talks to an AI service, and it sends only text a
+# signed-in reader already has on screen: anonymized, gate-checked, never a file.
+# A ruling is translated once and then served from the database (see translate.py).
+@app.get("/api/decisions/{doc_id}/translation")
+def client_translation(doc_id: str, lang: str = "fr", user: dict = Depends(current_user)) -> dict:
+    """The stored translation, or {"ready": false} if nobody has asked for one yet."""
+    d = db.get_decision(doc_id)
+    if not d or d["state"] != "published":
+        raise HTTPException(status_code=404, detail="Not found")
+    got = db.get_translation(doc_id, lang)
+    if not got or got["stale"]:
+        return {"ready": False, "lang": lang, "stale": bool(got and got["stale"])}
+    return {"ready": True, **got}
+
+
+@app.post("/api/decisions/{doc_id}/translation")
+def client_translate(doc_id: str, lang: str = "fr", user: dict = Depends(current_user)) -> dict:
+    """Translate now (or hand back the stored one). Costs a fraction of a cent, once."""
+    if lang != "fr":
+        raise HTTPException(status_code=400, detail="Only French is available")
+    d = db.get_decision(doc_id, body=True)
+    if not d or d["state"] != "published":
+        raise HTTPException(status_code=404, detail="Not found")
+    got = db.get_translation(doc_id, lang)
+    if got and not got["stale"]:
+        return {"ready": True, **got}
+    try:
+        text = translate.translate(d.get("body_text") or "")
+    except translate.TranslationError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    model = os.getenv("TRANSLATE_MODEL", "gemini-2.5-flash-lite")
+    db.save_translation(doc_id, lang, text, model, d.get("version", 0))
+    db.log_activity(user["email"], "translate", doc_id)
+    return {"ready": True, **(db.get_translation(doc_id, lang) or {})}
 
 
 class ReportBody(BaseModel):

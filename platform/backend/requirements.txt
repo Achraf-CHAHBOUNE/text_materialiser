@@ -1,4 +1,6 @@
-# Project 2 — platform backend. Ingest-only; NO LLM engine (that lives in ../../pipeline).
+# Project 2 — platform backend. Ingest-only: the anonymization engine lives in
+# ../../pipeline and never runs here. The single outbound AI call is translating a
+# ruling into French -- text already anonymized and already on the reader's screen.
 python-docx==1.1.2         # extract text from imported .docx (import gate + search)
 pypdf==5.1.0               # extract text from imported text PDFs
 python-dotenv==1.0.1
@@ -8,5 +10,6 @@ python-multipart==0.0.12   # multipart import upload
 minio==7.2.10              # anonymized-file object storage (never raw documents)
 SQLAlchemy==2.0.36
 psycopg[binary]==3.2.3     # PostgreSQL driver
+httpx==0.28.1              # the one outbound call: a ruling translated into French
 
-# Dev/test only (not needed at runtime): pytest, httpx
+# Dev/test only (not needed at runtime): pytest

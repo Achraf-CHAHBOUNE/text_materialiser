@@ -113,6 +113,23 @@ class DecisionVersion(Base):
     decided_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class Translation(Base):
+    """A ruling in another language, kept so it is produced only once.
+
+    The Arabic is what the court wrote and what counts; this is a machine
+    translation, held here to spare the next reader the wait and the cost.
+    """
+    __tablename__ = "translations"
+    __table_args__ = (UniqueConstraint("doc_id", "lang", name="uq_translation"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    doc_id: Mapped[str] = mapped_column(String, index=True)
+    lang: Mapped[str] = mapped_column(String, default="fr")
+    text: Mapped[str] = mapped_column(Text, default="")
+    model: Mapped[str] = mapped_column(String, default="")
+    source_version: Mapped[int] = mapped_column(Integer, default=0)   # ruling version translated
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class Report(Base):
     """A reader pointing at something wrong in a ruling (usually a name left visible)."""
     __tablename__ = "reports"
@@ -904,3 +921,37 @@ def attach_draft_file(row_id: int, data: bytes) -> None:
         if v is not None and v.status == "draft":
             v.file_data = data
             s.commit()
+
+
+# ---------------- translations ----------------
+def get_translation(doc_id: str, lang: str = "fr") -> Optional[dict]:
+    """The stored translation, unless the ruling has been edited since it was made."""
+    with session() as s:
+        t = s.scalar(select(Translation).where(Translation.doc_id == doc_id,
+                                               Translation.lang == lang))
+        if t is None:
+            return None
+        d = s.get(Decision, doc_id)
+        stale = d is not None and (d.version or 0) != t.source_version
+        return {"doc_id": t.doc_id, "lang": t.lang, "text": t.text, "model": t.model,
+                "created_at": t.created_at.isoformat() if t.created_at else "",
+                "stale": stale}
+
+
+def save_translation(doc_id: str, lang: str, text: str, model: str, version: int) -> None:
+    """Store it, replacing an older one (a corrected ruling is translated again)."""
+    with session() as s:
+        t = s.scalar(select(Translation).where(Translation.doc_id == doc_id,
+                                               Translation.lang == lang))
+        if t is None:
+            t = Translation(doc_id=doc_id, lang=lang)
+            s.add(t)
+        t.text, t.model, t.source_version = text, model, version
+        t.created_at = dt.datetime.utcnow()
+        s.commit()
+
+
+def translation_count(lang: str = "fr") -> int:
+    with session() as s:
+        return s.scalar(select(func.count()).select_from(Translation)
+                        .where(Translation.lang == lang)) or 0
