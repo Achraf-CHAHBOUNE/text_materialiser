@@ -140,12 +140,22 @@ words plus what you approve, never what a model decided on its own.
 
 ## Environment
 
+Settings go in **`platform/.env`** — one file, read automatically by every script
+here. Copy `platform/.env.example` to start. Inside Docker the environment comes from
+compose instead and always wins, so the same files work in both places.
+
 ```bash
-DB_DIR=../../data/platform          # SQLite, for development
-DATABASE_URL=postgresql+psycopg://…  # or Postgres, which production uses
+# platform/.env
+DB_DIR=../../data/platform            # SQLite, for development
+DATABASE_URL=postgresql+psycopg://…   # or Postgres, which production uses
 FILESTORE_DIR=../../data/platform/files
-GEMINI_API_KEY=…                     # only needed for step 2
+
+GEMINI_API_KEY=…                      # step 2, the default provider
+OPENROUTER_API_KEY=…                  # step 2, only if --provider openrouter
 ```
+
+Neither key is needed for step 1. `--no-model` skips step 2 entirely and nothing
+leaves the machine.
 
 Nothing under `data/`, `results/`, `lastinput/` or any `.env` is ever committed — the
 raw deliveries hold real names.

@@ -19,6 +19,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 import textnorm
 
+# Settings live in platform/.env when this runs from a terminal. Inside Docker they
+# come from compose instead, and load_dotenv leaves anything already set alone, so the
+# container's environment always wins. Every script reaches the database through this
+# module, so loading it here means a key goes in one file and is found everywhere.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+except ImportError:                       # python-dotenv is optional at runtime
+    pass
+
 # Publication lifecycle (website_brief §I-6).
 STATES = ("imported", "under_review", "published", "withdrawn")
 
