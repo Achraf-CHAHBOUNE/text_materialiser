@@ -66,3 +66,16 @@ results/
 platform/demo-pack/
 platform/demo-pack.zip
 platform/demo-logins.txt
+
+# Raw deliveries from the client: the original, non-anonymized PDFs. 14 GB of real
+# names. Nothing under here ever belongs in version control.
+lastinput/
+input/
+*.rar
+
+# Scratch space the deploy and migration scripts hand to the containers. It has held
+# an export of every ruling's text, so it is ignored wholesale rather than per file.
+platform/incoming/
+
+# Screenshots taken while checking the deployed site.
+vps-*.png

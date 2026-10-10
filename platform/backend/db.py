@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from sqlalchemy import (
     DateTime, LargeBinary, UniqueConstraint, case, literal_column, ForeignKey, Integer, String, Text,
-    create_engine, func, or_, select, update,
+    create_engine, func, or_, select, text, update,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -70,6 +70,22 @@ class Decision(Base):
     # more than the last.
     sort_key: Mapped[str] = mapped_column(String, default="", index=True)
     case_id: Mapped[str] = mapped_column(String, default="", index=True)
+    # What the court itself prints above the ruling: the subject it files the case
+    # under, the sub-issues that narrow it, and the legal rule. The Cassation portal
+    # shows all of this in one column headed "المفاتيح أو القاعدة أو المحتوى" and
+    # searches it as free text; it publishes no list of subjects to classify against,
+    # so these are the court's own words rather than ours. About half the corpus
+    # prints no headnote at all, and those rulings keep these fields empty.
+    theme: Mapped[str] = mapped_column(String, default="", index=True)
+    theme_key: Mapped[str] = mapped_column(String, default="", index=True)
+    keywords: Mapped[str] = mapped_column(String, default="")   # the whole dash chain
+    rule: Mapped[str] = mapped_column(Text, default="")         # القاعدة: the abstract
+    # Where the subject came from, and a summary written for the rulings that print
+    # no rule of their own. `rule` above is only ever the court's words; a machine
+    # summary lives here instead, so the two can never be confused on the page or in
+    # an export. An empty theme_source means the ruling has no subject at all.
+    theme_source: Mapped[str] = mapped_column(String, default="", index=True)  # court|model
+    abstract: Mapped[str] = mapped_column(Text, default="")     # written for us, not by the court
     outcome: Mapped[str] = mapped_column(String, default="")
     pii_removed: Mapped[int] = mapped_column(Integer, default=0)
     review: Mapped[str] = mapped_column(String, default="ok")          # ok | check
@@ -188,7 +204,11 @@ def _add_missing_columns() -> None:
     have = {c["name"] for c in inspect(_engine).get_columns("decisions")}
     for name, kind in (("city", "VARCHAR DEFAULT ''"), ("year", "VARCHAR DEFAULT ''"),
                        ("sort_key", "VARCHAR DEFAULT ''"), ("version", "INTEGER DEFAULT 0"),
-                       ("edited_at", "TIMESTAMP"), ("edited_by", "VARCHAR DEFAULT ''")):
+                       ("edited_at", "TIMESTAMP"), ("edited_by", "VARCHAR DEFAULT ''"),
+                       ("theme", "VARCHAR DEFAULT ''"), ("theme_key", "VARCHAR DEFAULT ''"),
+                       ("keywords", "VARCHAR DEFAULT ''"), ("rule", "TEXT DEFAULT ''"),
+                       ("theme_source", "VARCHAR DEFAULT ''"),
+                       ("abstract", "TEXT DEFAULT ''")):
         if name not in have:
             with _engine.begin() as c:
                 c.execute(_sql(f"ALTER TABLE decisions ADD COLUMN {name} {kind}"))
@@ -273,6 +293,10 @@ def _add_browse_indexes() -> None:
         ("ix_dec_browse_chamber", "state, category, sort_key DESC"),
         ("ix_dec_browse_year", "state, category, year, sort_key DESC"),
         ("ix_dec_browse_city", "state, category, city, sort_key DESC"),
+        ("ix_dec_browse_theme", "state, theme_key, sort_key DESC"),
+        # the facet list groups by key and label: with both in the index, in that
+        # order, it reads the counts straight off it instead of sorting 14,000 rows
+        ("ix_dec_theme_facet", "state, theme_key, theme"),
     ):
         with _engine.begin() as c:
             c.execute(_sql(f"CREATE INDEX IF NOT EXISTS {name} ON decisions ({cols})"))
@@ -294,6 +318,23 @@ def init_db() -> None:
                 c.execute(_sql(
                     "CREATE INDEX IF NOT EXISTS ix_dec_search_trgm "
                     "ON decisions USING gin (search_text gin_trgm_ops)"))
+                # A word index beside the trigram one. The trigram index finds
+                # candidates in milliseconds, but LIKE is lossy, so Postgres then has
+                # to fetch and decompress every candidate ruling to recheck it: 11,544
+                # of them, 3.4 seconds. Matching whole words needs no recheck.
+                #
+                # The tsvector is a stored column rather than an index expression.
+                # Indexed as an expression it was still recomputed whenever the planner
+                # chose to walk the sort order and filter -- a tsvector over a 15 KB
+                # ruling, 472 times, 1.5 seconds. Stored, there is nothing to recompute.
+                # On an empty database this is instant; on a full one it rewrites the
+                # table, so it is done once, deliberately, not at startup.
+                c.execute(_sql(
+                    "ALTER TABLE decisions ADD COLUMN IF NOT EXISTS search_tsv tsvector "
+                    "GENERATED ALWAYS AS (to_tsvector('simple', search_text)) STORED"))
+                c.execute(_sql(
+                    "CREATE INDEX IF NOT EXISTS ix_dec_tsv_col "
+                    "ON decisions USING gin (search_tsv)"))
         except Exception:
             pass  # insufficient privileges: search still works, just unindexed
 
@@ -386,7 +427,9 @@ def upsert_decision(data: dict, body_text: str, file_name: str) -> bool:
             s.add(d)
         for k in ("source_file", "fmt", "read_method", "category", "level", "court",
                   "decision_no", "file_no", "decision_date", "city", "year", "case_id",
-                  "outcome", "pii_removed", "review"):
+                  "outcome", "pii_removed", "review",
+                  "theme", "theme_key", "keywords", "rule",
+                  "theme_source", "abstract"):
             if k in data:
                 setattr(d, k, data[k])
         d.sort_key = _sort_key(d.decision_date, d.decision_no)
@@ -433,6 +476,8 @@ def _dec_dict(d: Decision, *, body: bool = False) -> dict:
          "city": d.city, "year": d.year,
          "case_id": d.case_id, "outcome": d.outcome, "pii_removed": d.pii_removed,
          "review": d.review, "state": d.state, "file_name": d.file_name,
+         "theme": d.theme or "", "keywords": d.keywords or "", "rule": d.rule or "",
+         "theme_source": d.theme_source or "", "abstract": d.abstract or "",
          "version": d.version or 0,
          "edited_at": d.edited_at.isoformat() if d.edited_at else "",
          "edited_by": d.edited_by or "",
@@ -633,8 +678,69 @@ def browse_years(chamber: str = "", states: tuple = ("published",)) -> List[dict
     return [{"year": y, "count": n} for y, n in sorted(rows, key=lambda r: r[0], reverse=True)]
 
 
+def _text_match(q: str, nq: str):
+    """The condition that finds `q` in a ruling's text, by whatever the database has.
+
+    On Postgres this is a word match over the tsvector index. The trigram index it
+    replaces was not the problem - it answered in 8 ms - but LIKE is lossy, so every
+    candidate had to be fetched and decompressed to be rechecked, which cost 3.4
+    seconds on a common word. Matching words needs no recheck: 101 ms, and 99.3% of
+    the same rulings. The few it misses are words glued to another, so a query that
+    finds nothing is tried again the old way rather than answered with an empty page.
+
+    SQLite (development) keeps its FTS5 trigram index, which is fast at that scale.
+    """
+    if _engine.dialect.name == "postgresql":
+        tsq = textnorm.tsquery(q)
+        if tsq:
+            return text("search_tsv @@ to_tsquery('simple', :tsq)").bindparams(tsq=tsq)
+    matches = _fts_rowids(q)
+    if matches is not None:
+        return literal_column("decisions.rowid").in_(matches)
+    return Decision.search_text.like(f"%{nq}%")
+
+
+RULE_EXCERPT = 400
+
+
+def _excerpt(rule: str) -> str:
+    """The opening of the rule, cut on a word so it does not end mid-letter."""
+    if len(rule) <= RULE_EXCERPT:
+        return rule
+    cut = rule[:RULE_EXCERPT]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > RULE_EXCERPT * 0.6 else cut).rstrip() + "…"
+
+
+def browse_themes(chamber: str = "", *, states: tuple = ("published",),
+                  limit: int = 300) -> List[dict]:
+    """The subjects rulings are filed under, commonest first.
+
+    Grouped by the normalised key, labelled with the spelling the court used most
+    often for it, so "الكراء" and "كراء" are offered once rather than twice.
+    """
+    with session() as s:
+        where = [Decision.state.in_(states), Decision.theme_key != ""]
+        if chamber:
+            where.append(Decision.category == chamber)
+        rows = s.execute(
+            select(Decision.theme_key, Decision.theme, func.count(Decision.doc_id))
+            .where(*where).group_by(Decision.theme_key, Decision.theme)
+        ).all()
+    best: dict = {}
+    for key, label, n in rows:
+        slot = best.setdefault(key, {"key": key, "label": label, "count": 0, "_top": 0})
+        slot["count"] += n
+        if n > slot["_top"]:
+            slot["_top"], slot["label"] = n, label
+    out = sorted(best.values(), key=lambda t: -t["count"])[:limit]
+    for t in out:
+        t.pop("_top", None)
+    return out
+
+
 def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str = "",
-                   states: tuple = ("published",), limit: int = 50,
+                   theme: str = "", states: tuple = ("published",), limit: int = 50,
                    offset: int = 0) -> dict:
     """One page of listing rows, plus the total, ordered as a portal lists them."""
     with session() as s:
@@ -645,12 +751,13 @@ def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str 
             where.append(Decision.year == year)
         if city:
             where.append(Decision.city == city)
+        if theme:
+            # matched on the key, so one subject spelled two ways stays one subject
+            where.append(Decision.theme_key == theme)
         exact_first = None
         if q.strip():
             nq = textnorm.normalize(q)
-            matches = _fts_rowids(q)
-            text_match = (Decision.search_text.like(f"%{nq}%") if matches is None
-                          else literal_column("decisions.rowid").in_(matches))
+            text_match = _text_match(q, nq)
             if q.strip().isdigit():
                 # A number could be a decision number or appear in the text: allow both.
                 where.append(or_(text_match, Decision.decision_no.like(f"%{q.strip()}%")))
@@ -665,19 +772,26 @@ def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str 
         total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
         # Newest first, straight off the sort key.
         order = [] if exact_first is None else [exact_first]
-        # Only the eight columns a row shows. Selecting whole objects dragged every
-        # ruling's full text (kilobytes each) out of the database to print a table.
+        # Only the columns a row shows. Selecting whole objects dragged every ruling's
+        # full text (kilobytes each) out of the database to print a table. The rule is
+        # cut here rather than in the browser for the same reason: a page of fifty
+        # rules in full is a far bigger reply than the rest of the page put together.
         rows = s.execute(
             select(Decision.doc_id, Decision.decision_no, Decision.decision_date,
                    Decision.city, Decision.category, Decision.court, Decision.year,
-                   Decision.case_id)
+                   Decision.case_id, Decision.file_no, Decision.theme,
+                   Decision.theme_key, Decision.keywords, Decision.rule,
+                   Decision.theme_source, Decision.abstract)
             .where(*where)
             .order_by(*order, Decision.sort_key.desc())
             .limit(limit).offset(offset)
         ).all()
         items = [{"doc_id": r[0], "decision_no": r[1], "date": r[2], "city": r[3],
                   "chamber": r[4], "court": r[5] or "محكمة النقض", "year": r[6],
-                  "case_id": r[7]} for r in rows]
+                  "case_id": r[7], "file_no": r[8] or "", "theme": r[9] or "",
+                  "theme_key": r[10] or "", "keywords": r[11] or "",
+                  "rule": _excerpt(r[12] or ""), "theme_source": r[13] or "",
+                  "abstract": _excerpt(r[14] or "")} for r in rows]
     return {"total": total, "items": items}
 
 
@@ -955,3 +1069,62 @@ def translation_count(lang: str = "fr") -> int:
     with session() as s:
         return s.scalar(select(func.count()).select_from(Translation)
                         .where(Translation.lang == lang)) or 0
+
+
+def upsert_many(rows: List[tuple], *, publish: bool, batch: int = 400) -> dict:
+    """Insert or update many rulings in one pass.
+
+    One import used to cost four transactions per ruling -- the row, its links, its
+    published state, and a lookup before all that. At 29,384 rulings that is the bulk
+    of the time. Here one session serves the whole run and commits every `batch`
+    rulings, which is also the unit of work that survives an interruption.
+
+    Each row is (fields, body_text, file_name, links). Same rules as before: a
+    ruling edited by hand is left exactly as edited.
+    """
+    counts = {"imported": 0, "updated": 0, "kept_edited": 0}
+    with session() as s:
+        for n, (data, body_text, file_name, links) in enumerate(rows, 1):
+            d = s.get(Decision, data["doc_id"])
+            if d is not None and d.edited_at is not None:
+                counts["kept_edited"] += 1
+                continue
+            existed = d is not None
+            if d is None:
+                d = Decision(doc_id=data["doc_id"])
+                s.add(d)
+            for k in ("source_file", "fmt", "read_method", "category", "level", "court",
+                      "decision_no", "file_no", "decision_date", "city", "year",
+                      "case_id", "outcome", "pii_removed", "review",
+                      "theme", "theme_key", "keywords", "rule",
+                      "theme_source", "abstract"):
+                if k in data:
+                    setattr(d, k, data[k])
+            d.sort_key = _sort_key(d.decision_date, d.decision_no)
+            d.file_name = file_name
+            d.body_text = body_text
+            d.search_text = textnorm.normalize(body_text)
+            if publish:
+                d.state = "published"
+            elif d.state in ("", "withdrawn") or d.state not in STATES:
+                d.state = "imported"
+            elif d.state == "published":
+                d.state = "under_review"
+
+            if links:
+                for row in s.scalars(select(Link).where(
+                        or_(Link.parent_doc == d.doc_id, Link.child_doc == d.doc_id))):
+                    s.delete(row)
+                for l in links:
+                    if l.get("role") == "reviews":
+                        s.add(Link(parent_doc=d.doc_id, child_doc=l["to"],
+                                   confidence=l.get("confidence", "")))
+                    else:
+                        s.add(Link(parent_doc=l["to"], child_doc=d.doc_id,
+                                   confidence=l.get("confidence", "")))
+
+            counts["updated" if existed else "imported"] += 1
+            if n % batch == 0:
+                s.commit()
+        s.commit()
+    return counts

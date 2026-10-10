@@ -30,6 +30,47 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+# Arabic attaches letters to the front of a word, so a word index files التعويض and
+# بالتعويض as tokens unrelated to تعويض, and a search for one finds none of the others.
+# The query is widened to cover them -- but only by the article, and that limit is
+# measured, not a matter of taste: at two variants Postgres uses the word index and a
+# search costs 40 ms; add بال and وال and it stops trusting the index, falls back to
+# reading every ruling, and the same search costs a second. Those two extra forms are
+# worth 5% more results and 25 times the work, so the article alone is where this stops.
+# Rarer forms are still reachable: a query that finds nothing falls back to substring
+# matching over the trigram index (see db._text_match).
+_PREFIXES = ("", "ال")
+_WORD = re.compile(r"[^\w؀-ۿ]+")
+
+
+def prefix_variants(term: str) -> List[str]:
+    """`term` and the same word carrying each Arabic prefix.
+
+    Used to widen a word-index query so that searching تعويض also finds التعويض and
+    بالتعويض, which are separate tokens to any word index. Returns nothing for a term
+    too short to be worth it, where a prefix would be most of the word.
+    """
+    term = _WORD.sub("", normalize(term))
+    if len(term) < 3:
+        return []
+    return [p + term for p in _PREFIXES]
+
+
+def tsquery(query: str) -> str:
+    """A Postgres tsquery for `query`: every word, each widened by its prefixes.
+
+    Words are ANDed, variants ORed, and every variant is a prefix match so that
+    suffixed forms (تعويضات) come back too. Only letters and digits survive
+    normalization, so nothing the user types can reach the parser as syntax.
+    """
+    groups = []
+    for word in normalize(query).split():
+        variants = prefix_variants(word)
+        if variants:
+            groups.append("(" + " | ".join(v + ":*" for v in variants) + ")")
+    return " & ".join(groups)
+
+
 def _char_class(ch: str) -> str:
     if ch in _ALEF:
         return f"[{_ALEF}]"

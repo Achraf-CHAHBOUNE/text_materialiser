@@ -1,13 +1,16 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, ChevronsLeft, ChevronsRight, FileText, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { browseCities, browseRulings, browseYears, type ListingRow } from "@/lib/api";
+import { FileNumber } from "@/components/FileNumber";
+import { FilterMenu } from "@/components/FilterMenu";
+import { Source } from "@/components/ruling/Headnote";
+import { browseCities, browseRulings, browseThemes, browseYears, type ListingRow } from "@/lib/api";
 import { chamberStyle } from "@/lib/chambers";
 import { useI18n } from "@/lib/i18n";
 
@@ -19,6 +22,7 @@ type SearchParams = {
   q?: string | undefined;
   year?: string | undefined;
   city?: string | undefined;
+  theme?: string | undefined;
   page?: number | undefined;
   size?: number | undefined;
 };
@@ -28,6 +32,7 @@ export const Route = createFileRoute("/browse/$chamber")({
     q: typeof s["q"] === "string" && s["q"] ? (s["q"] as string) : undefined,
     year: typeof s["year"] === "string" && s["year"] ? (s["year"] as string) : undefined,
     city: typeof s["city"] === "string" && s["city"] ? (s["city"] as string) : undefined,
+    theme: typeof s["theme"] === "string" && s["theme"] ? (s["theme"] as string) : undefined,
     page: Number(s["page"]) > 1 ? Number(s["page"]) : undefined,
     size: PAGE_SIZES.includes(Number(s["size"])) ? Number(s["size"]) : undefined,
   }),
@@ -36,7 +41,7 @@ export const Route = createFileRoute("/browse/$chamber")({
 
 function ChamberListing() {
   const { chamber } = Route.useParams();
-  const { q, year, city, page = 1, size } = Route.useSearch();
+  const { q, year, city, theme, page = 1, size } = Route.useSearch();
   const navigate = useNavigate({ from: "/browse/$chamber" });
   const { t, dir, lang, num, chamber: chamberName, city: cityName } = useI18n();
   const [draft, setDraft] = useState(q ?? "");
@@ -49,6 +54,11 @@ function ChamberListing() {
   const setSearch = (next: Partial<SearchParams>) =>
     navigate({ search: (old) => ({ ...old, page: undefined, ...next }) });
 
+  const themes = useQuery({
+    queryKey: ["browse", "themes", filterChamber],
+    queryFn: () => browseThemes(filterChamber),
+  });
+
   const years = useQuery({
     queryKey: ["browse", "years", filterChamber],
     queryFn: () => browseYears(filterChamber),
@@ -58,9 +68,9 @@ function ChamberListing() {
     queryFn: () => browseCities(filterChamber),
   });
   const listQuery = (p: number) => ({
-    queryKey: ["browse", "rulings", filterChamber, year, city, q, p, perPage] as const,
+    queryKey: ["browse", "rulings", filterChamber, year, city, theme, q, p, perPage] as const,
     queryFn: () => browseRulings({
-      chamber: filterChamber, year, city, q, limit: perPage, offset: (p - 1) * perPage,
+      chamber: filterChamber, year, city, theme, q, limit: perPage, offset: (p - 1) * perPage,
     }),
   });
   const rulings = useQuery({ ...listQuery(page), placeholderData: keepPreviousData });
@@ -72,7 +82,7 @@ function ChamberListing() {
   useEffect(() => {
     if (page < pages) queryClient.prefetchQuery(listQuery(page + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pages, filterChamber, year, city, q, perPage]);
+  }, [page, pages, filterChamber, year, city, theme, q, perPage]);
 
   return (
     <AppShell>
@@ -105,103 +115,109 @@ function ChamberListing() {
           </form>
         </div>
 
-        {/* Years as chips: the reference portal uses a dropdown, but the whole range
-            fits here and one click is quicker than opening a menu. */}
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <Chip active={!year} onClick={() => setSearch({ year: undefined })}>{t("listing.allYears")}</Chip>
-          {(years.data ?? []).map((y) => (
-            <Chip key={y.year} active={year === y.year} onClick={() => setSearch({ year: y.year })}>
-              {num(y.year)} <span className="opacity-60">({num(y.count)})</span>
-            </Chip>
-          ))}
+        {/* One row of menus rather than every value laid out at once: 27 years, 70
+            cities and 250 subjects between them, which used to push the rulings off
+            the first screen. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <FilterMenu
+            label={t("listing.theme")}
+            value={theme}
+            allLabel={t("listing.allThemes")}
+            searchPlaceholder={t("listing.findTheme")}
+            width="22rem"
+            options={(themes.data ?? []).map((x) => ({ key: x.key, label: x.label, count: x.count }))}
+            onChange={(k) => setSearch({ theme: k })}
+          />
+          <FilterMenu
+            label={t("listing.filterYear")}
+            value={year}
+            allLabel={t("listing.allYears")}
+            searchPlaceholder={t("listing.findYear")}
+            width="13rem"
+            options={(years.data ?? []).map((y) => ({ key: y.year, label: num(y.year), count: y.count }))}
+            onChange={(k) => setSearch({ year: k })}
+          />
+          <FilterMenu
+            label={t("listing.city")}
+            value={city}
+            allLabel={t("listing.all")}
+            searchPlaceholder={t("listing.findCity")}
+            width="16rem"
+            options={(cities.data ?? []).map((c) => ({ key: c.city, label: cityName(c.city), count: c.count }))}
+            onChange={(k) => setSearch({ city: k })}
+          />
+          <p className="ms-auto hidden text-xs text-muted-foreground sm:block">
+            {t("listing.themeNote")}
+          </p>
         </div>
 
-        {(q || city || year) && (
+        {q && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t("listing.filters")}</span>
-            {q && <Pill onClear={() => { setDraft(""); setSearch({ q: undefined }); }} label={t("listing.clear")}>{t("listing.filterSearch")}: {q}</Pill>}
-            {year && <Pill onClear={() => setSearch({ year: undefined })} label={t("listing.clear")}>{t("listing.filterYear")}: {num(year)}</Pill>}
-            {city && <Pill onClear={() => setSearch({ city: undefined })} label={t("listing.clear")}>{t("listing.filterCity")}: {cityName(city)}</Pill>}
+            <Pill onClear={() => { setDraft(""); setSearch({ q: undefined }); }} label={t("listing.clear")}>
+              {t("listing.filterSearch")}: {q}
+            </Pill>
           </div>
         )}
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_15rem]">
-          <div className="min-w-0">
-            {rulings.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}
-              </div>
-            ) : total === 0 ? (
-              <p className="rounded-2xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
-                {t("listing.none")}
-              </p>
-            ) : (
-              <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} />
-            )}
-
-            {total > 0 && (
-              <Pager
-                page={page}
-                pages={pages}
-                total={total}
-                perPage={perPage}
-                onPage={(p) => navigate({ search: (o) => ({ ...o, page: p > 1 ? p : undefined }) })}
-                onSize={(n) => navigate({ search: (o) => ({ ...o, page: undefined, size: n }) })}
-              />
-            )}
-          </div>
-
-          {/* Cities are ours, not on the reference site: filtering by the court the
-              appeal came from is the question a lawyer actually asks. */}
-          <aside className="hidden lg:block">
-            <div className="rounded-2xl border bg-card p-3">
-              <h2 className="px-1 pb-2 text-sm font-semibold">{t("listing.city")}</h2>
-              <ul className="max-h-[28rem] space-y-0.5 overflow-auto pe-1">
-                <li>
-                  <FilterRow active={!city} onClick={() => setSearch({ city: undefined })} label={t("listing.all")} />
-                </li>
-                {(cities.data ?? []).map((c) => (
-                  <li key={c.city}>
-                    <FilterRow
-                      active={city === c.city}
-                      onClick={() => setSearch({ city: c.city })}
-                      label={cityName(c.city)}
-                      count={num(c.count)}
-                    />
-                  </li>
-                ))}
-              </ul>
+        <div className="mt-4">
+        <div className="min-w-0">
+          {rulings.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}
             </div>
-          </aside>
+          ) : total === 0 ? (
+            <p className="rounded-2xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
+              {t("listing.none")}
+            </p>
+          ) : (
+            <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} q={q} />
+          )}
+
+          {total > 0 && (
+            <Pager
+              page={page}
+              pages={pages}
+              total={total}
+              perPage={perPage}
+              onPage={(p) => navigate({ search: (o) => ({ ...o, page: p > 1 ? p : undefined }) })}
+              onSize={(n) => navigate({ search: (o) => ({ ...o, page: undefined, size: n }) })}
+            />
+          )}
+        </div>
         </div>
       </div>
     </AppShell>
   );
 }
 
-function RulingTable({ rows, chamber }: { rows: ListingRow[]; chamber: string }) {
+function RulingTable({ rows, chamber, q }: { rows: ListingRow[]; chamber: string; q?: string | undefined }) {
   const { t, num, chamber: chamberName, city: cityName } = useI18n();
   const style = chamberStyle(chamber);
   return (
     <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] border-collapse text-sm">
+        <table className="w-full min-w-[48rem] border-collapse text-sm">
           <thead>
             <tr className="text-white">
-              <Th className="bg-rose-600">{t("col.number")}</Th>
-              <Th className="bg-violet-600">{t("col.date")}</Th>
-              <Th className="bg-teal-600">{t("col.city")}</Th>
-              <Th className="bg-amber-600">{t("col.chamber")}</Th>
+              <Th className="bg-sky-700 whitespace-nowrap">{t("col.fileNo")}</Th>
+              <Th className="bg-rose-600 whitespace-nowrap">{t("col.number")}</Th>
+              <Th className="bg-violet-600 whitespace-nowrap">{t("col.date")}</Th>
+              <Th className="bg-emerald-700">{t("col.keys")}</Th>
+              <Th className="bg-teal-600 whitespace-nowrap">{t("col.city")}</Th>
+              <Th className="bg-amber-600 whitespace-nowrap">{t("col.chamber")}</Th>
               <th className="w-10 bg-slate-700" aria-label={t("listing.open")} />
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.doc_id} className={`border-t transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}>
-                <td className="px-3 py-2.5 font-semibold tabular-nums">{r.decision_no ? num(r.decision_no) : "—"}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.date ? num(r.date) : "—"}</td>
-                <td className="px-3 py-2.5">{r.city ? cityName(r.city) : <span className="text-muted-foreground">—</span>}</td>
-                <td className={`px-3 py-2.5 ${chamberStyle(r.chamber).text}`}>{chamberName(r.chamber)}</td>
+              <tr key={r.doc_id} className={`border-t align-top transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap"><FileNumber value={r.file_no} /></td>
+                <td className="px-3 py-2.5 font-semibold tabular-nums whitespace-nowrap">{r.decision_no ? num(r.decision_no) : "—"}</td>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap">{r.date ? num(r.date) : "—"}</td>
+                <td className="max-w-xl px-3 py-2.5"><KeysCell row={r} q={q} /></td>
+                <td className="px-3 py-2.5 whitespace-nowrap">{r.city ? cityName(r.city) : <span className="text-muted-foreground">—</span>}</td>
+                <td className={`px-3 py-2.5 whitespace-nowrap ${chamberStyle(r.chamber).text}`}>{chamberName(r.chamber)}</td>
                 <td className="px-2 py-2.5">
                   <Link
                     to="/ruling/$docId"
@@ -221,24 +237,68 @@ function RulingTable({ rows, chamber }: { rows: ListingRow[]; chamber: string })
   );
 }
 
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2.5 text-start text-xs font-semibold ${className}`}>{children}</th>;
+/** What the ruling is about, in the one column the portal gives it.
+ *
+ *  Whichever of the three the ruling offers: the court's keyword chain and its rule,
+ *  or - for the rulings that print neither - a subject and a summary written for us,
+ *  marked as such. Rows with nothing at all say so rather than sitting empty, which
+ *  would read as a page that failed to load.
+ */
+function KeysCell({ row, q }: { row: ListingRow; q?: string | undefined }) {
+  const { t } = useI18n();
+  const heading = row.keywords || row.theme;
+  const summary = row.rule || row.abstract;
+  const fromCourt = Boolean(row.rule);
+  if (!heading && !summary) {
+    return <span className="text-xs text-muted-foreground">{t("listing.noTheme")}</span>;
+  }
+  return (
+    <div className="space-y-1 leading-relaxed">
+      {heading && (
+        <p className="font-medium">
+          <Highlight text={heading} q={q} />
+          {/* one badge for the cell: on the heading only when no summary carries it */}
+          {!summary && row.theme_source === "model" && <Source court={false} />}
+        </p>
+      )}
+      {summary && (
+        <>
+          <p className="line-clamp-3 text-xs text-muted-foreground">
+            <Highlight text={summary} q={q} />
+          </p>
+          {/* outside the clamp on purpose: inside it, a long summary pushed the badge
+              past the cut and a machine-written one would read as the court's */}
+          {!fromCourt && <Source court={false} />}
+        </>
+      )}
+    </div>
+  );
 }
 
-function Chip({ active, onClick, children }: {
-  active?: boolean; onClick: () => void; children: React.ReactNode;
-}) {
+/** Marks what the reader searched for, the way the court portal does. Matching is on
+ *  the raw text rather than the normalised form the server searches with, so a word
+ *  written with different Arabic spellings may match a row without being marked in
+ *  it: a missing highlight is better than one sitting on the wrong letters. */
+function Highlight({ text, q }: { text: string; q?: string | undefined }) {
+  const needle = (q ?? "").trim();
+  if (needle.length < 2 || !text.includes(needle)) return <>{text}</>;
+  const parts = text.split(needle);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-        active ? "border-transparent bg-primary text-primary-foreground" : "hover:bg-accent"
-      }`}
-    >
-      {children}
-    </button>
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {part}
+          {i < parts.length - 1 && (
+            <mark className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-500/40">{needle}</mark>
+          )}
+        </Fragment>
+      ))}
+    </>
   );
+}
+
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-3 py-2.5 text-start text-xs font-semibold ${className}`}>{children}</th>;
 }
 
 function Pill({ children, onClear, label }: {
@@ -251,23 +311,6 @@ function Pill({ children, onClear, label }: {
         <X className="size-3" aria-hidden />
       </button>
     </span>
-  );
-}
-
-function FilterRow({ active, onClick, label, count }: {
-  active?: boolean; onClick: () => void; label: string; count?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "hover:bg-accent"
-      }`}
-    >
-      <span>{label}</span>
-      {count !== undefined && <span className="text-xs opacity-70">{count}</span>}
-    </button>
   );
 }
 

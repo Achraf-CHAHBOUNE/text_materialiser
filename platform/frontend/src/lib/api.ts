@@ -47,6 +47,12 @@ export type Decision = {
   state: PubState;
   file_name: string;
   updated_at: string;
+  // the court's own headnote, empty when the ruling prints none
+  theme?: string;
+  keywords?: string;
+  rule?: string;
+  theme_source?: string;
+  abstract?: string;
   body_text?: string;
   snippets?: string[];
   reasons?: string[];
@@ -202,7 +208,20 @@ export type ListingRow = {
   court: string;
   year: string;
   case_id: string;
+  file_no: string;
+  // What the court printed above the ruling, and what the Cassation portal shows in
+  // its "المفاتيح أو القاعدة أو المحتوى" column: the subject chain, and the rule.
+  // Empty for the roughly half of rulings that print no headnote.
+  theme: string;
+  theme_key: string;
+  keywords: string;
+  rule: string;      // an opening excerpt, cut server-side
+  // "court" when the subject was printed on the ruling, "model" when it was written
+  // for us. `rule` is only ever the court's; `abstract` is only ever ours.
+  theme_source: string;
+  abstract: string;
 };
+export type ThemeCount = { key: string; label: string; count: number };
 
 export const browseCourts = () => j<CourtNode[]>("/api/browse/courts");
 
@@ -212,15 +231,20 @@ export const browseYears = (chamber = "") =>
 export const browseCities = (chamber = "") =>
   j<CityCount[]>(`/api/browse/cities?chamber=${encodeURIComponent(chamber)}`);
 
+export const browseThemes = (chamber = "") =>
+  j<ThemeCount[]>(`/api/browse/themes?chamber=${encodeURIComponent(chamber)}`);
+
 export function browseRulings(p: {
   chamber?: string | undefined; year?: string | undefined;
   city?: string | undefined; q?: string | undefined;
+  theme?: string | undefined;
   limit?: number; offset?: number;
 } = {}) {
   const q = new URLSearchParams();
   if (p.chamber) q.set("chamber", p.chamber);
   if (p.year) q.set("year", p.year);
   if (p.city) q.set("city", p.city);
+  if (p.theme) q.set("theme", p.theme);
   if (p.q) q.set("q", p.q);
   q.set("limit", String(p.limit ?? 50));
   q.set("offset", String(p.offset ?? 0));

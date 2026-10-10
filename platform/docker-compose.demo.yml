@@ -21,6 +21,8 @@ services:
       SEED_CLIENT_EMAIL: client@demo.local
       SEED_CLIENT_PASSWORD: ${DEMO_CLIENT_PASSWORD:-demo-client}
       ALLOW_ORIGINS: "*"
+      # The French translation button. Without a key the button simply says so.
+      TRANSLATE_API_KEY: ${TRANSLATE_API_KEY-}
       AUTO_PUBLISH: "1"
     # Load the demo pack, then serve. Importing again on restart changes nothing,
     # and a ruling corrected in the demo is left as corrected.
@@ -29,6 +31,7 @@ services:
              uvicorn server:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./demo-pack:/demo:ro
+      - ../results:/results:ro      # the full delivery, for importing everything
       - demo-data:/data
     ports:
       - "8000:8000"          # direct API, handy locally; not needed once proxied

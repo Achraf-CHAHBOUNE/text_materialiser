@@ -30,6 +30,7 @@ import auth as authmod
 import db
 import docedit
 import piigate
+import textextract
 import textnorm
 import translate
 from filestore import get_filestore
@@ -163,16 +164,9 @@ def health() -> dict:
 
 
 # ---------------- text extraction ----------------
-def _extract_text(name: str, data: bytes) -> str:
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    if ext == "docx":
-        from docx import Document
-        return "\n".join(p.text for p in Document(io.BytesIO(data)).paragraphs)
-    if ext == "pdf":
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(data))
-        return "\n".join((pg.extract_text() or "") for pg in reader.pages)
-    return data.decode("utf-8", "ignore")
+# Lives in textextract.py so an import worker can use it in its own process
+# without loading this whole application.
+_extract_text = textextract.extract
 
 
 # ---------------- admin: integration / import ----------------
@@ -725,14 +719,26 @@ def browse_cities(chamber: str = "", _: dict = Depends(current_user)) -> list:
     return db.browse_cities(chamber)
 
 
+@app.get("/api/browse/themes")
+def browse_themes(chamber: str = "", _: dict = Depends(current_user)) -> list:
+    """The subjects rulings are filed under, with counts.
+
+    These are the court's own words, taken from the headnote each ruling prints. The
+    Cassation portal publishes no list of subjects to classify against -- its search
+    offers a free-text box over the same line -- so there is no official vocabulary
+    this could be checked against, and roughly half the corpus prints no subject.
+    """
+    return db.browse_themes(chamber)
+
+
 @app.get("/api/browse/rulings")
-def browse_rulings(chamber: str = "", year: str = "", city: str = "",
+def browse_rulings(chamber: str = "", year: str = "", city: str = "", theme: str = "",
                    q: str = Query(""), limit: int = 50, offset: int = 0,
                    user: dict = Depends(current_user)) -> dict:
-    """One page of the listing: number, date, city, chamber -- and the total."""
+    """One page of the listing: number, date, city, chamber, subject -- and the total."""
     if q.strip():
         db.log_activity(user["email"], "search", q[:80])
-    return db.browse_rulings(chamber=chamber, year=year, city=city, q=q,
+    return db.browse_rulings(chamber=chamber, year=year, city=city, theme=theme, q=q,
                              limit=min(limit, 200), offset=offset)
 
 

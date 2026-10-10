@@ -10,21 +10,31 @@ the HTTP import:
   - re-importing the same ruling updates it instead of duplicating it;
   - a ruling edited by hand on the site is left exactly as edited.
 
+Reading 29,384 Word files is the slow part, and it is pure CPU: each one is a zip
+holding XML. So the reading is spread over worker processes while the main process
+writes to the database in batches. One thread doing everything managed about 25
+rulings a second; this does several times that.
+
     python import_results.py ../../results            # import and publish
     python import_results.py ../../results --no-publish
+    python import_results.py ../../results --workers 4
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import db
+import headnotes
 import piigate
-from filestore import get_filestore
-from server import _extract_text
+import textextract
+from filestore import LocalFileStore, get_filestore
 
 STORE = get_filestore()
 
@@ -52,12 +62,53 @@ def _row(rec: dict) -> dict:
     }
 
 
-def import_folder(results: Path, publish: bool, actor: str) -> dict:
+def _headnote_fields(note) -> dict:
+    """The court's own subject line, as four columns.
+
+    `keywords` is the chain written back the way the court writes it, dashes and all,
+    because that is what the portal shows and what a reader recognises. A ruling that
+    printed no headnote gets empty strings, not a guess.
+    """
+    if not note:
+        return {"theme": "", "theme_key": "", "keywords": "", "rule": ""}
+    chain = [note.theme, *note.sub] + ([note.qualifier] if note.qualifier else [])
+    return {"theme": note.theme, "theme_key": headnotes.normalise(note.theme),
+            "keywords": " - ".join(chain), "rule": note.rule}
+
+
+def read_and_check(job: tuple) -> tuple:
+    """In a worker process: read the file, pull out its text, run the PII gate, and
+    take the headnote the court printed on it.
+
+    Returns (doc_id, text, headnote, clean, error). Only text travels back, never the
+    file: the main process copies that from disk, which costs nothing. Reading the
+    headnote here rather than later costs nothing either -- the text is already in hand
+    and the worker is the process with time to spare.
+    """
+    doc_id, path, name = job
+    try:
+        text = textextract.extract(name, Path(path).read_bytes())
+    except Exception as e:                       # a damaged file must not stop the run
+        return doc_id, "", None, False, f"{type(e).__name__}: {e}"
+    return doc_id, text, headnotes.read(text), not piigate.scan(text), None
+
+
+def _store(name: str, path: Path) -> None:
+    """Put the file in the store, copying rather than reading it into memory."""
+    if isinstance(STORE, LocalFileStore):
+        STORE.base.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, STORE.base / name)
+    else:
+        STORE.put(name, path.read_bytes())
+
+
+def import_folder(results: Path, publish: bool, actor: str, workers: int = 0) -> dict:
     records = json.loads((results / "records.json").read_text(encoding="utf-8"))
     counts = {"imported": 0, "updated": 0, "held_by_pipeline": 0, "no_file": 0,
-              "gate_quarantined": 0, "kept_edited": 0}
-    started = time.time()
-    for i, rec in enumerate(records, 1):
+              "gate_quarantined": 0, "kept_edited": 0, "unreadable": 0, "with_theme": 0}
+
+    jobs, keep = [], {}
+    for rec in records:
         if rec.get("quarantined") or rec.get("status") != "done":
             counts["held_by_pipeline"] += 1
             continue
@@ -66,25 +117,47 @@ def import_folder(results: Path, publish: bool, actor: str) -> dict:
         if not path.exists():
             counts["no_file"] += 1
             continue
-        data = path.read_bytes()
-        text = _extract_text(name, data)
-        if piigate.scan(text):          # same gate as the HTTP import
-            counts["gate_quarantined"] += 1
-            continue
-        existed = db.get_decision(rec["doc_id"]) is not None
-        if not db.upsert_decision(_row(rec), body_text=text, file_name=name):
-            counts["kept_edited"] += 1       # edited by hand on the site: left as edited
-            continue
-        db.set_links(rec["doc_id"], rec.get("links", []))
-        STORE.put(name, data)
-        if publish:
-            db.set_decision_state(rec["doc_id"], "published", actor)
-        counts["updated" if existed else "imported"] += 1
-        if i % 500 == 0:
-            rate = i / max(1e-9, time.time() - started)
-            print(f"  {i:,}/{len(records):,}  ({rate:.0f}/s)", flush=True)
+        jobs.append((rec["doc_id"], str(path), name))
+        keep[rec["doc_id"]] = (rec, name, path)
+
+    workers = workers or min(8, (os.cpu_count() or 4))
+    started, done = time.time(), 0
+    pending: list = []
+
+    def flush() -> None:
+        if not pending:
+            return
+        got = db.upsert_many(pending, publish=publish)
+        for k, v in got.items():
+            counts[k] = counts.get(k, 0) + v
+        pending.clear()
+
+    print(f"  reading {len(jobs):,} files with {workers} workers", flush=True)
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        for doc_id, text, note, clean, err in pool.map(read_and_check, jobs, chunksize=16):
+            done += 1
+            rec, name, path = keep[doc_id]
+            if err:
+                counts["unreadable"] += 1
+            elif not clean:                       # the gate: same rule as the HTTP import
+                counts["gate_quarantined"] += 1
+            else:
+                row = _row(rec)
+                row.update(_headnote_fields(note))
+                if note:
+                    counts["with_theme"] += 1
+                pending.append((row, text, name, rec.get("links") or []))
+                _store(name, path)
+            if len(pending) >= 400:
+                flush()
+            if done % 2000 == 0:
+                rate = done / max(1e-9, time.time() - started)
+                print(f"  {done:,}/{len(jobs):,}  ({rate:.0f}/s)", flush=True)
+    flush()
+
     db.add_audit(actor, "import", "folder", str(results),
                  new=", ".join(f"{k}={v}" for k, v in counts.items()))
+    counts["seconds"] = round(time.time() - started, 1)
     return counts
 
 
@@ -93,6 +166,7 @@ def main() -> int:
     ap.add_argument("results", help="the results folder (with records.json)")
     ap.add_argument("--no-publish", action="store_true", help="import for review instead")
     ap.add_argument("--actor", default="import-script", help="who to record in the audit log")
+    ap.add_argument("--workers", type=int, default=0, help="readers (default: cores, max 8)")
     args = ap.parse_args()
 
     results = Path(args.results)
@@ -100,7 +174,8 @@ def main() -> int:
         print(f"No records.json in {results}", file=sys.stderr)
         return 2
     db.init_db()
-    counts = import_folder(results, publish=not args.no_publish, actor=args.actor)
+    counts = import_folder(results, publish=not args.no_publish, actor=args.actor,
+                           workers=args.workers)
     print(json.dumps(counts, ensure_ascii=False, indent=2))
     print(json.dumps(db.counts(), ensure_ascii=False, indent=2))
     return 0

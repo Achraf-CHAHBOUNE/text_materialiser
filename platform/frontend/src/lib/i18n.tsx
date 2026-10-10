@@ -118,9 +118,38 @@ const STRINGS = {
   "col.date": { ar: "تاريخ القرار", fr: "Date de l'arrêt" },
   "col.city": { ar: "المدينة", fr: "Ville" },
   "col.chamber": { ar: "الغرفة", fr: "Chambre" },
+  // The Cassation portal heads this column "المفاتيح أو القاعدة أو المحتوى": whichever
+  // of the three the ruling offers is what gets shown.
+  "col.keys": { ar: "المفاتيح أو القاعدة أو المحتوى", fr: "Mots-clés, principe ou contenu" },
+  "listing.allThemes": { ar: "كل المواضيع", fr: "Tous les sujets" },
+  "listing.noMatch": { ar: "لا يوجد ما يطابق البحث", fr: "Aucun résultat" },
+  "listing.findTheme": { ar: "ابحث عن موضوع...", fr: "Chercher un sujet..." },
+  "listing.findCity": { ar: "ابحث عن مدينة...", fr: "Chercher une ville..." },
+  "listing.findYear": { ar: "ابحث عن سنة...", fr: "Chercher une année..." },
+  "listing.theme": { ar: "الموضوع", fr: "Sujet" },
+  "listing.filterTheme": { ar: "الموضوع", fr: "Sujet" },
+  "listing.noTheme": { ar: "بدون موضوع مدون", fr: "Aucun sujet imprimé" },
+  "listing.themeNote": {
+    ar: "المواضيع مأخوذة من الكلمات التي دونتها المحكمة على القرار نفسه.",
+    fr: "Les sujets proviennent des mots que la Cour a imprimés sur l'arrêt lui-même.",
+  },
   "col.fileNo": { ar: "رقم الملف", fr: "N° du dossier" },
 
   // ruling page
+  "ruling.headnote": { ar: "موضوع القرار وقاعدته", fr: "Sujet et principe de l'arrêt" },
+  "ruling.keywords": { ar: "المفاتيح", fr: "Mots-clés" },
+  "ruling.rule": { ar: "القاعدة", fr: "Principe" },
+  "ruling.abstract": { ar: "ملخص", fr: "Résumé" },
+  "source.court": { ar: "من نص القرار", fr: "Tiré de l'arrêt" },
+  "source.model": { ar: "تحرير آلي", fr: "Rédigé automatiquement" },
+  "ruling.abstractNote": {
+    ar: "هذا الملخص والموضوع حُرّرا آليًا انطلاقًا من نص القرار، ولم تدوّنهما المحكمة.",
+    fr: "Ce résumé et ce sujet ont été rédigés automatiquement à partir de l'arrêt; ils ne figurent pas sur celui-ci.",
+  },
+  "ruling.headnoteNote": {
+    ar: "هذه الكلمات والقاعدة مدونة في القرار نفسه كما حررتها المحكمة.",
+    fr: "Ces mots-clés et ce principe figurent sur l'arrêt, tels que rédigés par la Cour.",
+  },
   "ruling.download": { ar: "تحميل الملف", fr: "Télécharger" },
   "ruling.print": { ar: "طباعة", fr: "Imprimer" },
   "ruling.noText": { ar: "لا يوجد نص متاح.", fr: "Texte non disponible." },

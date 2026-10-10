@@ -1,15 +1,20 @@
 # The platform on a server that is busy with something else.
 #
-# Every service is pinned to cores 8-11 and capped in memory, so the site cannot
-# take CPU from whatever else the machine is doing. Images are built beforehand
-# (also pinned), so no build runs here.
+# Every service is capped in CPU and memory, so the site cannot crowd out whatever
+# else the machine is doing. A share is used rather than named cores: when another
+# job deliberately runs on 11 of 12 cores, we must not claim specific ones.
+# Images are built beforehand, so no build runs here.
 #
 #   docker compose -p tok -f docker-compose.vps.yml up -d
 #   docker compose -p tok -f docker-compose.vps.yml down     # only this project
 services:
   postgres:
     image: postgres:16-alpine
-    cpuset: "8-9"
+    # The database does the heavy work on this site -- a search reads and decompresses
+    # thousands of rulings -- so starving it at half a core while the API got a whole
+    # one had it backwards. Two of twelve is still a small share of a machine whose
+    # other job runs on about five.
+    cpus: "2.0"
     mem_limit: 4g
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-anon}
@@ -26,7 +31,7 @@ services:
 
   backend:
     image: tok-backend:latest
-    cpuset: "10-11"
+    cpus: "1.0"
     mem_limit: 4g
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anon}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-anonymize}
@@ -36,6 +41,9 @@ services:
       SEED_EMAIL: ${SEED_EMAIL:-}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       ALLOW_ORIGINS: ${SITE_URL:-*}
+      # The French translation button; without it the button says it is unavailable.
+      TRANSLATE_API_KEY: ${TRANSLATE_API_KEY-}
+      TRANSLATE_MODEL: ${TRANSLATE_MODEL:-gemini-2.5-flash-lite}
       AUTO_PUBLISH: "1"
     volumes:
       - documents:/documents
@@ -47,7 +55,7 @@ services:
 
   frontend:
     image: tok-frontend:latest
-    cpuset: "10-11"
+    cpus: "1.0"
     mem_limit: 2g
     depends_on:
       - backend
@@ -55,7 +63,7 @@ services:
 
   proxy:
     image: caddy:2-alpine
-    cpuset: "8-9"
+    cpus: "0.5"
     mem_limit: 1g
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}

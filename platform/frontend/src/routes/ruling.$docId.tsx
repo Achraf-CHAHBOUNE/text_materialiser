@@ -1,10 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRight, Download, Flag, PencilLine, Printer, SquarePen } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { DetailsForm } from "@/components/ruling/DetailsForm";
+import { FileNumber } from "@/components/FileNumber";
+import { Headnote } from "@/components/ruling/Headnote";
 import { HideAllDialog, ReportDialog, TextEditorDialog } from "@/components/ruling/EditDialogs";
 import { HistoryPanel } from "@/components/ruling/HistoryPanel";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
@@ -91,9 +93,11 @@ function RulingPage() {
                   <Field label={t("col.number")} value={d.decision_no ? num(d.decision_no) : ""} />
                   <Field label={t("col.date")} value={d.date ? num(d.date) : ""} />
                   <Field label={t("col.city")} value={d.city ? cityName(d.city) : ""} />
-                  <Field label={t("col.fileNo")} value={d.file_no ? num(d.file_no) : ""} />
+                  <Field label={t("col.fileNo")} value={<FileNumber value={d.file_no} />} />
                 </dl>
               )}
+
+              <Headnote d={d} />
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button asChild size="sm">
@@ -168,7 +172,7 @@ function RulingPage() {
   );
 }
 
-function Field({ label, value }: { label: string; value?: string }) {
+function Field({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div className="rounded-xl border bg-card px-3 py-2">
       <dt className="text-xs text-muted-foreground">{label}</dt>
