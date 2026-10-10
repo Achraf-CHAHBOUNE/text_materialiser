@@ -117,6 +117,7 @@ pipeline you intend to re-run. The flag exists so this is your choice, not a loc
 | `backfill_themes.py` | re-derive subject, rule and outcome from text already stored, after the parser improves. Never overwrites a model-written subject. |
 | `classify_rulings.py` | the model step alone, if you want to run it separately |
 | `reconcile_proposals.py` | fold proposed subjects back in where they were ours all along under a different spelling (`دعوى إفراغ` → `دعوى الإفراغ`) |
+| `approve_subjects.py` | rule on the subjects a model suggested, and file the rulings under what you approve |
 | `sync_enrichment.py` | carry the derived fields to another copy of the database instead of paying to compute them twice |
 | `migrate_search_tsv.py` | one-time: add the word-search column to a database already serving |
 | `backup.sh` · `restore.sh` | the database and the documents |
@@ -125,16 +126,37 @@ pipeline you intend to re-run. The flag exists so this is your choice, not a loc
 
 ## Approving proposed subjects
 
-A model that cannot find a fitting subject proposes one. Those are **not** adopted:
+A model that cannot find a fitting subject proposes one. Those are **never** adopted —
+the ruling keeps its summary and gets no subject until a person rules on it. A legal
+taxonomy is not something a model gets to extend on its own.
 
-```
-data/proposed_subjects.json
-  [{ "doc_id": "...", "chamber": "جنائية", "proposed": "تسليم المجرمين" }]
+```bash
+python approve_subjects.py review     # writes data/subject_review.json
+#   ...open it, set "approve" to true or false, and rename anything spelled badly...
+python approve_subjects.py apply      # files the rulings under what you approved
 ```
 
-Review them, then re-run `reconcile_proposals.py`. Anything genuinely new is yours to
-add to the vocabulary deliberately — which is the point: the taxonomy is the court's
-words plus what you approve, never what a model decided on its own.
+The review list is as short as it can honestly be: spellings of one another are merged
+under the commonest, anything the court already uses has been filed by
+`reconcile_proposals.py` and never appears, and what remains is sorted by how many
+rulings turn on it. 773 waiting rulings became 590 decisions, of which 12 cover 99
+rulings and the rest are long tail.
+
+Each entry is editable, which matters because the OCR is imperfect:
+
+```json
+{ "key": "...", "approve": true, "label": "واجبات الكراء",
+  "rulings": 22, "chambers": {"مدنية": 21, "تجارية": 1},
+  "also_spelled": ["وجبات الكراء"] }
+```
+
+That one is a real example: the model read `وجبات الكراء` — *meals*, not *dues* — off a
+scan, 22 times. Approving it under the correct spelling folded those rulings into the
+subject the court actually uses. Set `approve` to `false` and the rulings simply keep
+no subject, which is the honest outcome for a suggestion that is not a real category.
+
+`apply` never overwrites a subject a ruling already has, and leaves undecided ones
+waiting, so you can work through the list over several sittings.
 
 ---
 
