@@ -78,50 +78,79 @@ skipped, so running it again costs only what was left.
 
 ---
 
-## Options
+## Every option
 
-```bash
-python ingest.py ../../results --no-model      # free; nothing leaves this machine
-python ingest.py ../../results --dry-run       # read and count, write nothing
-python ingest.py ../../results --workers 6     # default: cores, capped at 8
-python ingest.py ../../results --no-publish    # import for review instead of live
-```
+### `ingest.py <results-folder>` — the one you want
 
-### Choosing a model
-
-```bash
-python ingest.py ../../results                                    # Gemini (default)
-python ingest.py ../../results --provider openrouter --model x-ai/grok-4.3
-```
-
-| provider | key | get one at |
+| flag | default | what it does |
 |---|---|---|
-| `gemini` *(default)* | `GEMINI_API_KEY` or `TRANSLATE_API_KEY` | aistudio.google.com |
-| `openrouter` | `OPENROUTER_API_KEY` | openrouter.ai/keys |
-| `opencode` | `OPENCODE_API_KEY` | opencode.ai/auth |
+| `--no-model` | off | skip step 2. Free, and nothing leaves the machine. |
+| `--no-publish` | off | import for review instead of publishing straight away |
+| `--provider` | `gemini` | `gemini` · `openrouter` · `opencode` |
+| `--model` | the provider's | override the model id |
+| `--workers` | cores, max 8 | reader processes for step 1 |
+| `--batch` | 400 | rulings per database commit |
+| `--actor` | `ingest` | name recorded in the audit log |
+| `--dry-run` | off | read and count, write nothing |
+
+### `classify_rulings.py` — step 2 on its own
+
+Same `--provider` / `--model` / `--workers` / `--batch` / `--dry-run`, plus:
+
+| flag | default | what it does |
+|---|---|---|
+| `--limit` | all | stop after this many rulings |
+| `--vocab` | 60 | how many of a chamber's subjects are offered to the model |
+
+### The rest
+
+| script | flags |
+|---|---|
+| `backfill_themes.py` | `--all` re-read every ruling · `--dry-run` · `--batch` |
+| `approve_subjects.py` | `review` or `apply` |
+| `reconcile_proposals.py` | `--dry-run` |
+| `sync_enrichment.py` | `export <file>` or `apply <file>` |
+| `migrate_search_tsv.py` | `--batch` |
+
+---
+
+## Choosing a model
+
+Every setting lives in **`platform/.env`** — copy `platform/.env.example`, which
+documents all 27 fields with their defaults. The scripts read it automatically; inside
+Docker, compose's environment wins instead.
+
+| provider | key | get one at | notes |
+|---|---|---|---|
+| `gemini` *(default)* | `GEMINI_API_KEY` | aistudio.google.com | measured: 16,585 rulings, 8 failures, **$4.85**, 35 min |
+| `openrouter` | `OPENROUTER_API_KEY` | openrouter.ai/keys | ~1.8× the price of calling Gemini directly |
+| `opencode` | `OPENCODE_API_KEY` | opencode.ai/auth | 87 models; needs credit on the account |
 
 ```bash
-python ingest.py ../../results --provider opencode --model gemini-3.8-flash
+python ingest.py ../../results                                     # Gemini
+python ingest.py ../../results --provider opencode --model gemini-3.5-flash-lite
+python ingest.py ../../results --no-model                          # no model at all
 ```
 
-**On OpenCode's free models.** Its catalogue includes `space-bunny-free` and eleven
-others ending in `-free`. They cannot be used from here: calling one returns
+**Gemini is the default on evidence, not preference.** It is the only one measured on
+this corpus, and these are court rulings, so a provider you can name and hold to terms
+matters more than a few cents.
+
+### OpenCode's free models cannot be used here
+
+`space-bunny-free` and eleven other `-free` ids answer, with a valid key:
 
 ```
 403  OpenCode's free tier can only be used from within OpenCode
 ```
 
-They are reserved for the OpenCode terminal app, and an API key does not change that.
-The run recognises that answer by name, stops after the first batch and says so,
-rather than retrying a wall 16,585 times. Paid model ids work normally.
+They are reserved for the OpenCode terminal app. A key does not change it — tested.
+The way to tell this apart from a billing problem: a **paid** id on an account with no
+credit answers `402 Insufficient account funds`, and a bad key answers `401`. Three
+different errors, three different causes.
 
-**Gemini 2.5 Flash-Lite is the default, deliberately.** It is the only model measured
-on this corpus — 16,585 rulings, 8 failed calls, **$4.85**, 35 minutes — and it comes
-from a provider you can name and hold to terms. That last point is not a detail: these
-are court rulings. Anonymous or "stealth" models are cheaper to reach for and
-impossible to audit; you cannot check where the data goes, how long it is kept, or
-whether it trains someone's model, and they disappear without notice, which breaks a
-pipeline you intend to re-run. The flag exists so this is your choice, not a lock-in.
+A run that hits the 403 stops after the first batch and says so, rather than sending
+the same refused request 16,585 times.
 
 ---
 
