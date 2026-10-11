@@ -176,3 +176,24 @@ def test_a_fragment_left_by_a_cut_bracket_is_not_a_subject():
     # a balanced one is how the court writes its verdict, and stays
     assert headnotes.is_subject("اعتماد الفصل 99 من المدونة (نعم)")
     assert headnotes.is_subject("واجب التمدرس")
+
+
+def test_an_article_number_inside_the_headnote_is_not_mistaken_for_the_file_number():
+    """Cutting at "the last number near the start" swallowed the subject whenever the
+    headnote cited a statute: here the 37 of الفصل 37 won over the file number and
+    everything before it went with it."""
+    h = headnotes.read(
+        "محكمة النقض\nالقرار رقم 536\n"
+        "المؤرخ في 10 يونيو 2010 ملف إجتماعي رقم 2009/1/5/974 "
+        "تبليغ – شهادة التسليم - صفة من قام بالتبليغ . بمقتضى الفصل 37 من ق.م.م.")
+    assert h.theme == "تبليغ"
+    assert "شهادة التسليم" in h.sub
+
+
+def test_the_older_rulings_write_the_file_word_without_its_article():
+    """187 rulings print "ملف شرعي عدد" and were skipped for want of the two letters."""
+    h = headnotes.read(
+        "محكمة النقض\nالقرار عدد 987\n"
+        "الصادر بتاريخ 2000/10/18 98/1/2/321 ملف شرعي عدد "
+        "التطليق للضرر – اعتماده على العنف والإهانة (نعم). القرار المنتقد في غير محله.")
+    assert h is not None and h.theme == "التطليق للضرر"

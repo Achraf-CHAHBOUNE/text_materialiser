@@ -38,8 +38,11 @@ import re
 from typing import NamedTuple
 
 AR = r"؀-ۿ"
-# the OCR reads الملف as المحلف or الملقف often enough to be worth naming
-FILE_WORD = r"(?:الملف|المحلف|الملقف)"
+# The older rulings write "ملف شرعي عدد" with no article, and the OCR reads الملف as
+# المحلف or الملقف often enough to be worth naming. 187 rulings printed a headnote
+# that was skipped for want of the two letters ال, and were sent to a model instead --
+# which on at least one of them reversed what the court had held.
+FILE_WORD = r"(?:ال)?(?:ملف|محلف|ملقف)"
 FILE_PHRASE = re.compile(rf"(?:في\s+)?{FILE_WORD}\s*[{AR}]*\s*(?:رقم|عدد|عـدد)?\s*[:\s]*")
 NUMS = re.compile(r"\d[\d\s/\-.]*\d|\d")
 DASH = re.compile(r"\s*[-–—]\s*|\s+[-–—]|[-–—]\s+")
@@ -153,26 +156,53 @@ def read(text: str) -> Headnote | None:
         line = MARKS.sub("", raw)
         if not re.search(FILE_WORD, line) or JUNK.match(line):
             continue
-        rest = FILE_PHRASE.sub(" ", line, count=1)
-        # cut the date and file number: everything up to the last number near the start
+        phrase = FILE_PHRASE.search(line)
+        if not phrase:
+            continue
+        # Cut off the date and the file number, and nothing else. Two ways of finding
+        # where they end, because neither alone is right often enough.
+        #
+        # By position: the number follows the phrase, or precedes it when the PDF lost
+        # right-to-left order. Exact when the number sits where it should.
+        #
+        # By search: the last number group starting near the head of the line. Wrong
+        # when the headnote itself cites an article -- "الفصل 37 من ق." -- because that
+        # number wins and the subject is cut away with it. Right when the file number
+        # is separated from the phrase by words, which the positional rule mishandles.
+        #
+        # Positional first, then the other if it yielded nothing usable. Measured over
+        # the corpus: positional alone reads 1,581 headnotes the old rule missed and
+        # loses 1,044 it found; together they lose almost none.
+        candidates = []
+        start = phrase.end()
+        before = list(NUMS.finditer(line[:phrase.start()]))
+        if before:
+            start = max(start, before[-1].end())
+        positional = line[start:]
+        lead = len(positional) - len(positional.lstrip())
+        after = NUMS.match(positional.lstrip())
+        candidates.append(positional[lead + after.end():] if after else positional)
+
+        legacy = FILE_PHRASE.sub(" ", line, count=1)
         last = None
-        for m in NUMS.finditer(rest):
+        for m in NUMS.finditer(legacy):
             if m.start() > 110:
                 break
             last = m
-        if last:
-            rest = rest[last.end():]
-        rest = rest.strip(" .:،؛/")
-        if len(rest) < 8:
-            continue
-
-        chain, rule = _split_chain(rest)
-        terms = [_clean(p) for p in DASH.split(chain)]
-        terms = [t for t in terms if 3 <= len(t) <= 110 and t not in STOP]
-        # the petition paragraph often runs on from the headnote on the same line, so
-        # drop the terms that belong to it rather than throwing the whole line away
-        terms = [t for t in terms if not PETITION.search(t)]
-        if not terms:
+        candidates.append(legacy[last.end():] if last else legacy)
+        for rest in candidates:
+            rest = rest.strip(" .:،؛/")
+            if len(rest) < 8:
+                continue
+            chain, rule = _split_chain(rest)
+            terms = [_clean(p) for p in DASH.split(chain)]
+            terms = [t for t in terms if 3 <= len(t) <= 110 and t not in STOP]
+            # the petition paragraph often runs on from the headnote on the same line,
+            # so drop the terms that belong to it rather than drop the whole line
+            terms = [t for t in terms if not PETITION.search(t)]
+            if terms:
+                break
+        else:
             continue
 
         qualifier = terms[-1] if normalise(terms[-1]) in _QUAL_KEYS else ""
