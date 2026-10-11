@@ -1,67 +1,179 @@
 # Moroccan Court Decisions — Anonymization & Consultation
 
 Two **separate** products with a deliberate air-gap between them. Raw, PII-bearing
-documents are handled only by Project 1, on a secure machine. Only anonymized output
-ever crosses into Project 2.
+documents are handled only by the pipeline, on a secure machine. Only anonymized
+output ever crosses into the platform.
 
 ```
-   raw .doc/.docx/.pdf/images
+   raw .doc / .docx / .pdf / scans
               │
               ▼
    ┌───────────────────────┐
-   │  Project 1 — pipeline │   read · extract · classify · link · anonymize · leak-test
-   │  (CLI, containerized) │
+   │  1 — pipeline         │   read · extract · classify · link · anonymize · leak-test
+   │  CLI, containerized   │
    └──────────┬────────────┘
-              │  JSON / XLSX records  +  anonymized "safe" files   ← the ONLY hand-off
+              │  records.json / .xlsx  +  the anonymized files   ← the ONLY hand-off
               ▼
    ┌───────────────────────┐
-   │  Project 2 — platform │   import-gate · admin review/publish · client browse/search/view
-   │  (web app)            │
+   │  2 — platform         │   ingest-gate · review/publish · browse · search · edit
+   │  web app              │
    └───────────────────────┘
 ```
 
-## Folders
+> **The original, non-anonymized documents never enter the platform.** Not in storage,
+> not in a backup, not in a temporary folder.
 
-| Folder                | Project | Brief              | What it is |
-| --------------------- | ------- | ------------------ | ---------- |
-| [`pipeline/`](pipeline/)   | 1 | [`docs/Script.md`](docs/Script.md)         | Batch **CLI** that turns raw files into anonymized files + JSON/XLSX metadata. No web server. |
-| [`platform/`](platform/)   | 2 | [`docs/website_brief.md`](docs/website_brief.md) | **Web platform**: admin integration, client accounts, client space. Ingests only Project 1 output. |
-| `data/`                    | — | —                  | **All real data, never committed.** `corpus/` the client's raw folders (+ `archives/`), `work/` the pipeline's working state per folder and the shared `cases.db`, `old/` superseded hand-offs and backups. |
-| `results/`                 | — | —                  | **The one hand-off for the client**: every delivered ruling from every folder, rebuilt on each run. Never committed. |
+That is why these are two codebases, two containers, and one narrow, audited hand-off.
+`data/`, `results/` and `lastinput/` hold real names and are never committed.
 
-## Running
+---
+
+## Where it stands
+
+The full corpus has been processed and is being served.
+
+| | |
+|---|---|
+| input | 51,804 PDFs, of which 22,354 were byte-identical copies |
+| delivered | **29,384 rulings** · 7 chambers · 1964–2025 · 70 cities |
+| cost to anonymize | **$29.17**, all leak-tests passed |
+| on the platform | 29,383 published |
+| subject · summary · outcome | **97.3% · 87.8% · 76.5%** |
+| search within a chamber | **36–52 ms** over 29,383 rulings |
+
+---
+
+## 1 · The pipeline — turning raw files into safe ones
 
 Put a client folder in `data/corpus/`, then:
 
-```
-run.bat 01_civile                 # Windows — everything left to do
-./run.sh 01_civile --sample 200   # a random 200 first, as a test
+```bash
+run.bat 01_civile                  # Windows — everything left to do
+./run.sh 01_civile --sample 200    # a random 200 first, as a test
 ```
 
 It anonymizes that folder into `data/work/01_civile/`, then rebuilds `results/` from
-every folder processed so far. Stopping and rerunning is safe: finished rulings are
-skipped and nothing is paid for twice. Byte-identical copies of a ruling — within a
-folder or across folders — are processed once.
+every folder processed so far. Stopping and re-running is safe: finished rulings are
+skipped and nothing is paid for twice. Byte-identical copies — within a folder or
+across folders — are processed once.
 
-`results/` holds `listing.csv` (court, chamber, year, number, date, city — one row per
-ruling), `records.json` / `records.xlsx`, and `documents/<chamber>/`. Files the leak
-check held back stay in `data/work/<folder>/_quarantine/` and never reach `results/`.
+`results/` holds `listing.csv`, `records.json` / `.xlsx`, and `documents/<chamber>/`.
+Anything the leak check held back stays in `data/work/<folder>/_quarantine/` and never
+reaches `results/`.
 
-## The hard rule
+Details: [`pipeline/README.md`](pipeline/README.md) ·
+[`pipeline/docs/TECHNICAL_DESIGN.md`](pipeline/docs/TECHNICAL_DESIGN.md)
 
-> **The original, non-anonymized documents never enter the platform.** Not in storage,
-> not in a backup, not in a temporary folder. (`docs/website_brief.md` §4)
+---
 
-That is why these are two codebases, two containers, and one narrow, audited hand-off.
+## 2 · The platform — making them searchable
 
-## Status
+### Run it locally
 
-- **Project 1** — pipeline built & tested (150 tests): read/extract/classify/link/
-  anonymize, **leak-test release gate**, JSON/XLSX output, budget ceiling, idempotence,
-  evaluation harness, container + CI. Pending: full-corpus audit + live container smoke-test.
-  See [`pipeline/README.md`](pipeline/README.md) and [`pipeline/docs/TECHNICAL_DESIGN.md`](pipeline/docs/TECHNICAL_DESIGN.md).
-- **Project 2** — reworked to the ingest-only import-gate architecture & tested (10 tests):
-  import gate, publication workflow, audit trail, client CRUD, Arabic search, admin console
-  frontend. See [`platform/README.md`](platform/README.md).
+```bash
+cd platform
+./run-local.sh            # starts the API and the site, prints the address and login
+./run-local.sh stop
+```
 
-Both projects run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+### Load a delivery into it
+
+One command. A ruling is opened once and everything it carries is read at once:
+
+```bash
+cd platform/scripts
+python ingest.py ../../results
+python ingest.py ../../results --no-model     # free; nothing leaves the machine
+```
+
+| what it reads | from | coverage |
+|---|---|---|
+| text, Word file | the file, after the PII gate re-checks it | 100% |
+| chamber, numbers, date, city | the pipeline's `records.json` | 93–100% |
+| **الموضوع** subject · **المفاتيح** keywords | the headnote the court printed | 42.5% |
+| **القاعدة** the court's own rule | the sentence after it | 31.3% |
+| **المنطوق** outcome | the heading, or the closing after `لهذه الأسباب` | 76.5% |
+| **ملخص** summary | a model, **only** where the court printed none | 56.5% |
+
+More than half the corpus — most of the civil chamber — prints no headnote at all, so
+a model is asked for those. **What it writes is kept apart and labelled**: `rule` only
+ever holds the court's sentence, a model's goes to `abstract`, and the page says which
+in words — «من نص القرار» against «تحرير آلي» — not only in colour.
+
+A subject the model invents is **never** adopted. It waits for a person:
+
+```bash
+python approve_subjects.py review    # a short list, commonest first
+python approve_subjects.py apply
+```
+
+Full guide: [`platform/scripts/README.md`](platform/scripts/README.md)
+
+### Deploy it
+
+```bash
+# on the server, from /opt/tok/platform
+TRANSLATE_API_KEY=... ./deploy-vps.sh <hostname>
+```
+
+Builds the two images, starts Postgres, backend, frontend and Caddy under the compose
+project `tok`, and gets a TLS certificate. It never prunes, never removes an image it
+did not build, never restarts the Docker daemon — it is written to share a machine
+that is busy with someone else's work.
+
+Details: [`platform/README.md`](platform/README.md)
+
+---
+
+## Configuration
+
+Secrets go in `platform/.env` and `pipeline/.env`, both gitignored. Copy the
+`.env.example` beside each to start.
+
+```bash
+# platform/.env
+DATABASE_URL=postgresql+psycopg://…   # or DB_DIR=… for SQLite in development
+FILESTORE_DIR=…
+GEMINI_API_KEY=…                      # only for the model step of ingest
+OPENROUTER_API_KEY=…                  # only if --provider openrouter
+```
+
+In Docker the environment comes from compose instead and always wins.
+
+---
+
+## What the platform does
+
+- **browse** court → chamber → year → city, the way a court portal is read
+- **search** the full text in Arabic, tolerant of أ/ا, ي/ى, ة/ه, diacritics and digits
+- **filter** by subject, year and city, each a menu you can type into
+- **read** a ruling beside a French translation, generated on demand and cached
+- **edit** a ruling by hand — the Word file is edited too, with full version history;
+  removals publish straight away, additions wait for an admin
+- **export** every correction, and a full audit trail
+
+---
+
+## Tests
+
+```bash
+cd platform/backend && python -m pytest tests/ -q
+cd pipeline && python -m pytest -q
+```
+
+Both run in CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). The platform's
+suite covers the import gate, the publication workflow, hand editing, translation, the
+headnote parser, the outcome parser and the search query builder. Rules that matter are
+mutation-checked: the rule is deliberately broken to confirm a test fails.
+
+---
+
+## Layout
+
+| path | what it is |
+|---|---|
+| [`pipeline/`](pipeline/) | the CLI that anonymizes. Touches raw PII; never networked to the platform. |
+| [`platform/backend/`](platform/backend/) | FastAPI · SQLAlchemy · Postgres (SQLite in development) |
+| [`platform/frontend/`](platform/frontend/) | React · TanStack Router · Tailwind, right-to-left |
+| [`platform/scripts/`](platform/scripts/) | ingest, backfill, subject approval, backup, migrations |
+| `data/` · `results/` · `lastinput/` | **real data — never committed** |
