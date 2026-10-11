@@ -94,10 +94,26 @@ python ingest.py ../../results                                    # Gemini (defa
 python ingest.py ../../results --provider openrouter --model x-ai/grok-4.3
 ```
 
-| | |
-|---|---|
-| `--provider gemini` | needs `GEMINI_API_KEY` (or `TRANSLATE_API_KEY`) |
-| `--provider openrouter` | needs `OPENROUTER_API_KEY` |
+| provider | key | get one at |
+|---|---|---|
+| `gemini` *(default)* | `GEMINI_API_KEY` or `TRANSLATE_API_KEY` | aistudio.google.com |
+| `openrouter` | `OPENROUTER_API_KEY` | openrouter.ai/keys |
+| `opencode` | `OPENCODE_API_KEY` | opencode.ai/auth |
+
+```bash
+python ingest.py ../../results --provider opencode --model gemini-3.8-flash
+```
+
+**On OpenCode's free models.** Its catalogue includes `space-bunny-free` and eleven
+others ending in `-free`. They cannot be used from here: calling one returns
+
+```
+403  OpenCode's free tier can only be used from within OpenCode
+```
+
+They are reserved for the OpenCode terminal app, and an API key does not change that.
+The run recognises that answer by name, stops after the first batch and says so,
+rather than retrying a wall 16,585 times. Paid model ids work normally.
 
 **Gemini 2.5 Flash-Lite is the default, deliberately.** It is the only model measured
 on this corpus — 16,585 rulings, 8 failed calls, **$4.85**, 35 minutes — and it comes

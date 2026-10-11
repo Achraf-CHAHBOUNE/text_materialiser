@@ -47,22 +47,41 @@ import db  # noqa: E402
 import headnotes  # noqa: E402
 from sqlalchemy import and_, func, select  # noqa: E402
 
-# Two providers, one job. Gemini is the default because it is the one measured on this
-# corpus -- 16,585 rulings, 8 failures, $4.85 -- and because court rulings should go to
-# a provider you can name and hold to terms. OpenRouter is here so that is a choice
-# rather than a lock-in.
+# Three gateways, one job, two request shapes between them. `style` is what actually
+# differs: Gemini has its own, everyone else speaks OpenAI's.
+#
+# Gemini is the default because it is the one measured on this corpus -- 16,585
+# rulings, 8 failures, $4.85 -- and because court rulings should go to a provider you
+# can name and hold to terms.
 PROVIDERS = {
     "gemini": {
         "url": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         "model": "gemini-2.5-flash-lite",
         "env": ("TRANSLATE_API_KEY", "GEMINI_API_KEY"),
+        "style": "gemini",
     },
     "openrouter": {
         "url": "https://openrouter.ai/api/v1/chat/completions",
         "model": "google/gemini-2.5-flash-lite",
         "env": ("OPENROUTER_API_KEY",),
+        "style": "openai",
+    },
+    # OpenCode Zen. Its model ids ending in -free, space-bunny-free among them, are
+    # reserved for the OpenCode terminal app and answer 403 to anything else; see
+    # FREE_TIER_LOCKED below. The paid ids work normally.
+    "opencode": {
+        "url": "https://opencode.ai/zen/v1/chat/completions",
+        "model": "gemini-3.5-flash-lite",
+        "env": ("OPENCODE_API_KEY",),
+        "style": "openai",
     },
 }
+
+# What OpenCode answers when a -free model is called from outside its own client. Worth
+# recognising by name: the message is clear but a run would otherwise report it as an
+# anonymous 403 on every single ruling.
+FREE_TIER_LOCKED = "free tier can only be used from within"
+
 HEAD, TAIL = 7000, 3000          # the facts and the grounds, then what was decided
 MIN_ABSTRACT = 60                # shorter than this is a fragment, not a rule
 
@@ -115,7 +134,7 @@ class Budget:
 
 def _request(provider, model, prompt):
     """The one request, in whichever shape the provider expects."""
-    if provider == "gemini":
+    if PROVIDERS[provider]["style"] == "gemini":
         return PROVIDERS[provider]["url"].format(model=model), {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048,
@@ -130,7 +149,7 @@ def _request(provider, model, prompt):
 
 def _answer(provider, data):
     """The reply text and what it cost, however the provider reports them."""
-    if provider == "gemini":
+    if PROVIDERS[provider]["style"] == "gemini":
         u = data.get("usageMetadata") or {}
         tokens = (u.get("promptTokenCount", 0), u.get("candidatesTokenCount", 0))
         cands = data.get("candidates") or []
@@ -150,8 +169,9 @@ def ask(client, text, chamber, vocab, *, key, model, budget, provider="gemini"):
     prompt = (PROMPT.format(chamber=chamber, vocab="\n".join("- " + v for v in vocab))
               + "\n\nنص القرار:\n" + trim(text))
     url, body = _request(provider, model, prompt)
-    params = {"key": key} if provider == "gemini" else {}
-    headers = {} if provider == "gemini" else {"Authorization": f"Bearer {key}"}
+    gemini = PROVIDERS[provider]["style"] == "gemini"
+    params = {"key": key} if gemini else {}
+    headers = {} if gemini else {"Authorization": f"Bearer {key}"}
     for attempt in range(4):
         try:
             r = client.post(url, params=params, headers=headers, json=body,
@@ -168,6 +188,9 @@ def ask(client, text, chamber, vocab, *, key, model, budget, provider="gemini"):
                 return None, "HTTP " + str(r.status_code)
             time.sleep(2 ** attempt + random.random())
             continue
+        if r.status_code == 403 and FREE_TIER_LOCKED in r.text:
+            budget.add({}, False)
+            return None, "FREE_TIER_LOCKED"
         if r.status_code >= 400:
             budget.add({}, False)
             return None, "HTTP " + str(r.status_code)
@@ -230,7 +253,7 @@ def main() -> int:
     budget = Budget()
     proposals: list = []
     stats = {"subject": 0, "proposed": 0, "abstract": 0, "no_rule": 0,
-             "failed": 0, "named": 0}
+             "failed": 0, "named": 0, "locked": 0}
     started = time.time()
     done = 0
 
@@ -255,6 +278,9 @@ def main() -> int:
 
                 for doc_id, chamber, got, err in results:
                     done += 1
+                    if err == "FREE_TIER_LOCKED":
+                        stats["locked"] += 1
+                        continue
                     if err:
                         stats["failed"] += 1
                         continue
@@ -290,6 +316,12 @@ def main() -> int:
                 if not args.dry_run:
                     s.commit()
 
+            if stats["locked"] and stats["locked"] == done:
+                print(f"\n  {model} refused every request. OpenCode reserves its -free"
+                      "\n  models for the OpenCode app itself, so they cannot be called"
+                      "\n  from a script. Choose a paid model id, or another provider.",
+                      flush=True)
+                break
             rate = done / max(1e-9, time.time() - started)
             left = (len(todo) - done) / max(1e-9, rate) / 60
             print("  {:,}/{:,}  {:.1f}/s  ${:.3f}  ~{:.0f} min left".format(
@@ -315,6 +347,8 @@ def main() -> int:
     print("  no general rule       : {:,}".format(stats["no_rule"]))
     print("  dropped, named a party: {:,}".format(stats["named"]))
     print("  failed calls          : {:,}".format(stats["failed"]))
+    if stats["locked"]:
+        print("  refused, free tier    : {:,}".format(stats["locked"]))
     print("  tokens                : {:,} in, {:,} out".format(budget.tin, budget.tout))
     print("  cost                  : ${:.3f}".format(budget.cost))
     if done:

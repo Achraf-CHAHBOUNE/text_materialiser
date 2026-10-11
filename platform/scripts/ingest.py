@@ -169,7 +169,7 @@ def main() -> int:
     ap.add_argument("--no-model", action="store_true",
                     help="skip the model pass: nothing leaves this machine")
     ap.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "gemini"),
-                    choices=["gemini", "openrouter"])
+                    choices=["gemini", "openrouter", "opencode"])
     ap.add_argument("--model", default="", help="override the provider's default model")
     ap.add_argument("--actor", default="ingest", help="who to record in the audit log")
     ap.add_argument("--workers", type=int, default=0)
