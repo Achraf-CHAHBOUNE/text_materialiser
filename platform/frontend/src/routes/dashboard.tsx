@@ -7,7 +7,7 @@ import { useStore } from "@/lib/app-store";
 import { adminStats } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard — القرارات" }] }),
+  head: () => ({ meta: [{ title: "لوحة القيادة · Tableau de bord" }] }),
   component: Dashboard,
 });
 
@@ -28,7 +28,7 @@ function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: n
 }
 
 function Dashboard() {
-  const { t } = useI18n();
+  const { t, num, chamber: chamberName } = useI18n();
   const { isAdmin, email, categories } = useStore();
   const [stats, setStats] = useState<{ decisions: number; published: number; pending: number; clients: number } | null>(null);
 
@@ -41,34 +41,32 @@ function Dashboard() {
       {isAdmin ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat icon={Layers} label={t("dash.decisions")} value={stats?.decisions ?? "—"} />
-            <Stat icon={FileCheck2} label={t("dash.published")} value={stats?.published ?? "—"} />
-            <Stat icon={FolderOpen} label={t("dash.pending")} value={stats?.pending ?? "—"} />
-            <Stat icon={Users} label={t("dash.clients")} value={stats?.clients ?? "—"} />
+            <Stat icon={Layers} label={t("dash.decisions")} value={stats ? num(stats.decisions) : "—"} />
+            <Stat icon={FileCheck2} label={t("dash.published")} value={stats ? num(stats.published) : "—"} />
+            <Stat icon={FolderOpen} label={t("dash.pending")} value={stats ? num(stats.pending) : "—"} />
+            <Stat icon={Users} label={t("dash.clients")} value={stats ? num(stats.clients) : "—"} />
           </div>
           <div className="mt-6 rounded-2xl border bg-card p-6 shadow-soft">
             <h2 className="text-sm font-semibold">{t("dash.integration")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Import a pipeline batch, review the work queue, publish decisions, and manage client accounts.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("dash.adminHint")}</p>
             <Link to="/admin" className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground">
-              Open admin console
+              {t("dash.openAdmin")}
             </Link>
           </div>
         </>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">Signed in as {email}. Browse published decisions by chamber.</p>
+          <p className="text-sm text-muted-foreground">{t("dash.signedInAs")} {email}. {t("dash.byChamber")}</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {(categories.length ? categories : ["إدارية", "تجارية", "مدنية", "جنائية", "اجتماعية", "أحوال شخصية", "عقارية"]).map((c) => (
-              <Link key={c} to="/results"
+              <Link key={c} to="/browse/$chamber" params={{ chamber: c }}
                 className="font-ar rounded-2xl border bg-card p-5 text-start text-lg shadow-soft transition-colors hover:border-teal/50 hover:bg-teal/5">
-                {c}
+                {chamberName(c)}
               </Link>
             ))}
           </div>
-          <Link to="/results" className="mt-6 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground">
-            Browse all decisions
+          <Link to="/browse" className="mt-6 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground">
+            {t("dash.browseAll")}
           </Link>
         </>
       )}

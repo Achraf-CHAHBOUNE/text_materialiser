@@ -2,6 +2,8 @@
 // Client space: browse / search / view published decisions.
 // Admin: import (with gate), review/correct/publish, client accounts.
 
+import type { Lang } from "./lang-url";
+
 const BASE = (import.meta.env["VITE_API_URL"] ?? "http://localhost:8000").replace(/\/$/, "");
 const TOKEN_KEY = "anon-token";
 const EMAIL_KEY = "anon-email";
@@ -53,6 +55,14 @@ export type Decision = {
   rule?: string;
   theme_source?: string;
   abstract?: string;
+  theme_key?: string;
+  // In French (only when asked with lang=fr). The Arabic fields above are never
+  // replaced; an empty one here means that part has no French yet.
+  theme_fr?: string;
+  keywords_fr?: string;
+  abstract_fr?: string;
+  abstract_fr_of?: "rule" | "abstract" | "";
+  has_fr?: boolean;
   body_text?: string;
   snippets?: string[];
   reasons?: string[];
@@ -137,7 +147,8 @@ export function searchDecisions(query: string, p: { category?: string; level?: s
   return j<Decision[]>(`/api/search?${q}`);
 }
 
-export const getDecision = (id: string) => j<Decision>(`/api/decisions/${encodeURIComponent(id)}`);
+export const getDecision = (id: string, lang: Lang = "ar") =>
+  j<Decision>(`/api/decisions/${encodeURIComponent(id)}?lang=${lang}`);
 export const decisionFileUrl = (id: string) =>
   `${BASE}/api/decisions/${encodeURIComponent(id)}/file?${tokenQ()}`;
 
@@ -220,8 +231,16 @@ export type ListingRow = {
   // for us. `rule` is only ever the court's; `abstract` is only ever ours.
   theme_source: string;
   abstract: string;
+  // In French (only when asked with lang=fr). The Arabic fields above are never
+  // replaced; an empty one here means that part has no French yet.
+  theme_fr?: string;
+  keywords_fr?: string;
+  abstract_fr?: string;
+  abstract_fr_of?: "rule" | "abstract" | "";
+  has_fr?: boolean;
 };
-export type ThemeCount = { key: string; label: string; count: number };
+// label is in the language asked for; label_ar is the court's wording, when different
+export type ThemeCount = { key: string; label: string; label_ar?: string; count: number };
 
 export const browseCourts = () => j<CourtNode[]>("/api/browse/courts");
 
@@ -231,14 +250,14 @@ export const browseYears = (chamber = "") =>
 export const browseCities = (chamber = "") =>
   j<CityCount[]>(`/api/browse/cities?chamber=${encodeURIComponent(chamber)}`);
 
-export const browseThemes = (chamber = "") =>
-  j<ThemeCount[]>(`/api/browse/themes?chamber=${encodeURIComponent(chamber)}`);
+export const browseThemes = (chamber = "", lang: Lang = "ar") =>
+  j<ThemeCount[]>(`/api/browse/themes?chamber=${encodeURIComponent(chamber)}&lang=${lang}`);
 
 export function browseRulings(p: {
   chamber?: string | undefined; year?: string | undefined;
   city?: string | undefined; q?: string | undefined;
   theme?: string | undefined;
-  limit?: number; offset?: number;
+  limit?: number; offset?: number; lang?: Lang;
 } = {}) {
   const q = new URLSearchParams();
   if (p.chamber) q.set("chamber", p.chamber);
@@ -248,6 +267,7 @@ export function browseRulings(p: {
   if (p.q) q.set("q", p.q);
   q.set("limit", String(p.limit ?? 50));
   q.set("offset", String(p.offset ?? 0));
+  q.set("lang", p.lang ?? "ar");
   return j<{ total: number; items: ListingRow[] }>(`/api/browse/rulings?${q}`);
 }
 
@@ -344,6 +364,11 @@ export type Translation = {
   model?: string;
   created_at?: string;
   stale?: boolean;
+  // the headnote in French, when there is one (empty strings otherwise)
+  theme_fr?: string;
+  keywords_fr?: string;
+  abstract_fr?: string;
+  abstract_fr_of?: "rule" | "abstract" | "";
 };
 
 export const getTranslation = (id: string) =>

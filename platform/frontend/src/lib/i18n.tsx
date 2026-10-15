@@ -7,10 +7,11 @@
  * and a ruling's number is part of its identity anyway. The ruling's own text
  * is never translated: it is the court's wording and must stay as written.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { useRouter, useRouterState } from "@tanstack/react-router";
+import { STORAGE_KEY, getActiveLang, langFromPath, setActiveLang, swapLang, type Lang } from "./lang-url";
 
-export type Lang = "ar" | "fr";
-const STORAGE_KEY = "anon-lang";
+export type { Lang } from "./lang-url";
 
 type Entry = { ar: string; fr: string };
 
@@ -274,6 +275,97 @@ const STRINGS = {
   "report.send": { ar: "إرسال", fr: "Envoyer" },
   "report.sent": { ar: "شكرًا، وصل البلاغ.", fr: "Merci, signalement envoyé." },
 
+
+  // the French site
+  "fr.ruleTranslated": { ar: "ترجمة آلية لقاعدة المحكمة", fr: "Traduction automatique de la règle de la Cour" },
+  "fr.machineSummary": { ar: "ملخص آلي مترجم", fr: "Résumé automatique traduit" },
+  "fr.notTranslated": { ar: "غير مترجم بعد", fr: "Pas encore traduit — texte arabe" },
+  "fr.textMissing": {
+    ar: "لا توجد ترجمة لهذا القرار بعد. يُعرض النص العربي.",
+    fr: "Traduction non disponible pour cet arrêt. Le texte arabe est affiché.",
+  },
+  "fr.viewLabel": { ar: "طريقة العرض", fr: "Affichage" },
+  "fr.viewFr": { ar: "الفرنسية", fr: "Français" },
+  "fr.viewAr": { ar: "الأصل العربي", fr: "Original arabe" },
+  "fr.viewBoth": { ar: "جنبًا إلى جنب", fr: "Côte à côte" },
+  "fr.headnoteNote": {
+    ar: "ترجمة آلية. النص العربي هو المرجع.",
+    fr: "Traduction automatique. Seul le texte arabe fait foi.",
+  },
+
+  // decisions list (results)
+  "results.none": { ar: "لا نتائج مطابقة", fr: "Aucun résultat" },
+  "results.noneYet": { ar: "لا قرارات منشورة بعد", fr: "Aucune décision publiée pour l'instant" },
+  "col.level": { ar: "المستوى", fr: "Niveau" },
+
+
+  // dashboard
+  "dash.adminHint": {
+    ar: "استيراد دفعة من المعالجة، ومراجعة القائمة، ونشر القرارات، وإدارة حسابات العملاء.",
+    fr: "Importer un lot du pipeline, traiter la file de révision, publier les décisions et gérer les comptes clients.",
+  },
+  "dash.openAdmin": { ar: "فتح لوحة الإدارة", fr: "Ouvrir la console d'administration" },
+  "dash.signedInAs": { ar: "متصل باسم", fr: "Connecté en tant que" },
+  "dash.byChamber": { ar: "تصفح القرارات المنشورة حسب الغرفة.", fr: "Parcourez les décisions publiées par chambre." },
+  "dash.browseAll": { ar: "تصفح كل القرارات", fr: "Parcourir toutes les décisions" },
+
+  // settings
+  "settings.title": { ar: "الإعدادات", fr: "Paramètres" },
+  "settings.subtitle": { ar: "الحساب والتفضيلات", fr: "Compte et préférences" },
+  "settings.account": { ar: "الحساب", fr: "Compte" },
+  "settings.role": { ar: "الدور", fr: "Rôle" },
+  "settings.role.admin": { ar: "مسؤول", fr: "Administrateur" },
+  "settings.role.client": { ar: "عميل", fr: "Client" },
+  "settings.appearance": { ar: "المظهر واللغة", fr: "Apparence et langue" },
+
+  // admin console
+  "adm.title": { ar: "لوحة الإدارة", fr: "Console d'administration" },
+  "adm.subtitle": { ar: "الاستيراد والمراجعة والنشر وحسابات العملاء", fr: "Import, révision, publication et comptes clients" },
+  "adm.tabImport": { ar: "استيراد", fr: "Import" },
+  "adm.tabQueue": { ar: "قائمة المراجعة", fr: "File de révision" },
+  "adm.tabClients": { ar: "العملاء", fr: "Clients" },
+  "adm.importTitle": { ar: "استيراد دفعة من المعالجة (.zip)", fr: "Importer un lot du pipeline (.zip)" },
+  "adm.importHint": { ar: "يجب أن يحتوي الملف على records.json والملفات المجهولة. يعيد الاستيراد فحص كل ملف ويرفض ما يبدو أنه ما زال يحمل بيانات شخصية.", fr: "L'archive doit contenir records.json et les fichiers anonymisés. L'import revérifie chaque fichier et refuse tout ce qui semble encore personnel." },
+  "adm.importing": { ar: "جارٍ الاستيراد…", fr: "Import en cours…" },
+  "adm.choose": { ar: "اختيار ملف .zip", fr: "Choisir un .zip" },
+  "adm.importDone": { ar: "تم الاستيراد", fr: "Import terminé" },
+  "adm.importFailed": { ar: "فشل الاستيراد", fr: "Échec de l'import" },
+  "adm.imported": { ar: "مستورد", fr: "Importés" },
+  "adm.updated": { ar: "محدَّث", fr: "Mis à jour" },
+  "adm.rejected": { ar: "مرفوض (بلا ملف)", fr: "Refusés (sans fichier)" },
+  "adm.quarantined": { ar: "محجوز (بيانات شخصية)", fr: "En quarantaine (données personnelles)" },
+  "adm.quarantinedList": { ar: "محجوز — ما زال يحمل أنماط بيانات شخصية:", fr: "En quarantaine — contient encore des données personnelles :" },
+  "adm.colDecision": { ar: "القرار", fr: "Décision" },
+  "adm.colAttention": { ar: "يحتاج إلى انتباه", fr: "À vérifier" },
+  "adm.colAction": { ar: "إجراء", fr: "Action" },
+  "adm.review": { ar: "مراجعة", fr: "Réviser" },
+  "adm.publish": { ar: "نشر", fr: "Publier" },
+  "adm.published": { ar: "نُشر", fr: "Publié" },
+  "adm.queueClear": { ar: "لا شيء في انتظار المراجعة.", fr: "Rien à réviser." },
+  "adm.failed": { ar: "تعذّر ذلك", fr: "Échec" },
+  "adm.saved": { ar: "حُفظ", fr: "Enregistré" },
+  "adm.save": { ar: "حفظ", fr: "Enregistrer" },
+  "adm.loading": { ar: "جارٍ التحميل…", fr: "Chargement…" },
+  "adm.openFile": { ar: "فتح الملف (.docx)", fr: "Ouvrir le fichier (.docx)" },
+  "adm.verify": { ar: "للتحقق:", fr: "À vérifier :" },
+  "adm.anonText": { ar: "النص المجهول — الأسماء مستبدلة بـ", fr: "Texte anonymisé — noms remplacés par" },
+  "adm.noText": { ar: "لا معاينة للنص.", fr: "Pas d'aperçu du texte." },
+  "adm.newClient": { ar: "عميل جديد", fr: "Nouveau client" },
+  "adm.password": { ar: "كلمة المرور", fr: "mot de passe" },
+  "adm.create": { ar: "إنشاء", fr: "Créer" },
+  "adm.needEmail": { ar: "البريد وكلمة مرور من 6 أحرف على الأقل", fr: "E-mail et mot de passe de 6 caractères minimum" },
+  "adm.clientCreated": { ar: "أُنشئ الحساب", fr: "Compte créé" },
+  "adm.deleted": { ar: "حُذف", fr: "Supprimé" },
+  "adm.colEmail": { ar: "البريد الإلكتروني", fr: "E-mail" },
+  "adm.colStatus": { ar: "الحالة", fr: "Statut" },
+  "adm.colLastLogin": { ar: "آخر دخول", fr: "Dernière connexion" },
+  "adm.colActions": { ar: "إجراءات", fr: "Actions" },
+  "adm.suspend": { ar: "تعليق", fr: "Suspendre" },
+  "adm.activate": { ar: "تفعيل", fr: "Activer" },
+  "adm.status.active": { ar: "نشط", fr: "Actif" },
+  "adm.status.suspended": { ar: "معلّق", fr: "Suspendu" },
+  "adm.noClients": { ar: "لا عملاء بعد.", fr: "Aucun client pour l'instant." },
+
   "nav.review": { ar: "التصحيحات", fr: "Corrections" },
   "review.subtitle": {
     ar: "بلاغات القراء والمسودات في انتظار الموافقة",
@@ -307,6 +399,25 @@ const COURTS: Record<string, Entry> = {
   "المحكمة الابتدائية": { ar: "المحكمة الابتدائية", fr: "Tribunal de première instance" },
   "المحكمة الدستورية": { ar: "المحكمة الدستورية", fr: "Cour constitutionnelle" },
   "المجلس الأعلى للحسابات": { ar: "المجلس الأعلى للحسابات", fr: "Cour des comptes" },
+};
+
+const LEVELS: Record<string, Entry> = {
+  "ابتدائي": { ar: "ابتدائي", fr: "Première instance" },
+  "استئناف": { ar: "استئناف", fr: "Appel" },
+  "نقض": { ar: "نقض", fr: "Cassation" },
+};
+
+/** What the court decided, as French rulings word it. */
+const OUTCOMES: Record<string, Entry> = {
+  "رفض الطلب": { ar: "رفض الطلب", fr: "Rejet du pourvoi" },
+  "عدم القبول": { ar: "عدم القبول", fr: "Irrecevabilité" },
+  "نقض وإحالة": { ar: "نقض وإحالة", fr: "Cassation et renvoi" },
+  "نقض وإبطال": { ar: "نقض وإبطال", fr: "Cassation et annulation" },
+  "نقض جزئي": { ar: "نقض جزئي", fr: "Cassation partielle" },
+  "نقض بدون إحالة": { ar: "نقض بدون إحالة", fr: "Cassation sans renvoi" },
+  "عدم الاختصاص": { ar: "عدم الاختصاص", fr: "Incompétence" },
+  "تسجيل التنازل": { ar: "تسجيل التنازل", fr: "Désistement constaté" },
+  "التشطيب على القضية": { ar: "التشطيب على القضية", fr: "Radiation de l'affaire" },
 };
 
 /** Court seats, in the spelling each language uses. */
@@ -344,6 +455,8 @@ type Ctx = {
   chamber: (value: string) => string;
   court: (value: string) => string;
   city: (value: string) => string;
+  level: (value: string) => string;
+  outcome: (value: string) => string;
   /** a number as the reader expects to see it */
   num: (value: number | string) => string;
 };
@@ -357,23 +470,27 @@ const asRead = (v: number | string) =>
   typeof v === "number" ? v.toLocaleString("en-US") : String(v);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("ar");
+  // The address says which language: /ar/… or /fr/… (lib/lang-url.ts). The server
+  // reads the same address, so it renders the right language from the first byte.
+  const router = useRouter();
+  const publicHref = useRouterState({ select: (s) => s.location.publicHref });
+  const lang: Lang = langFromPath(publicHref) ?? getActiveLang();
 
-  // Read the saved choice after mount: the server render has no localStorage,
-  // and reading it during render would make the two disagree.
+  // An address with no language (an old link, a bookmark) gets one, so what is in the
+  // bar can be shared as is.
   useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved === "fr" || saved === "ar") setLangState(saved);
-  }, []);
+    if (!langFromPath(publicHref)) router.history.replace(swapLang(publicHref, lang));
+  }, [publicHref, lang, router]);
 
   const setLang = useCallback((l: Lang) => {
-    setLangState(l);
+    setActiveLang(l);
     try {
       window.localStorage.setItem(STORAGE_KEY, l);
     } catch {
       /* private browsing: the choice just does not persist */
     }
-  }, []);
+    router.history.push(swapLang(router.state.location.publicHref, l));
+  }, [router]);
 
   const dir = lang === "ar" ? "rtl" : "ltr";
 
@@ -390,6 +507,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     chamber: (v) => CHAMBERS[v]?.[lang] ?? v,
     court: (v) => COURTS[v]?.[lang] ?? v,
     city: (v) => (lang === "fr" ? (CITIES[v] ?? v) : v),
+    level: (v) => LEVELS[v]?.[lang] ?? v,
+    outcome: (v) => OUTCOMES[v]?.[lang] ?? v,
     num: asRead,
   }), [lang, dir, setLang]);
 

@@ -720,7 +720,7 @@ def browse_cities(chamber: str = "", _: dict = Depends(current_user)) -> list:
 
 
 @app.get("/api/browse/themes")
-def browse_themes(chamber: str = "", _: dict = Depends(current_user)) -> list:
+def browse_themes(chamber: str = "", lang: str = "ar", _: dict = Depends(current_user)) -> list:
     """The subjects rulings are filed under, with counts.
 
     These are the court's own words, taken from the headnote each ruling prints. The
@@ -728,22 +728,29 @@ def browse_themes(chamber: str = "", _: dict = Depends(current_user)) -> list:
     offers a free-text box over the same line -- so there is no official vocabulary
     this could be checked against, and roughly half the corpus prints no subject.
     """
-    return db.browse_themes(chamber)
+    return db.browse_themes(chamber, lang=_lang(lang))
 
 
 @app.get("/api/browse/rulings")
 def browse_rulings(chamber: str = "", year: str = "", city: str = "", theme: str = "",
-                   q: str = Query(""), limit: int = 50, offset: int = 0,
+                   q: str = Query(""), limit: int = 50, offset: int = 0, lang: str = "ar",
                    user: dict = Depends(current_user)) -> dict:
     """One page of the listing: number, date, city, chamber, subject -- and the total."""
     if q.strip():
         db.log_activity(user["email"], "search", q[:80])
     return db.browse_rulings(chamber=chamber, year=year, city=city, theme=theme, q=q,
-                             limit=min(limit, 200), offset=offset)
+                             limit=min(limit, 200), offset=offset, lang=_lang(lang))
+
+
+LANGS = ("ar", "fr")
+
+
+def _lang(lang: str) -> str:
+    return lang if lang in LANGS else "ar"
 
 
 @app.get("/api/decisions/{doc_id}")
-def client_decision(doc_id: str, user: dict = Depends(current_user)) -> dict:
+def client_decision(doc_id: str, lang: str = "ar", user: dict = Depends(current_user)) -> dict:
     d = db.get_decision(doc_id, body=True)
     if not d or d["state"] != "published":            # not guessable into unpublished data
         raise HTTPException(status_code=404, detail="Not found")
@@ -751,6 +758,10 @@ def client_decision(doc_id: str, user: dict = Depends(current_user)) -> dict:
     d["links"] = [l for l in db.links_for(doc_id)
                   if (db.get_decision(l["to"]) or {}).get("state") == "published"]
     db.log_activity(user["email"], "view", doc_id)
+    lang = _lang(lang)
+    if lang != "ar":
+        db.with_language(d, lang, db.i18n_for([doc_id], lang).get(doc_id),
+                         db.subject_labels([d.get("theme_key", "")], lang))
     return d
 
 
@@ -764,10 +775,15 @@ def client_translation(doc_id: str, lang: str = "fr", user: dict = Depends(curre
     d = db.get_decision(doc_id)
     if not d or d["state"] != "published":
         raise HTTPException(status_code=404, detail="Not found")
+    # the headnote in French travels with the text: the page shows both or neither
+    head = db.with_language({"theme_key": d.get("theme_key", "")}, _lang(lang),
+                            db.i18n_for([doc_id], _lang(lang)).get(doc_id),
+                            db.subject_labels([d.get("theme_key", "")], _lang(lang)))
+    head.pop("theme_key", None)
     got = db.get_translation(doc_id, lang)
     if not got or got["stale"]:
-        return {"ready": False, "lang": lang, "stale": bool(got and got["stale"])}
-    return {"ready": True, **got}
+        return {"ready": False, "lang": lang, "stale": bool(got and got["stale"]), **head}
+    return {"ready": True, **got, **head}
 
 
 @app.post("/api/decisions/{doc_id}/translation")

@@ -6,11 +6,11 @@ import { useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { DetailsForm } from "@/components/ruling/DetailsForm";
 import { FileNumber } from "@/components/FileNumber";
-import { Headnote } from "@/components/ruling/Headnote";
+import { Headnote, HeadnoteFr } from "@/components/ruling/Headnote";
 import { HideAllDialog, ReportDialog, TextEditorDialog } from "@/components/ruling/EditDialogs";
 import { HistoryPanel } from "@/components/ruling/HistoryPanel";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
-import { TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
+import { FrenchRuling, TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
 import { rulingKey, useEdits } from "@/components/ruling/useEdits";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -97,7 +97,7 @@ function RulingPage() {
                 </dl>
               )}
 
-              <Headnote d={d} />
+              {lang === "fr" ? <HeadnoteFr d={d} /> : <Headnote d={d} />}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button asChild size="sm">
@@ -108,7 +108,7 @@ function RulingPage() {
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="size-4" aria-hidden /> {t("ruling.print")}
                 </Button>
-                {d.body_text && (
+                {d.body_text && lang === "ar" && (
                   <TranslateButton docId={d.doc_id} shown={french}
                                    onShow={() => setFrench(true)} onHide={() => setFrench(false)} />
                 )}
@@ -135,7 +135,18 @@ function RulingPage() {
 
               {/* The court's own words. A translation sits beside them, never in place
                   of them: the Arabic is the ruling, the French is a reading aid. */}
-              {d.body_text && french ? (
+              {d.body_text && lang === "fr" ? (
+                <FrenchRuling docId={d.doc_id} arabic={d.body_text} arabicView={
+                  <RulingText
+                    text={d.body_text}
+                    canEdit={isAdmin}
+                    busy={hide.isPending}
+                    onHide={(s) => hide.mutate(s)}
+                    onHideAll={setHideAllValue}
+                    onReport={setReport}
+                  />
+                } />
+              ) : d.body_text && french ? (
                 <TranslationView docId={d.doc_id} arabic={d.body_text} />
               ) : d.body_text ? (
                 <RulingText

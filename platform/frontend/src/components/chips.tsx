@@ -2,6 +2,7 @@ import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Review } from "@/lib/mock-data";
+import { useI18n } from "@/lib/i18n";
 
 export function ReviewBadge({ review }: { review: Review }) {
   if (review === "ok") {
@@ -64,6 +65,7 @@ export function Pill({
 
 /** Court level badge — one colour per level, consistent everywhere. */
 export function LevelBadge({ level, className }: { level: string; className?: string }) {
+  const { level: levelName, dir } = useI18n();
   const map: Record<string, string> = {
     ابتدائي: "bg-primary/10 text-primary ring-primary/20 dark:bg-[#2f6da8]/18 dark:text-[#8fc0ec] dark:ring-[#2f6da8]/35",
     استئناف: "bg-teal/12 text-teal ring-teal/25",
@@ -71,26 +73,27 @@ export function LevelBadge({ level, className }: { level: string; className?: st
   };
   return (
     <span
-      dir="rtl"
+      dir={dir}
       className={cn(
         "font-ar inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium leading-6 ring-1",
         map[level] ?? "bg-muted text-muted-foreground ring-border",
         className,
       )}
     >
-      {level}
+      {levelName(level)}
     </span>
   );
 }
 
-/** Neutral chamber badge for Arabic chamber names. */
+/** Neutral chamber badge, named in the reader's language. */
 export function ChamberBadge({ chamber }: { chamber: string }) {
+  const { chamber: chamberName, dir } = useI18n();
   return (
     <span
-      dir="rtl"
+      dir={dir}
       className="font-ar inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs leading-6 text-muted-foreground ring-1 ring-border"
     >
-      {chamber}
+      {chamberName(chamber)}
     </span>
   );
 }

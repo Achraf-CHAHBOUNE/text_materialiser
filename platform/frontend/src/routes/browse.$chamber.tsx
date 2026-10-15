@@ -55,8 +55,8 @@ function ChamberListing() {
     navigate({ search: (old) => ({ ...old, page: undefined, ...next }) });
 
   const themes = useQuery({
-    queryKey: ["browse", "themes", filterChamber],
-    queryFn: () => browseThemes(filterChamber),
+    queryKey: ["browse", "themes", filterChamber, lang],
+    queryFn: () => browseThemes(filterChamber, lang),
   });
 
   const years = useQuery({
@@ -68,9 +68,9 @@ function ChamberListing() {
     queryFn: () => browseCities(filterChamber),
   });
   const listQuery = (p: number) => ({
-    queryKey: ["browse", "rulings", filterChamber, year, city, theme, q, p, perPage] as const,
+    queryKey: ["browse", "rulings", filterChamber, year, city, theme, q, p, perPage, lang] as const,
     queryFn: () => browseRulings({
-      chamber: filterChamber, year, city, theme, q, limit: perPage, offset: (p - 1) * perPage,
+      chamber: filterChamber, year, city, theme, q, limit: perPage, offset: (p - 1) * perPage, lang,
     }),
   });
   const rulings = useQuery({ ...listQuery(page), placeholderData: keepPreviousData });
@@ -82,7 +82,7 @@ function ChamberListing() {
   useEffect(() => {
     if (page < pages) queryClient.prefetchQuery(listQuery(page + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pages, filterChamber, year, city, theme, q, perPage]);
+  }, [page, pages, filterChamber, year, city, theme, q, perPage, lang]);
 
   return (
     <AppShell>
@@ -245,7 +245,8 @@ function RulingTable({ rows, chamber, q }: { rows: ListingRow[]; chamber: string
  *  would read as a page that failed to load.
  */
 function KeysCell({ row, q }: { row: ListingRow; q?: string | undefined }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  if (lang === "fr") return <KeysCellFr row={row} q={q} />;
   const heading = row.keywords || row.theme;
   const summary = row.rule || row.abstract;
   const fromCourt = Boolean(row.rule);
@@ -271,6 +272,44 @@ function KeysCell({ row, q }: { row: ListingRow; q?: string | undefined }) {
           {!fromCourt && <Source court={false} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** The same cell in French. Everything French here is a machine translation, and says
+ *  so; a part with no French yet is shown in Arabic, set right to left, rather than
+ *  left out -- an empty cell would read as a ruling about nothing. */
+function KeysCellFr({ row, q }: { row: ListingRow; q?: string | undefined }) {
+  const { t } = useI18n();
+  const headingFr = row.keywords_fr || row.theme_fr;
+  const headingAr = row.keywords || row.theme;
+  const summaryFr = row.abstract_fr;
+  const summaryAr = row.rule || row.abstract;
+  if (!headingFr && !headingAr && !summaryFr && !summaryAr) {
+    return <span className="text-xs text-muted-foreground">{t("listing.noTheme")}</span>;
+  }
+  return (
+    <div className="space-y-1 leading-relaxed">
+      {headingFr ? (
+        <p className="font-medium"><Highlight text={headingFr} q={q} /></p>
+      ) : headingAr ? (
+        <p className="font-medium font-arabic" dir="rtl" lang="ar">{headingAr}</p>
+      ) : null}
+      {summaryFr ? (
+        <>
+          <p className="line-clamp-3 text-xs text-muted-foreground"><Highlight text={summaryFr} q={q} /></p>
+          <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+            {row.abstract_fr_of === "rule" ? t("fr.ruleTranslated") : t("fr.machineSummary")}
+          </span>
+        </>
+      ) : summaryAr ? (
+        <>
+          <p className="line-clamp-3 text-xs text-muted-foreground font-arabic" dir="rtl" lang="ar">{summaryAr}</p>
+          <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+            {t("fr.notTranslated")}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 }

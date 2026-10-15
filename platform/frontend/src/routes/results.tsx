@@ -12,12 +12,12 @@ import { useStore } from "@/lib/app-store";
 import { listDecisions, searchDecisions, type Decision } from "@/lib/api";
 
 export const Route = createFileRoute("/results")({
-  head: () => ({ meta: [{ title: "Decisions — القرارات" }] }),
+  head: () => ({ meta: [{ title: "القرارات · Décisions" }] }),
   component: Decisions,
 });
 
 function Decisions() {
-  const { t } = useI18n();
+  const { t, chamber: chamberName, level: levelName } = useI18n();
   const navigate = useNavigate();
   const { categories } = useStore();
   const [query, setQuery] = useState("");
@@ -51,16 +51,16 @@ function Decisions() {
           <SelectTrigger className="h-11" aria-label={t("results.filterChamber")}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("results.allChambers")}</SelectItem>
-            {categories.map((c) => <SelectItem key={c} value={c} className="font-ar">{c}</SelectItem>)}
+            {categories.map((c) => <SelectItem key={c} value={c} className="font-ar">{chamberName(c)}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={level} onValueChange={setLevel}>
           <SelectTrigger className="h-11" aria-label={t("results.filterLevel")}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("results.allLevels")}</SelectItem>
-            <SelectItem value="ابتدائي" className="font-ar">ابتدائي</SelectItem>
-            <SelectItem value="استئناف" className="font-ar">استئناف</SelectItem>
-            <SelectItem value="نقض" className="font-ar">نقض</SelectItem>
+            {["ابتدائي", "استئناف", "نقض"].map((l) => (
+              <SelectItem key={l} value={l} className="font-ar">{levelName(l)}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -69,18 +69,18 @@ function Decisions() {
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b text-start text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3 text-start">رقم القرار</th>
-              <th className="px-4 py-3 text-start">رقم الملف</th>
-              <th className="px-4 py-3 text-start">الغرفة</th>
-              <th className="px-4 py-3 text-start">المستوى</th>
-              <th className="px-4 py-3 text-start">التاريخ</th>
+              <th className="px-4 py-3 text-start">{t("col.number")}</th>
+              <th className="px-4 py-3 text-start">{t("col.fileNo")}</th>
+              <th className="px-4 py-3 text-start">{t("col.chamber")}</th>
+              <th className="px-4 py-3 text-start">{t("col.level")}</th>
+              <th className="px-4 py-3 text-start">{t("col.date")}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {rows.map((d) => (
               <tr key={d.doc_id} tabIndex={0} role="link"
-                onClick={() => navigate({ to: "/cases/$caseId", params: { caseId: d.doc_id } })}
-                onKeyDown={(e) => e.key === "Enter" && navigate({ to: "/cases/$caseId", params: { caseId: d.doc_id } })}
+                onClick={() => navigate({ to: "/ruling/$docId", params: { docId: d.doc_id } })}
+                onKeyDown={(e) => e.key === "Enter" && navigate({ to: "/ruling/$docId", params: { docId: d.doc_id } })}
                 className="cursor-pointer transition-colors odd:bg-muted/25 hover:bg-teal/6 focus:bg-teal/8">
                 <td className="px-4 py-4 font-medium">{d.decision_no || d.doc_id}</td>
                 <td className="px-4 py-4 font-ar">{d.file_no || "—"}</td>
@@ -110,7 +110,7 @@ function Decisions() {
             )}
             {!loading && rows.length === 0 && (
               <tr><td colSpan={5} className="px-4 py-14 text-center text-sm text-muted-foreground">
-                {query ? "لا نتائج مطابقة" : "لا قرارات منشورة بعد"}
+                {query ? t("results.none") : t("results.noneYet")}
               </td></tr>
             )}
           </tbody>

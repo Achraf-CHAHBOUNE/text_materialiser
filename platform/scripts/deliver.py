@@ -580,7 +580,10 @@ def main() -> int:
                 row["french"] = "yes"
                 stats["french"] += 1
                 try:
-                    db.save_translation(job["doc_id"], "fr", tr["body"], MODEL, job["version"])
+                    db.save_i18n(job["doc_id"], "fr", body_text=tr["body"],
+                                 abstract=tr["abstract"],
+                                 abstract_of="abstract" if job["machine"] else "rule",
+                                 model=MODEL, version=job["version"])
                 except Exception:
                     pass           # the website cache is a bonus, the file is the job
         writer.writerow(row)

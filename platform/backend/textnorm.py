@@ -30,6 +30,20 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def has_arabic(s: str) -> bool:
+    return bool(re.search(r"[؀-ۿ]", s or ""))
+
+
+def fold_latin(s: str) -> str:
+    """French text for indexing and comparing: lower case, accents off, so "arrêt",
+    "Arret" and "ARRÊT" are one word. Punctuation becomes space; XXXXXXX stays."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", (s or "").lower())
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"[^\w]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 # Arabic attaches letters to the front of a word, so a word index files التعويض and
 # بالتعويض as tokens unrelated to تعويض, and a search for one finds none of the others.
 # The query is widened to cover them -- but only by the article, and that limit is

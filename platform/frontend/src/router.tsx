@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { langRewrite } from "./lib/lang-url";
 
 export const getRouter = () => {
   const queryClient = new QueryClient({
@@ -21,6 +22,8 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
+    // /ar/… and /fr/…: the prefix is the language (lib/lang-url.ts)
+    rewrite: langRewrite,
   });
 
   return router;

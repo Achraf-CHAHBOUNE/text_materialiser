@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Languages, Loader2, RotateCw } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getTranslation, makeTranslation, type Translation } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-const key = (docId: string) => ["translation", docId];
+export const translationKey = (docId: string) => ["translation", docId];
+const key = translationKey;
 
 /** The button. Asks for the French the first time; afterwards it is already there. */
 export function TranslateButton({ docId, shown, onShow, onHide }: {
@@ -99,6 +102,60 @@ export function TranslationView({ docId, arabic }: { docId: string; arabic: stri
             : <p className="text-sm text-muted-foreground">{t("tr.working")}</p>}
         </article>
       </div>
+    </section>
+  );
+}
+
+/**
+ * The ruling on the French site: the French first, the Arabic one click away.
+ *
+ * The Arabic is still the ruling. The French says it is a machine translation at the
+ * top, and the original is offered alone or side by side. With no French yet, the
+ * Arabic is shown with a note, and the reader can ask for the translation.
+ */
+export function FrenchRuling({ docId, arabic, arabicView }: {
+  docId: string;
+  arabic: string;
+  /** the Arabic text as the page normally shows it (selection, reporting, editing) */
+  arabicView: ReactNode;
+}) {
+  const { t } = useI18n();
+  const stored = useQuery({ queryKey: key(docId), queryFn: () => getTranslation(docId) });
+  const [view, setView] = useState<"fr" | "ar" | "both">("fr");
+  const have = !!stored.data?.ready && !stored.data.stale && !!stored.data.text;
+
+  if (stored.isLoading) return <Skeleton className="mt-4 h-64 w-full rounded-2xl" />;
+
+  if (!have) {
+    return (
+      <section className="mt-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
+          {t("fr.textMissing")}
+          <TranslateButton docId={docId} shown={false} onShow={() => setView("both")} onHide={() => undefined} />
+        </div>
+        {view === "both" && stored.data?.text ? <TranslationView docId={docId} arabic={arabic} /> : arabicView}
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-300">
+        <span>{t("tr.notice")}</span>
+        <div className="flex gap-1" role="group" aria-label={t("fr.viewLabel")}>
+          {(["fr", "ar", "both"] as const).map((v) => (
+            <Button key={v} size="sm" variant={view === v ? "default" : "outline"}
+                    aria-pressed={view === v} onClick={() => setView(v)} className="h-7 px-2 text-xs">
+              {t(v === "fr" ? "fr.viewFr" : v === "ar" ? "fr.viewAr" : "fr.viewBoth")}
+            </Button>
+          ))}
+        </div>
+      </div>
+      {view === "ar" ? arabicView : view === "both" ? <TranslationView docId={docId} arabic={arabic} /> : (
+        <article dir="ltr" lang="fr" className="rounded-2xl border bg-card p-6 text-[15px] leading-7">
+          <div className="whitespace-pre-wrap font-sans">{stored.data?.text}</div>
+        </article>
+      )}
     </section>
   );
 }
