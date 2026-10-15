@@ -287,7 +287,59 @@ def _translate_text(client, token: Token, text: str, numbered: bool = True) -> t
     return fr, tin, tout, ""
 
 
-def translate_ruling(client, token: Token, abstract: str, body: str, tries: int = 4) -> dict:
+PIECE = 1500          # characters per piece in the paragraph-by-paragraph fallback
+
+
+def paragraph_pieces(text: str, size: int = PIECE) -> list:
+    """Whole lines grouped up to `size` characters; a longer line stands alone."""
+    out, cur = [], []
+    for line in text.split("\n"):
+        if cur and sum(len(l) + 1 for l in cur) + len(line) > size:
+            out.append("\n".join(cur))
+            cur = []
+        cur.append(line)
+    if cur:
+        out.append("\n".join(cur))
+    return [o for o in out if o.strip()] or ([text] if text.strip() else [])
+
+
+def _translate_by_paragraph(client, token: Token, text: str, tries: int = 4) -> tuple:
+    """The last resort for long rulings: short pieces, each checked on its own.
+
+    A model loses count of markers over a long text; over 1,500 characters there are
+    only a few, and a piece that still fails is retried alone, not the whole ruling.
+    """
+    tin = tout = 0
+    parts = []
+
+    def attempt(src: str, n: int):
+        nonlocal tin, tout
+        if not re.search(r"[؀-ۿ]", src):        # a page number, a date: as is
+            return src
+        for k in range(n):
+            fr, a, b, err = _translate_text(client, token, src, numbered=(k % 2 == 0))
+            tin, tout = tin + a, tout + b
+            problem = err or whole(src, fr)
+            if problem.startswith("too short") and len(src.strip()) < 60:
+                problem = ""                               # "٢ " -> "2" is not a loss
+            if not problem:
+                return fr
+        return None
+
+    for piece in paragraph_pieces(text):
+        fr = attempt(piece, 2)
+        if fr is None:
+            # a model that loops on one piece rarely loops on each line of it
+            lines = [attempt(l, tries) if l.strip() else l for l in piece.split("\n")]
+            if any(l is None for l in lines):
+                return "", tin, tout, "a line failed every attempt"
+            fr = "\n".join(lines)
+        parts.append(fr)
+    return "\n".join(parts), tin, tout, ""
+
+
+def translate_ruling(client, token: Token, abstract: str, body: str, tries: int = 4,
+                     by_paragraph: bool = True) -> dict:
     """The French abstract and body, checked whole, or the reason they are not.
 
     The abstract is its own request. Sending it ahead of the ruling behind a separator
@@ -296,6 +348,7 @@ def translate_ruling(client, token: Token, abstract: str, body: str, tries: int 
     """
     tin = tout = 0
     last = ""
+    # A ruling that failed whole before goes straight to the pieces: tries=0.
     # Numbered markers come back whole more often; on the rulings where they do not,
     # the plain form often does. Each attempt is checked the same way, so whichever
     # succeeds is safe to ship.
@@ -311,6 +364,14 @@ def translate_ruling(client, token: Token, abstract: str, body: str, tries: int 
             last = problem
             continue
         return {"abstract": fr_abs, "body": fr_body, "in": tin, "out": tout, "error": ""}
+    if by_paragraph:
+        fr_abs, a1, b1, e1 = _translate_by_paragraph(client, token, abstract)
+        fr_body, a2, b2, e2 = _translate_by_paragraph(client, token, body)
+        tin, tout = tin + a1 + a2, tout + b1 + b2
+        problem = e1 or e2 or whole(abstract + "\n" + body, fr_abs + "\n" + fr_body)
+        if not problem:
+            return {"abstract": fr_abs, "body": fr_body, "in": tin, "out": tout, "error": ""}
+        last = f"{last}; by paragraph: {problem}"
     return {"abstract": "", "body": "", "in": tin, "out": tout, "error": last}
 
 
@@ -417,6 +478,8 @@ def main() -> int:
     ap.add_argument("--arabic-only", action="store_true", help="no translation, no cost")
     ap.add_argument("--no-mark", action="store_true",
                     help="do not mark machine-written abstracts as such")
+    ap.add_argument("--by-paragraph", action="store_true",
+                    help="skip the whole-text attempts; for rulings that already failed them")
     ap.add_argument("--sample", action="store_true",
                     help="with --limit, spread the pick across the chambers")
     args = ap.parse_args()
@@ -482,6 +545,7 @@ def main() -> int:
         print(f"translation  : {MODEL} via {'AI Studio key, then ' if API_KEY else ''}Vertex "
               f"({len(REGIONS)} regions), {args.workers} in flight")
     mark = not args.no_mark
+    tries = 0 if args.by_paragraph else 4
 
     import httpx
     token = Token()
@@ -533,7 +597,7 @@ def main() -> int:
                 running = {}
                 for job in queue:
                     running[pool.submit(translate_ruling, client, token,
-                                        job["summary"], job["body"])] = job
+                                        job["summary"], job["body"], tries)] = job
                     if len(running) >= args.workers * 2:
                         break
                 while running:
@@ -545,7 +609,7 @@ def main() -> int:
                         nxt = next(queue, None)
                         if nxt:
                             running[pool.submit(translate_ruling, client, token,
-                                                nxt["summary"], nxt["body"])] = nxt
+                                                nxt["summary"], nxt["body"], tries)] = nxt
                         if done % 200 == 0 or done == len(todo):
                             el = time.time() - started
                             cost = stats["in"] / 1e6 * PRICE_IN + stats["out"] / 1e6 * PRICE_OUT
