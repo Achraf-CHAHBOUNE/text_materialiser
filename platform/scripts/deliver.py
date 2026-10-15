@@ -351,6 +351,7 @@ def arabic_docx(source: Path, target: Path, abstract: str, machine: bool, mark: 
             _rtl(p, r)
             block.append(p)
         block[0].paragraph_format.space_after = Pt(4)
+        block[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         if machine and mark:
             p = d.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -377,6 +378,7 @@ def french_docx(target: Path, abstract: str, body: str, machine: bool, mark: boo
     if abstract:
         p = d.add_paragraph()
         p.paragraph_format.space_after = Pt(4)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         r = p.add_run(TITLE["fr"])
         r.bold = True
         r.font.size = Pt(TITLE_PT["fr"])

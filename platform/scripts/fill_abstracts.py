@@ -92,6 +92,7 @@ def add_to_french(path: Path, french_abstract: str, mark: bool) -> None:
     block = []
     p = d.add_paragraph()
     p.paragraph_format.space_after = Pt(4)
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r = p.add_run(deliver.TITLE["fr"])
     r.bold = True
     r.font.size = Pt(deliver.TITLE_PT["fr"])

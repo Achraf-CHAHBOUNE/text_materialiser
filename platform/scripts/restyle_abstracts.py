@@ -5,10 +5,11 @@ smaller than the text it summarises -- and in the Arabic files only Word's ordin
 size was set, not the separate size Word uses for Arabic script, so it may not have
 applied at all. This restyles the files already written; nothing is translated again.
 
-    Arabic   «ملخص القرار» 18 pt bold, then the abstract at 16 pt bold
-    French   «Résumé de l'arrêt» 15 pt bold, then the abstract at 13 pt bold
+    Arabic   «ملخص القرار» 24 pt bold, centred, then the abstract at 16 pt bold
+    French   «Résumé de l'arrêt» 20 pt bold, centred, then the abstract at 13 pt bold
 
-Safe to run twice: a file that already has the title is left alone.
+Safe to run twice: a file that already has the title only has the title's size and
+placement brought up to date.
 
     python restyle_abstracts.py --delivery ../../delivery
 """
@@ -20,7 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 TITLE = {"ar": "ملخص القرار", "fr": "Résumé de l'arrêt"}
-TITLE_PT = {"ar": 18, "fr": 15}
+TITLE_PT = {"ar": 24, "fr": 20}
 ABSTRACT_PT = {"ar": 16, "fr": 13}
 
 
@@ -55,18 +56,25 @@ def restyle(job: tuple) -> tuple:
     paras = d.paragraphs
     if not paras:
         return path, "empty"
+    rtl = lang == "ar"
     if paras[0].text.strip() == TITLE[lang]:
-        return path, "already done"
+        head = paras[0]
+        if head.alignment == WD_ALIGN_PARAGRAPH.CENTER and                 all(r.font.size == Pt(TITLE_PT[lang]) for r in head.runs):
+            return path, "already done"
+        head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for r in head.runs:
+            _size(r, TITLE_PT[lang], rtl)
+        d.save(path)
+        return path, "title updated"
     first = paras[0]
     if not first.text.strip() or not any(r.bold for r in first.runs):
         return path, "first paragraph is not the abstract"
-    rtl = lang == "ar"
 
     for r in first.runs:
         _size(r, ABSTRACT_PT[lang], rtl)
 
     title = d.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.RIGHT if rtl else WD_ALIGN_PARAGRAPH.LEFT
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_after = Pt(4)
     run = title.add_run(TITLE[lang])
     run.bold = True
@@ -104,7 +112,7 @@ def main() -> int:
     for k, v in c.most_common():
         print(f"   {v:>7,}  {k}")
     for p, r in res:
-        if r not in ("restyled", "already done"):
+        if r not in ("restyled", "title updated", "already done"):
             print(f"   e.g. {Path(p).name}: {r}")
             break
     return 0
