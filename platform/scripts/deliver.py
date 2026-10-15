@@ -113,7 +113,7 @@ MIN_RATIO = 0.6
 MARK_AR = "ملخص محرر آليا — لا يصدر عن المحكمة"
 MARK_FR = "Résumé rédigé automatiquement — ne provient pas de la Cour"
 
-from restyle_abstracts import ABSTRACT_PT, TITLE, TITLE_PT, _size  # noqa: E402  one layout
+from restyle_abstracts import ABSTRACT_PT, TITLE, TITLE_PT, _size, french_layout  # noqa: E402  one layout
 PRICE_IN, PRICE_OUT = 0.10, 0.40          # per million tokens, Flash-Lite
 
 # The site's translation prompt tells the model to keep XXXXXXX. Here every XXXXXXX has
@@ -396,6 +396,7 @@ def french_docx(target: Path, abstract: str, body: str, machine: bool, mark: boo
     for line in body.split("\n"):
         if line.strip():
             d.add_paragraph(line.strip()).alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    french_layout(d)
     target.parent.mkdir(parents=True, exist_ok=True)
     d.save(str(target))
 
