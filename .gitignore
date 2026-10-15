@@ -79,3 +79,7 @@ platform/incoming/
 
 # Screenshots taken while checking the deployed site.
 vps-*.png
+
+# The delivery: every ruling's full text, in Arabic and French. Never committed.
+delivery/
+delivery-*/

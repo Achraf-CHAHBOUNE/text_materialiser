@@ -226,3 +226,39 @@ leaves the machine.
 
 Nothing under `data/`, `results/`, `lastinput/` or any `.env` is ever committed — the
 raw deliveries hold real names.
+
+---
+
+## The delivery — abstract on top, and a French twin
+
+```bash
+python deliver.py --out ../../delivery                 # everything
+python deliver.py --out ../../delivery --limit 50 --sample   # a pilot across the chambers
+python deliver.py --out ../../delivery --arabic-only   # no translation, no cost
+./run_delivery_pass.sh                                 # full run + a second pass on failures
+```
+
+```
+delivery/ar/<chamber>/<ruling>.docx       the abstract in bold, then the ruling
+delivery/fr/<chamber>/<ruling>.fr.docx    the same, in French
+delivery/report.csv                       one row per ruling: what was written, what failed
+```
+
+`results/` is only read. A machine-written abstract carries a line saying so
+(«ملخص محرر آليا» / «Résumé rédigé automatiquement»); `--no-mark` drops it.
+
+**A French file is only written if it is whole.** Each `XXXXXXX` is sent as a numbered
+marker (`§k§`) and must come back exactly once; a translation that loses, merges or
+adds one is retried — numbered, then plain, four attempts — and reported if it still
+fails. The first full run: 29,383 Arabic files, 28,923 French (98.4%), 300 French files
+spot-checked against their Arabic with no redaction mismatch.
+
+**Where it sends requests.** The AI Studio key (`TRANSLATE_API_KEY`) first, Vertex as
+overflow across 15 regions. Vertex alone throttled this project hard after hours of
+sustained use; the key, a separate quota, did not.
+
+**Cost.** Plan on about **$1.60 per thousand rulings**: the full corpus came to ~$47,
+of which ~$28 is translating each ruling once and the rest is checking, retrying, and
+the abstract as its own request.
+
+`delivery/` is gitignored — it holds every ruling's full text.
