@@ -12,6 +12,8 @@ backend/
   accounts.py   organizations, sessions, invitations, password reset, two-factor
   billing.py    plans, subscriptions, invoices, payments
   crm.py        leads, contacts, opportunities, activities, tasks, dashboard
+  sales.py      quotes, email from the CRM, revenue reports, CSV in and out, duplicates
+  practice.py   the firm module: a law firm's own clients, cases, hearings, deadlines, fees
   support.py    tickets and their messages
   library.py    folders and notes, alerts, history, download quotas and marks
   mailer.py     every email, in the reader's language, through one outbox
@@ -95,6 +97,64 @@ opportunity: new → contacted → demo → trial → won | lost
   pipeline, renewals in the next 30 days and customers at risk.
 
 Nothing in the CRM is deleted: records are marked, so history and figures stay true.
+
+**Going further** (`sales.py`):
+
+- **Quotes (devis)** `D-2026-00001`: from a plan (monthly price × months) or with custom
+  lines, valid 30 days, printable, emailed to the organization. *Accept* does everything
+  at once: the subscription at the quoted price (it starts after the current paid one,
+  or at once during a trial), the invoice, the opportunity won, the organization a
+  customer. A quote is accepted once.
+- **Email from the CRM**: written on the organization's page, sent through the outbox,
+  kept in its history.
+- **Reports**: MRR (what active customers pay a month, negotiated price when there is
+  one), ARR, average per customer, cash collected month by month over 12 months, new
+  customers and departures, lead conversion, win rate, and the open pipeline weighted
+  by stage (new 10% → trial 60%).
+- **Lists in and out**: CSV exports for Excel (leads, organizations, invoices,
+  payments); a CSV import of leads that skips anyone already known, so importing the
+  same bar-association list twice is harmless; a warning when a new lead looks like
+  an existing lead or organization.
+- **Each sales person's day** by email: tasks due, renewals they manage.
+
+---
+
+## The firm module (cabinet): the CRM our customers need
+
+What makes a firm open the platform every day, not only when it researches: its own
+clients and cases, in the same place as the case law. `practice.py`, at `/cabinet`.
+
+| | |
+|---|---|
+| **Clients** | people and companies the firm represents: identity (CIN / RC, ICE), contact details, notes |
+| **Cases** (dossiers) | the firm's own reference `2026/0001`, client and their role, opposing party and lawyer, court, chamber, level, court file number, nature, responsible lawyer, fee agreement, status |
+| **Hearings** | date, time, room, purpose; recording the outcome can schedule the next hearing in the same step |
+| **Deadlines** | opposition, appeal, cassation... computed from the notification date, moved to the next working day when they fall on a weekend, and marked *to verify* until a lawyer confirms them |
+| **Tasks** | per case or general, assigned to a member |
+| **Documents** | per case, 20 MB each, private to the firm |
+| **Time and expenses** | hours at a rate, court fees, bailiff, expert... |
+| **Fee notes** | numbered per firm `2026-0001`, built from the case's unbilled time and expenses plus any fixed fee, VAT 10% (editable), part payments, printable; cancelling one makes its lines billable again |
+| **Case law** | rulings from the corpus tied to a case from the ruling's own page, with a note |
+| **Agenda and dashboard** | hearings, deadlines and tasks by day (late ones first), for the firm or for me; what is unpaid, what was collected this month |
+| **Daily email** | each lawyer: their hearings within two days and deadlines within seven, unverified ones flagged |
+
+**This module holds real personal data**, unlike the rest of the platform. So:
+
+1. **A firm sees only itself.** The firm is always the signed-in person's organization,
+   never a value from the request; every query filters on it.
+2. **Our own staff cannot read it** -- admin, sales and editors alike are refused. The
+   firm is the data controller; we only process its data (law 09-08).
+3. **Erasing is real.** The account holder can erase a client: every case, hearing,
+   deadline, document *file*, time entry and fee note under it is deleted, not flagged.
+4. **The audit trail keeps ids, never names** -- otherwise it would become a second copy
+   of the firm's client list.
+
+Whether a plan includes the module is a switch on the plan (*Administration › Offres et
+prix*); all four example plans include it, the trial too, so firms can try it.
+
+**A deadline is the lawyer's responsibility.** The presets (opposition 10 days, appeal
+30, criminal appeal 10, cassation 30) are the usual ones; public holidays are not
+counted; a deadline stays *to verify* until someone confirms it, and the page says so.
 
 ---
 
@@ -193,3 +253,6 @@ cd platform/backend && python -m pytest tests/ -q
 `test_business.py` follows the business the way it is used -- a demo request becomes a
 customer, its people are invited and read within what they pay for, the team is paid
 -- and `test_bilingual.py` the French site. Both pass on SQLite and on Postgres.
+`test_crm_deep.py` covers quotes, reports, import and export, and above all the firm
+module's walls: one firm cannot see another, our staff see nothing, erasing removes the
+files, the audit trail holds no names. The isolation rules are mutation-checked.

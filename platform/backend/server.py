@@ -32,6 +32,8 @@ import billing
 import crm
 import db
 import library
+import practice
+import sales
 import support
 import docedit
 import piigate
@@ -48,7 +50,7 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
-for _module in (accounts, billing, crm, support, library):
+for _module in (accounts, billing, crm, sales, practice, support, library):
     app.include_router(_module.router)
 
 STORE = get_filestore()

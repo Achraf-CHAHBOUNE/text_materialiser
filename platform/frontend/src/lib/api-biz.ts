@@ -31,7 +31,7 @@ export type Org = {
 export type Plan = {
   code: string; name_ar: string; name_fr: string; blurb_ar: string; blurb_fr: string;
   price: number; period: "month" | "year" | "quote"; seats: number; daily_downloads: number;
-  vat_rate: number; public: boolean; active: boolean; sort: number;
+  vat_rate: number; public: boolean; active: boolean; sort: number; practice: boolean;
 };
 export type Subscription = {
   id: number; org_id: number; plan_code: string; plan_name_ar: string; plan_name_fr: string;
@@ -53,6 +53,8 @@ export type InvoiceDetail = Invoice & {
 export type Account = {
   user: Person; org: Org | null; subscription: Subscription | null; access: Access;
   mfa_required: boolean; seats?: { total: number; used: number }; quota?: number;
+  /** whether the firm module (cabinet) is in the organization's plan */
+  practice: boolean;
 };
 export type Invitation = { id: number; email: string; role: Role; invited_by: string; expires_at: string };
 export type Lead = {
@@ -227,3 +229,50 @@ export const updateAlert = (id: number, b: { active?: boolean; frequency?: strin
 export const deleteAlert = (id: number) => del<{ ok: boolean }>(`/api/me/alerts/${id}`);
 export const history = () => j<HistoryRow[]>("/api/me/history");
 export const myDownloads = () => j<{ used_today: number; quota: number | null }>("/api/me/downloads");
+
+// ---------- quotes, reports, lists in and out ----------
+export type QuoteLine = { label: string; qty: number; unit_price: number };
+export type Quote = {
+  id: number; number: string; org_id: number; org_name?: string; lines: QuoteLine[]; plan_code: string;
+  months: number; seats: number | null; vat_rate: number; amount_ht: number; vat: number; amount_ttc: number;
+  issued_on: string; valid_until: string; status: "draft" | "sent" | "accepted" | "refused" | "expired";
+  notes: string; invoice_id: number | null; created_by: string;
+};
+export type QuoteDetail = Quote & { org: Org | null; seller: { name: string; address: string; ice: string; rib: string } };
+export type Reports = {
+  mrr: number; arr: number; paying_customers: number; arpa: number;
+  revenue: { month: string; amount: number }[]; new_customers: { month: string; count: number }[];
+  churned: { month: string; count: number }[]; leads_12m: number; converted_12m: number;
+  conversion_rate: number; win_rate: number; pipeline_open: number; forecast: number;
+  stage_odds: Record<string, number>; plans: Record<string, number>;
+};
+export const quotes = (p: { status?: string; org_id?: number } = {}) => j<Quote[]>(`/api/crm/quotes?${qs(p)}`);
+export const createQuote = (orgId: number, b: { plan_code?: string; months?: number; seats?: number | undefined;
+  lines?: QuoteLine[]; vat_rate?: number; valid_days?: number; notes?: string }) =>
+  post<Quote>(`/api/crm/orgs/${orgId}/quotes`, b);
+export const sendQuote = (id: number) => post<Quote>(`/api/crm/quotes/${id}/send`);
+export const acceptQuote = (id: number) => post<{ invoice: Invoice }>(`/api/crm/quotes/${id}/accept`);
+export const refuseQuote = (id: number) => post<Quote>(`/api/crm/quotes/${id}/refuse`);
+export const quoteDetail = (id: number) => j<QuoteDetail>(`/api/quotes/${id}`);
+export const myQuotes = () => j<Quote[]>("/api/account/quotes");
+export const reports = () => j<Reports>("/api/crm/reports");
+export const emailContact = (orgId: number, b: { to: string; subject: string; body: string; lang: Lang }) =>
+  post<ActivityRow>(`/api/crm/orgs/${orgId}/email`, b);
+export const duplicates = (email: string, company: string) =>
+  j<{ leads: Lead[]; orgs: Org[] }>(`/api/crm/duplicates?${qs({ email, company })}`);
+export async function importLeads(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return j<{ created: number; skipped: number }>("/api/crm/import/leads", { method: "POST", body: fd });
+}
+/** Lists as CSV for Excel: fetched with the session, then saved. */
+export async function exportCsv(what: "leads" | "orgs" | "invoices" | "payments") {
+  const { apiBase, getToken } = await import("./api");
+  const r = await fetch(`${apiBase}/api/crm/export/${what}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = `${what}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}

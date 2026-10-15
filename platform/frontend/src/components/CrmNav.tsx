@@ -12,7 +12,9 @@ export function CrmNav() {
     { to: "/crm/leads", label: t("crm.leads") },
     { to: "/crm/orgs", label: t("crm.orgs") },
     { to: "/crm/tasks", label: t("crm.tasks") },
+    { to: "/crm/quotes", label: t("quote.title") },
     { to: "/crm/invoices", label: t("bill.invoices") },
+    { to: "/crm/reports", label: t("rep.title") },
     { to: "/support", label: t("nav.support") },
   ];
   return (

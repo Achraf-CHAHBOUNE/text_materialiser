@@ -104,6 +104,19 @@ TEMPLATES = {
         "ar": ("طلب دعم جديد: {subject}", "طلب دعم جديد من {author} ({org}):\n\n{body}\n\n{link}"),
         "fr": ("Nouvelle demande d'assistance : {subject}", "Nouvelle demande de {author} ({org}) :\n\n{body}\n\n{link}"),
     },
+    "quote": {
+        "ar": ("عرض سعر {number}", "مرحبا،\n\nتجدون عرض السعر {number} بمبلغ {amount} درهم، صالح إلى غاية {valid}:\n{link}"),
+        "fr": ("Devis {number}", "Bonjour,\n\nVeuillez trouver le devis {number} d'un montant de {amount} MAD, "
+               "valable jusqu'au {valid} :\n{link}"),
+    },
+    "digest": {
+        "ar": ("مهامك اليوم", "{body}\n\n{link}"),
+        "fr": ("Votre journée", "{body}\n\n{link}"),
+    },
+    "hearing_digest": {
+        "ar": ("جلسات وآجال الأيام القادمة", "{body}\n\n{link}"),
+        "fr": ("Audiences et délais à venir", "{body}\n\n{link}"),
+    },
     "invoice": {
         "ar": ("فاتورة {number}", "مرحبا،\n\nتجدون فاتورة {number} بمبلغ {amount} درهم، تستحق في {due}:\n{link}"),
         "fr": ("Facture {number}", "Bonjour,\n\nVeuillez trouver la facture {number} d'un montant de {amount} MAD, "
@@ -124,6 +137,22 @@ def queue(to: str, template: str, lang: str = "ar", *, dedupe: Optional[str] = N
         s.add(EmailOutbox(to_addr=to, template=template, lang=lang,
                           subject=subject.format(**safe), body=body.format(**safe) + SIGN[lang],
                           dedupe_key=dedupe))
+        try:
+            s.commit()
+        except IntegrityError:
+            s.rollback()
+            return False
+    return True
+
+
+def queue_text(to: str, subject: str, body: str, lang: str = "fr", *,
+               dedupe: Optional[str] = None) -> bool:
+    """A message written by a person (an email to a contact from the CRM), sent through
+    the same outbox as everything else."""
+    lang = lang if lang in ("ar", "fr") else "fr"
+    with db.session() as s:
+        s.add(EmailOutbox(to_addr=to, template="direct", lang=lang, subject=subject[:200],
+                          body=body + SIGN[lang], dedupe_key=dedupe))
         try:
             s.commit()
         except IntegrityError:

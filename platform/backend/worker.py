@@ -8,6 +8,8 @@ Once a day
     remind customers 30, 15 and 7 days before their subscription ends -- and their
       account manager -- once each, however often this runs
     email each reader's alerts: rulings published since their last one
+    email each sales person their day (tasks due, renewals they manage)
+    email each lawyer their hearings in two days and deadlines within seven
 
 Runs beside the API, never inside a request:
 
@@ -32,9 +34,44 @@ import crm  # noqa: F401  -- its tables must exist
 import db
 import library
 import mailer
+import practice
+import sales  # noqa: F401  -- its tables must exist
 import support  # noqa: F401
 
 REMIND_DAYS = (30, 15, 7)
+
+
+def sales_digests(today: dt.date) -> int:
+    """Each sales person's day: tasks due, and the renewals they manage this month."""
+    sent = 0
+    with db.session() as s:
+        tasks = list(s.execute(select(crm.Task.assigned_to, crm.Task.title, crm.Task.due_on).where(
+            crm.Task.done_at.is_(None), crm.Task.due_on <= today)).all())
+        subs = list(s.scalars(select(billing.Subscription).where(
+            billing.Subscription.status.in_(("trial", "active")),
+            billing.Subscription.ends_on >= today,
+            billing.Subscription.ends_on <= today + dt.timedelta(days=30))))
+    per: dict = {}
+    for who, title, due in tasks:
+        late = " (!)" if due < today else ""
+        per.setdefault(who, []).append(f"• {due.isoformat()}{late} — {title}")
+    for x in subs:
+        org = accounts.get_org(x.org_id) or {}
+        who = org.get("account_manager") or ""
+        if who:
+            per.setdefault(who, []).append(f"• fin {x.ends_on.isoformat()} — {org.get('name', '')} ({x.status})")
+    for email, lines in per.items():
+        sent += mailer.queue(email, "digest", "fr", dedupe=f"digest:{today.isoformat()}:{email}",
+                             body="\n".join(lines), link=f"{mailer.site_url()}/fr/crm")
+    return sent
+
+
+def practice_digests(today: dt.date) -> int:
+    sent = 0
+    for email, lang, body in practice.digests(today):
+        sent += mailer.queue(email, "hearing_digest", lang, dedupe=f"hearings:{today.isoformat()}:{email}",
+                             body=body, link=f"{mailer.site_url()}/{lang}/cabinet")
+    return sent
 
 
 class WorkerState(db.Base):
@@ -159,7 +196,8 @@ def daily(force: bool = False) -> dict:
     if not force and _get("daily") == today.isoformat():
         return {}
     out = {"expired": expire_subscriptions(today), "overdue": mark_overdue(today),
-           "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow())}
+           "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow()),
+           "sales_digests": sales_digests(today), "practice_digests": practice_digests(today)}
     _set("daily", today.isoformat())
     return out
 

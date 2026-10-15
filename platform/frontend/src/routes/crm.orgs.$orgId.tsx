@@ -8,6 +8,8 @@ import { AppShell } from "@/components/AppShell";
 import { Badge, Card, day, Empty, money, Select, Stat, STATUS_TONE, Table, Td, TextField, when } from "@/components/biz";
 import { CrmNav } from "@/components/CrmNav";
 import { InvoiceTable } from "@/components/InvoiceTable";
+import { QuoteTable } from "@/components/QuoteTable";
+import { createQuote, emailContact, quotes as listQuotes } from "@/lib/api-biz";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +55,7 @@ function OrgPage() {
               <TabsTrigger value="overview">{t("crm.tabOverview")}</TabsTrigger>
               <TabsTrigger value="people">{t("crm.tabPeople")}</TabsTrigger>
               <TabsTrigger value="subscription">{t("acc.subscription")}</TabsTrigger>
+              <TabsTrigger value="quotes">{t("quote.title")}</TabsTrigger>
               <TabsTrigger value="invoices">{t("bill.invoices")}</TabsTrigger>
               <TabsTrigger value="activity">{t("crm.tabActivity")}</TabsTrigger>
               <TabsTrigger value="history">{t("crm.tabHistory")}</TabsTrigger>
@@ -60,6 +63,7 @@ function OrgPage() {
             <TabsContent value="overview" className="mt-4"><Overview o={o} /></TabsContent>
             <TabsContent value="people" className="mt-4"><People o={o} /></TabsContent>
             <TabsContent value="subscription" className="mt-4"><Subscriptions orgId={id} /></TabsContent>
+            <TabsContent value="quotes" className="mt-4"><QuotesTab orgId={id} /></TabsContent>
             <TabsContent value="invoices" className="mt-4"><Invoices orgId={id} /></TabsContent>
             <TabsContent value="activity" className="mt-4"><ActivityTab o={o} /></TabsContent>
             <TabsContent value="history" className="mt-4">
@@ -285,6 +289,88 @@ function Invoices({ orgId }: { orgId: number }) {
   );
 }
 
+function QuotesTab({ orgId }: { orgId: number }) {
+  const { t, lang } = useI18n();
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["quotes", "org", orgId], queryFn: () => listQuotes({ org_id: orgId }) });
+  const plans = useQuery({ queryKey: ["admin-plans"], queryFn: adminPlans });
+  const [plan, setPlan] = useState("firm");
+  const [months, setMonths] = useState("12");
+  const [seats, setSeats] = useState("");
+  const [custom, setCustom] = useState(false);
+  const [lines, setLines] = useState([{ label: "", qty: "1", price: "" }]);
+  const [notes, setNotes] = useState("");
+  const create = useMutation({
+    mutationFn: () => createQuote(orgId, {
+      plan_code: plan, months: Number(months) || 12, seats: Number(seats) || undefined, notes,
+      lines: custom ? lines.filter((l) => l.label.trim()).map((l) => ({
+        label: l.label, qty: Number(l.qty.replace(",", ".")) || 0,
+        unit_price: Math.round(parseFloat(l.price.replace(",", ".") || "0") * 100) })) : [],
+    }),
+    onSuccess: () => { toast.success(t("quote.created")); void qc.invalidateQueries({ queryKey: ["quotes"] }); },
+    onError: fail(t("adm.failed")),
+  });
+  const set = (i: number, k: "label" | "qty" | "price", v: string) => setLines(lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
+  return (
+    <div className="grid gap-4">
+      <Card title={t("quote.new")}>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <div className="flex flex-wrap items-end gap-2">
+            <Select value={plan} onChange={setPlan} label={t("crm.plan")}
+                    options={(plans.data ?? []).map((p) => ({ value: p.code, label: lang === "fr" ? p.name_fr : p.name_ar }))} />
+            <Input value={months} onChange={(e) => setMonths(e.target.value)} className="h-10 w-20" inputMode="numeric" aria-label={t("quote.months")} />
+            <span className="pb-2 text-sm text-muted-foreground">{t("quote.months")}</span>
+            <Input value={seats} onChange={(e) => setSeats(e.target.value)} className="h-10 w-24" inputMode="numeric" placeholder={t("pub.seats")} aria-label={t("pub.seats")} />
+            <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} />{t("quote.customLines")}</label>
+          </div>
+          {custom && (
+            <div className="space-y-2">
+              {lines.map((l, i) => (
+                <div key={i} className="flex flex-wrap gap-2">
+                  <Input value={l.label} onChange={(e) => set(i, "label", e.target.value)} placeholder={t("bill.description")} className="h-9 flex-1" aria-label={t("bill.description")} />
+                  <Input value={l.qty} onChange={(e) => set(i, "qty", e.target.value)} className="h-9 w-20" dir="ltr" aria-label={t("quote.qty")} />
+                  <Input value={l.price} onChange={(e) => set(i, "price", e.target.value)} placeholder={`${t("quote.unit")} (MAD)`} className="h-9 w-36" dir="ltr" aria-label={t("quote.unit")} />
+                </div>
+              ))}
+              <Button type="button" size="sm" variant="ghost" onClick={() => setLines([...lines, { label: "", qty: "1", price: "" }])}><Plus className="size-4" />{t("quote.addLine")}</Button>
+            </div>
+          )}
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t("quote.notes")} aria-label={t("quote.notes")} />
+          <Button type="submit" disabled={create.isPending}>{t("adm.create")}</Button>
+          <p className="text-xs text-muted-foreground">{t("quote.hint")}</p>
+        </form>
+      </Card>
+      <Card title={t("quote.title")}><QuoteTable rows={list.data ?? []} /></Card>
+    </div>
+  );
+}
+
+function EmailForm({ o }: { o: OrgDetail }) {
+  const { t, lang } = useI18n();
+  const qc = useQueryClient();
+  const options = [o.email, ...o.contacts.map((c) => c.email)].filter((e, i, a) => e && a.indexOf(e) === i);
+  const [to, setTo] = useState(options[0] ?? "");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const send = useMutation({
+    mutationFn: () => emailContact(o.id, { to, subject, body, lang: (o.language || lang) as "ar" | "fr" }),
+    onSuccess: () => { toast.success(t("crm.emailQueued")); setSubject(""); setBody(""); void qc.invalidateQueries({ queryKey: ["org", o.id] }); },
+    onError: fail(t("adm.failed")),
+  });
+  return (
+    <Card title={<span className="flex items-center gap-2"><Mail className="size-4 text-teal" />{t("crm.writeEmail")}</span>}>
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); send.mutate(); }}>
+        <Input list={`to-${o.id}`} value={to} onChange={(e) => setTo(e.target.value)} type="email" required dir="ltr" placeholder={t("mail.to")} className="h-10" aria-label={t("mail.to")} />
+        <datalist id={`to-${o.id}`}>{options.map((e) => <option key={e} value={e} />)}</datalist>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder={t("sup.subject")} className="h-10" aria-label={t("sup.subject")} />
+        <Textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={5} aria-label={t("crm.notes")} />
+        <Button type="submit" size="sm" disabled={send.isPending}>{t("pub.send")}</Button>
+        <p className="text-xs text-muted-foreground">{t("crm.emailHint")}</p>
+      </form>
+    </Card>
+  );
+}
+
 function ActivityTab({ o }: { o: OrgDetail }) {
   const { t, lang, status } = useI18n();
   const refresh = useRefresh(o.id);
@@ -323,6 +409,7 @@ function ActivityTab({ o }: { o: OrgDetail }) {
           </Table>
         )}
       </Card>
+      <EmailForm o={o} />
       <Card title={t("crm.logActivity")}>
         <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); log.mutate(); }}>
           <Select value={kind} onChange={setKind} label={t("crm.activityKind")}

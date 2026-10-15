@@ -24,19 +24,30 @@ import { Route as ResultsRouteImport } from './routes/results'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as BrowseIndexRouteImport } from './routes/browse.index'
 import { Route as BrowseChamberRouteImport } from './routes/browse.$chamber'
+import { Route as CabinetIndexRouteImport } from './routes/cabinet.index'
+import { Route as CabinetAgendaRouteImport } from './routes/cabinet.agenda'
+import { Route as CabinetFeesRouteImport } from './routes/cabinet.fees'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as CrmIndexRouteImport } from './routes/crm.index'
 import { Route as CrmInvoicesRouteImport } from './routes/crm.invoices'
 import { Route as CrmLeadsRouteImport } from './routes/crm.leads'
+import { Route as CrmQuotesRouteImport } from './routes/crm.quotes'
+import { Route as CrmReportsRouteImport } from './routes/crm.reports'
 import { Route as CrmTasksRouteImport } from './routes/crm.tasks'
+import { Route as FeeFeeIdRouteImport } from './routes/fee.$feeId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as InvoiceInvoiceIdRouteImport } from './routes/invoice.$invoiceId'
 import { Route as LibraryIndexRouteImport } from './routes/library.index'
 import { Route as LibraryFolderIdRouteImport } from './routes/library.$folderId'
+import { Route as QuoteQuoteIdRouteImport } from './routes/quote.$quoteId'
 import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as RulingDocIdRouteImport } from './routes/ruling.$docId'
 import { Route as SupportIndexRouteImport } from './routes/support.index'
 import { Route as SupportTicketIdRouteImport } from './routes/support.$ticketId'
+import { Route as CabinetClientsIndexRouteImport } from './routes/cabinet.clients.index'
+import { Route as CabinetClientsClientIdRouteImport } from './routes/cabinet.clients.$clientId'
+import { Route as CabinetMattersIndexRouteImport } from './routes/cabinet.matters.index'
+import { Route as CabinetMattersMatterIdRouteImport } from './routes/cabinet.matters.$matterId'
 import { Route as CrmOrgsIndexRouteImport } from './routes/crm.orgs.index'
 import { Route as CrmOrgsOrgIdRouteImport } from './routes/crm.orgs.$orgId'
 
@@ -115,6 +126,21 @@ const BrowseChamberRoute = BrowseChamberRouteImport.update({
   path: '/browse/$chamber',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CabinetIndexRoute = CabinetIndexRouteImport.update({
+  id: '/cabinet/',
+  path: '/cabinet/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetAgendaRoute = CabinetAgendaRouteImport.update({
+  id: '/cabinet/agenda',
+  path: '/cabinet/agenda',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetFeesRoute = CabinetFeesRouteImport.update({
+  id: '/cabinet/fees',
+  path: '/cabinet/fees',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   id: '/cases/$caseId',
   path: '/cases/$caseId',
@@ -135,9 +161,24 @@ const CrmLeadsRoute = CrmLeadsRouteImport.update({
   path: '/crm/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CrmQuotesRoute = CrmQuotesRouteImport.update({
+  id: '/crm/quotes',
+  path: '/crm/quotes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmReportsRoute = CrmReportsRouteImport.update({
+  id: '/crm/reports',
+  path: '/crm/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CrmTasksRoute = CrmTasksRouteImport.update({
   id: '/crm/tasks',
   path: '/crm/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeeFeeIdRoute = FeeFeeIdRouteImport.update({
+  id: '/fee/$feeId',
+  path: '/fee/$feeId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
@@ -160,6 +201,11 @@ const LibraryFolderIdRoute = LibraryFolderIdRouteImport.update({
   path: '/library/$folderId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QuoteQuoteIdRoute = QuoteQuoteIdRouteImport.update({
+  id: '/quote/$quoteId',
+  path: '/quote/$quoteId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetTokenRoute = ResetTokenRouteImport.update({
   id: '/reset/$token',
   path: '/reset/$token',
@@ -178,6 +224,26 @@ const SupportIndexRoute = SupportIndexRouteImport.update({
 const SupportTicketIdRoute = SupportTicketIdRouteImport.update({
   id: '/support/$ticketId',
   path: '/support/$ticketId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetClientsIndexRoute = CabinetClientsIndexRouteImport.update({
+  id: '/cabinet/clients/',
+  path: '/cabinet/clients/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetClientsClientIdRoute = CabinetClientsClientIdRouteImport.update({
+  id: '/cabinet/clients/$clientId',
+  path: '/cabinet/clients/$clientId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetMattersIndexRoute = CabinetMattersIndexRouteImport.update({
+  id: '/cabinet/matters/',
+  path: '/cabinet/matters/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CabinetMattersMatterIdRoute = CabinetMattersMatterIdRouteImport.update({
+  id: '/cabinet/matters/$matterId',
+  path: '/cabinet/matters/$matterId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CrmOrgsIndexRoute = CrmOrgsIndexRouteImport.update({
@@ -206,21 +272,32 @@ export interface FileRoutesByFullPath {
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
+  '/cabinet/agenda': typeof CabinetAgendaRoute
+  '/cabinet/fees': typeof CabinetFeesRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/invoices': typeof CrmInvoicesRoute
   '/crm/leads': typeof CrmLeadsRoute
+  '/crm/quotes': typeof CrmQuotesRoute
+  '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/library/$folderId': typeof LibraryFolderIdRoute
+  '/quote/$quoteId': typeof QuoteQuoteIdRoute
   '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
   '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse/': typeof BrowseIndexRoute
+  '/cabinet/': typeof CabinetIndexRoute
   '/crm/': typeof CrmIndexRoute
   '/library/': typeof LibraryIndexRoute
   '/support/': typeof SupportIndexRoute
+  '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
+  '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/cabinet/clients/': typeof CabinetClientsIndexRoute
+  '/cabinet/matters/': typeof CabinetMattersIndexRoute
   '/crm/orgs/': typeof CrmOrgsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -238,21 +315,32 @@ export interface FileRoutesByTo {
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
+  '/cabinet/agenda': typeof CabinetAgendaRoute
+  '/cabinet/fees': typeof CabinetFeesRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/invoices': typeof CrmInvoicesRoute
   '/crm/leads': typeof CrmLeadsRoute
+  '/crm/quotes': typeof CrmQuotesRoute
+  '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/library/$folderId': typeof LibraryFolderIdRoute
+  '/quote/$quoteId': typeof QuoteQuoteIdRoute
   '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
   '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse': typeof BrowseIndexRoute
+  '/cabinet': typeof CabinetIndexRoute
   '/crm': typeof CrmIndexRoute
   '/library': typeof LibraryIndexRoute
   '/support': typeof SupportIndexRoute
+  '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
+  '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/cabinet/clients': typeof CabinetClientsIndexRoute
+  '/cabinet/matters': typeof CabinetMattersIndexRoute
   '/crm/orgs': typeof CrmOrgsIndexRoute
 }
 export interface FileRoutesById {
@@ -271,21 +359,32 @@ export interface FileRoutesById {
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
+  '/cabinet/agenda': typeof CabinetAgendaRoute
+  '/cabinet/fees': typeof CabinetFeesRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/invoices': typeof CrmInvoicesRoute
   '/crm/leads': typeof CrmLeadsRoute
+  '/crm/quotes': typeof CrmQuotesRoute
+  '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/library/$folderId': typeof LibraryFolderIdRoute
+  '/quote/$quoteId': typeof QuoteQuoteIdRoute
   '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
   '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse/': typeof BrowseIndexRoute
+  '/cabinet/': typeof CabinetIndexRoute
   '/crm/': typeof CrmIndexRoute
   '/library/': typeof LibraryIndexRoute
   '/support/': typeof SupportIndexRoute
+  '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
+  '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/cabinet/clients/': typeof CabinetClientsIndexRoute
+  '/cabinet/matters/': typeof CabinetMattersIndexRoute
   '/crm/orgs/': typeof CrmOrgsIndexRoute
 }
 export interface FileRouteTypes {
@@ -305,21 +404,32 @@ export interface FileRouteTypes {
     | '/results'
     | '/settings'
     | '/browse/$chamber'
+    | '/cabinet/agenda'
+    | '/cabinet/fees'
     | '/cases/$caseId'
     | '/crm/invoices'
     | '/crm/leads'
+    | '/crm/quotes'
+    | '/crm/reports'
     | '/crm/tasks'
+    | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
     | '/library/$folderId'
+    | '/quote/$quoteId'
     | '/reset/$token'
     | '/ruling/$docId'
     | '/support/$ticketId'
     | '/browse/'
+    | '/cabinet/'
     | '/crm/'
     | '/library/'
     | '/support/'
+    | '/cabinet/clients/$clientId'
+    | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/cabinet/clients/'
+    | '/cabinet/matters/'
     | '/crm/orgs/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -337,21 +447,32 @@ export interface FileRouteTypes {
     | '/results'
     | '/settings'
     | '/browse/$chamber'
+    | '/cabinet/agenda'
+    | '/cabinet/fees'
     | '/cases/$caseId'
     | '/crm/invoices'
     | '/crm/leads'
+    | '/crm/quotes'
+    | '/crm/reports'
     | '/crm/tasks'
+    | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
     | '/library/$folderId'
+    | '/quote/$quoteId'
     | '/reset/$token'
     | '/ruling/$docId'
     | '/support/$ticketId'
     | '/browse'
+    | '/cabinet'
     | '/crm'
     | '/library'
     | '/support'
+    | '/cabinet/clients/$clientId'
+    | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/cabinet/clients'
+    | '/cabinet/matters'
     | '/crm/orgs'
   id:
     | '__root__'
@@ -369,21 +490,32 @@ export interface FileRouteTypes {
     | '/results'
     | '/settings'
     | '/browse/$chamber'
+    | '/cabinet/agenda'
+    | '/cabinet/fees'
     | '/cases/$caseId'
     | '/crm/invoices'
     | '/crm/leads'
+    | '/crm/quotes'
+    | '/crm/reports'
     | '/crm/tasks'
+    | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
     | '/library/$folderId'
+    | '/quote/$quoteId'
     | '/reset/$token'
     | '/ruling/$docId'
     | '/support/$ticketId'
     | '/browse/'
+    | '/cabinet/'
     | '/crm/'
     | '/library/'
     | '/support/'
+    | '/cabinet/clients/$clientId'
+    | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/cabinet/clients/'
+    | '/cabinet/matters/'
     | '/crm/orgs/'
   fileRoutesById: FileRoutesById
 }
@@ -402,21 +534,32 @@ export interface RootRouteChildren {
   ResultsRoute: typeof ResultsRoute
   SettingsRoute: typeof SettingsRoute
   BrowseChamberRoute: typeof BrowseChamberRoute
+  CabinetAgendaRoute: typeof CabinetAgendaRoute
+  CabinetFeesRoute: typeof CabinetFeesRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
   CrmInvoicesRoute: typeof CrmInvoicesRoute
   CrmLeadsRoute: typeof CrmLeadsRoute
+  CrmQuotesRoute: typeof CrmQuotesRoute
+  CrmReportsRoute: typeof CrmReportsRoute
   CrmTasksRoute: typeof CrmTasksRoute
+  FeeFeeIdRoute: typeof FeeFeeIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
   InvoiceInvoiceIdRoute: typeof InvoiceInvoiceIdRoute
   LibraryFolderIdRoute: typeof LibraryFolderIdRoute
+  QuoteQuoteIdRoute: typeof QuoteQuoteIdRoute
   ResetTokenRoute: typeof ResetTokenRoute
   RulingDocIdRoute: typeof RulingDocIdRoute
   SupportTicketIdRoute: typeof SupportTicketIdRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
+  CabinetIndexRoute: typeof CabinetIndexRoute
   CrmIndexRoute: typeof CrmIndexRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
   SupportIndexRoute: typeof SupportIndexRoute
+  CabinetClientsClientIdRoute: typeof CabinetClientsClientIdRoute
+  CabinetMattersMatterIdRoute: typeof CabinetMattersMatterIdRoute
   CrmOrgsOrgIdRoute: typeof CrmOrgsOrgIdRoute
+  CabinetClientsIndexRoute: typeof CabinetClientsIndexRoute
+  CabinetMattersIndexRoute: typeof CabinetMattersIndexRoute
   CrmOrgsIndexRoute: typeof CrmOrgsIndexRoute
 }
 
@@ -527,6 +670,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BrowseChamberRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cabinet/': {
+      id: '/cabinet/'
+      path: '/cabinet'
+      fullPath: '/cabinet/'
+      preLoaderRoute: typeof CabinetIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/agenda': {
+      id: '/cabinet/agenda'
+      path: '/cabinet/agenda'
+      fullPath: '/cabinet/agenda'
+      preLoaderRoute: typeof CabinetAgendaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/fees': {
+      id: '/cabinet/fees'
+      path: '/cabinet/fees'
+      fullPath: '/cabinet/fees'
+      preLoaderRoute: typeof CabinetFeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cases/$caseId': {
       id: '/cases/$caseId'
       path: '/cases/$caseId'
@@ -555,11 +719,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CrmLeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crm/quotes': {
+      id: '/crm/quotes'
+      path: '/crm/quotes'
+      fullPath: '/crm/quotes'
+      preLoaderRoute: typeof CrmQuotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/reports': {
+      id: '/crm/reports'
+      path: '/crm/reports'
+      fullPath: '/crm/reports'
+      preLoaderRoute: typeof CrmReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/crm/tasks': {
       id: '/crm/tasks'
       path: '/crm/tasks'
       fullPath: '/crm/tasks'
       preLoaderRoute: typeof CrmTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fee/$feeId': {
+      id: '/fee/$feeId'
+      path: '/fee/$feeId'
+      fullPath: '/fee/$feeId'
+      preLoaderRoute: typeof FeeFeeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite/$token': {
@@ -590,6 +775,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryFolderIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/quote/$quoteId': {
+      id: '/quote/$quoteId'
+      path: '/quote/$quoteId'
+      fullPath: '/quote/$quoteId'
+      preLoaderRoute: typeof QuoteQuoteIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset/$token': {
       id: '/reset/$token'
       path: '/reset/$token'
@@ -616,6 +808,34 @@ declare module '@tanstack/react-router' {
       path: '/support/$ticketId'
       fullPath: '/support/$ticketId'
       preLoaderRoute: typeof SupportTicketIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/clients/': {
+      id: '/cabinet/clients/'
+      path: '/cabinet/clients'
+      fullPath: '/cabinet/clients/'
+      preLoaderRoute: typeof CabinetClientsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/clients/$clientId': {
+      id: '/cabinet/clients/$clientId'
+      path: '/cabinet/clients/$clientId'
+      fullPath: '/cabinet/clients/$clientId'
+      preLoaderRoute: typeof CabinetClientsClientIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/matters/': {
+      id: '/cabinet/matters/'
+      path: '/cabinet/matters'
+      fullPath: '/cabinet/matters/'
+      preLoaderRoute: typeof CabinetMattersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cabinet/matters/$matterId': {
+      id: '/cabinet/matters/$matterId'
+      path: '/cabinet/matters/$matterId'
+      fullPath: '/cabinet/matters/$matterId'
+      preLoaderRoute: typeof CabinetMattersMatterIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/crm/orgs/': {
@@ -650,21 +870,32 @@ const rootRouteChildren: RootRouteChildren = {
   ResultsRoute: ResultsRoute,
   SettingsRoute: SettingsRoute,
   BrowseChamberRoute: BrowseChamberRoute,
+  CabinetAgendaRoute: CabinetAgendaRoute,
+  CabinetFeesRoute: CabinetFeesRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
   CrmInvoicesRoute: CrmInvoicesRoute,
   CrmLeadsRoute: CrmLeadsRoute,
+  CrmQuotesRoute: CrmQuotesRoute,
+  CrmReportsRoute: CrmReportsRoute,
   CrmTasksRoute: CrmTasksRoute,
+  FeeFeeIdRoute: FeeFeeIdRoute,
   InviteTokenRoute: InviteTokenRoute,
   InvoiceInvoiceIdRoute: InvoiceInvoiceIdRoute,
   LibraryFolderIdRoute: LibraryFolderIdRoute,
+  QuoteQuoteIdRoute: QuoteQuoteIdRoute,
   ResetTokenRoute: ResetTokenRoute,
   RulingDocIdRoute: RulingDocIdRoute,
   SupportTicketIdRoute: SupportTicketIdRoute,
   BrowseIndexRoute: BrowseIndexRoute,
+  CabinetIndexRoute: CabinetIndexRoute,
   CrmIndexRoute: CrmIndexRoute,
   LibraryIndexRoute: LibraryIndexRoute,
   SupportIndexRoute: SupportIndexRoute,
+  CabinetClientsClientIdRoute: CabinetClientsClientIdRoute,
+  CabinetMattersMatterIdRoute: CabinetMattersMatterIdRoute,
   CrmOrgsOrgIdRoute: CrmOrgsOrgIdRoute,
+  CabinetClientsIndexRoute: CabinetClientsIndexRoute,
+  CabinetMattersIndexRoute: CabinetMattersIndexRoute,
   CrmOrgsIndexRoute: CrmOrgsIndexRoute,
 }
 export const routeTree = rootRouteImport

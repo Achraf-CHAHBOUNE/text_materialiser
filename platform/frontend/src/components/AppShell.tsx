@@ -34,6 +34,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStore } from "@/lib/app-store";
 import { useI18n } from "@/lib/i18n";
+import { usePractice } from "@/lib/use-practice";
 import { cn } from "@/lib/utils";
 
 export { Wordmark, BrandMark };
@@ -42,8 +43,10 @@ export { Wordmark, BrandMark };
  *  tools, sales the CRM, an administrator everything. */
 function useNav() {
   const { isAdmin, isSales, isStaff } = useStore();
+  const practice = usePractice();
   const { t } = useI18n();
   const items = [{ to: "/browse", label: t("nav.browse"), icon: Scale }];
+  if (practice) items.unshift({ to: "/cabinet", label: t("nav.cabinet"), icon: Briefcase });
   if (!isStaff) {
     items.push({ to: "/library", label: t("nav.library"), icon: FolderOpen });
     items.push({ to: "/alerts", label: t("nav.alerts"), icon: Bell });

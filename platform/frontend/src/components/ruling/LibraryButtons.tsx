@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, BookmarkCheck, Download, FolderPlus, Loader2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, Briefcase, Download, FolderPlus, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { decisionFileUrl, getToken } from "@/lib/api";
 import { addToFolder, createFolder, folders, rulingFolders } from "@/lib/api-biz";
+import { linkRuling, rulingMatters } from "@/lib/api-practice";
 import { useI18n } from "@/lib/i18n";
 
 /** Download, through fetch rather than a plain link: past the day's quota the server
@@ -41,6 +42,41 @@ export function DownloadButton({ docId, fileName }: { docId: string; fileName: s
     <Button size="sm" onClick={run} disabled={busy}>
       {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" aria-hidden />} {t("ruling.download")}
     </Button>
+  );
+}
+
+/** Tie the ruling to one of the firm's open cases, where it shows under "case law". */
+export function LinkToMatter({ docId }: { docId: string }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const list = useQuery({ queryKey: ["ruling-matters", docId], queryFn: () => rulingMatters(docId), enabled: open });
+  const link = useMutation({
+    mutationFn: (matterId: number) => linkRuling(matterId, docId),
+    onSuccess: () => { toast.success(t("cab.linked")); void qc.invalidateQueries({ queryKey: ["ruling-matters", docId] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")),
+  });
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm"><Briefcase className="size-4" />{t("cab.linkToMatter")}</Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-3">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">{t("cab.chooseMatter")}</p>
+        {list.data && list.data.length === 0 && <p className="text-sm text-muted-foreground">{t("cab.noMatters")}</p>}
+        <ul className="max-h-64 space-y-1 overflow-auto">
+          {(list.data ?? []).map((m) => (
+            <li key={m.id}>
+              <button type="button" disabled={m.linked || link.isPending} onClick={() => link.mutate(m.id)}
+                      className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-sm hover:bg-accent disabled:opacity-60">
+                <span><span className="me-1 font-mono text-xs text-muted-foreground" dir="ltr">{m.reference}</span>{m.title}</span>
+                {m.linked && <BookmarkCheck className="size-4 shrink-0 text-teal" />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }
 

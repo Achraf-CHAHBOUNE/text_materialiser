@@ -46,6 +46,7 @@ class Plan(db.Base):
     public: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
+    practice: Mapped[bool] = mapped_column(Boolean, default=True)   # the firm module (cabinet)
 
 
 class Subscription(db.Base):
@@ -59,6 +60,9 @@ class Subscription(db.Base):
     ends_on: Mapped[dt.date] = mapped_column(Date, index=True)
     auto_renew: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # what this customer pays a month, before VAT, in centimes: the plan's price unless
+    # negotiated (an accepted quote, an institution on a custom price). Feeds the MRR.
+    monthly_price: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[str] = mapped_column(String, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
@@ -114,6 +118,8 @@ TRIAL_DAYS = 14
 
 
 def seed_plans() -> None:
+    db.add_columns("subscriptions", [("monthly_price", "INTEGER")])
+    db.add_columns("plans", [("practice", "BOOLEAN DEFAULT TRUE")])
     with db.session() as s:
         if s.scalar(select(func.count()).select_from(Plan)):
             return
@@ -125,7 +131,7 @@ def seed_plans() -> None:
 def plan_dict(p: Plan) -> dict:
     return {k: getattr(p, k) for k in ("code", "name_ar", "name_fr", "blurb_ar", "blurb_fr",
                                        "price", "period", "seats", "daily_downloads",
-                                       "vat_rate", "public", "active", "sort")}
+                                       "vat_rate", "public", "active", "sort", "practice")}
 
 
 def get_plan(code: str) -> Optional[dict]:
@@ -140,8 +146,28 @@ def sub_dict(x: Subscription) -> dict:
             "plan_name_ar": plan.get("name_ar", x.plan_code), "plan_name_fr": plan.get("name_fr", x.plan_code),
             "seats": x.seats, "status": x.status, "starts_on": x.starts_on.isoformat(),
             "ends_on": x.ends_on.isoformat(), "auto_renew": x.auto_renew, "notes": x.notes,
+            "monthly_price": monthly_price(x, plan),
             "days_left": (x.ends_on - dt.date.today()).days,
             "created_by": x.created_by, "created_at": x.created_at.isoformat() if x.created_at else ""}
+
+
+def monthly_price(x: "Subscription", plan: Optional[dict] = None) -> int:
+    """Centimes a month before VAT: negotiated if set, else the plan's."""
+    if x.monthly_price is not None:
+        return int(x.monthly_price)
+    plan = plan if plan is not None else (get_plan(x.plan_code) or {})
+    if plan.get("period") == "year":
+        return int(plan.get("price", 0)) // 12
+    return int(plan.get("price", 0)) if plan.get("period") == "month" else 0
+
+
+def has_practice(org_id: Optional[int]) -> bool:
+    """Whether the organization's plan includes the firm module."""
+    if access_state(org_id) != "ok":
+        return False
+    sub = current_subscription(org_id)
+    plan = get_plan(sub["plan_code"]) if sub else None
+    return bool(plan and plan.get("practice", True))
 
 
 def current_subscription(org_id: Optional[int]) -> Optional[dict]:
@@ -187,7 +213,8 @@ def daily_downloads(org_id: Optional[int]) -> int:
 
 def start_subscription(org_id: int, plan_code: str, *, status: str = "active",
                        days: Optional[int] = None, starts_on: Optional[dt.date] = None,
-                       seats: Optional[int] = None, actor: str = "", session=None) -> dict:
+                       seats: Optional[int] = None, actor: str = "", session=None,
+                       monthly: Optional[int] = None) -> dict:
     plan = get_plan(plan_code)
     if not plan:
         raise HTTPException(status_code=400, detail="Unknown plan")
@@ -196,7 +223,7 @@ def start_subscription(org_id: int, plan_code: str, *, status: str = "active",
         days = TRIAL_DAYS if status == "trial" else (365 if plan["period"] == "year" else 30)
     row = Subscription(org_id=org_id, plan_code=plan_code, status=status, starts_on=start,
                        ends_on=start + dt.timedelta(days=days - 1),
-                       seats=seats or plan["seats"], created_by=actor)
+                       seats=seats or plan["seats"], created_by=actor, monthly_price=monthly)
     # Inside a caller's transaction, the audit row joins it: written from a second
     # session it would wait on the first one's lock, forever, on SQLite.
     own = session is None
@@ -343,6 +370,7 @@ class PlanBody(BaseModel):
     public: bool = True
     active: bool = True
     sort: int = 0
+    practice: bool = True
 
 
 @router.put("/api/admin/plans/{code}")

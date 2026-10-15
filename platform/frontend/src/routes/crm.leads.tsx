@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Plus, UserCheck } from "lucide-react";
+import { Download, Plus, Upload, UserCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -10,7 +10,7 @@ import { CrmNav } from "@/components/CrmNav";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { convertLead, createLead, leads, updateLead, type Lead } from "@/lib/api-biz";
+import { convertLead, createLead, duplicates, exportCsv, importLeads, leads, updateLead, type Lead } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/crm/leads")({
@@ -37,7 +37,23 @@ function Leads() {
   });
   return (
     <AppShell title={t("crm.leads")} description={t("crm.leadsSubtitle")}
-              action={<Button size="sm" onClick={() => setAdding(true)}><Plus className="size-4" />{t("crm.newLead")}</Button>}>
+              action={
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border px-3 text-sm hover:bg-accent">
+                    <Upload className="size-4" />{t("crm.importCsv")}
+                    <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) importLeads(f).then((r) => { toast.success(`${t("crm.imported")} ${r.created} · ${t("crm.skipped")} ${r.skipped}`); refresh(); })
+                        .catch((err) => toast.error(err instanceof Error ? err.message : t("adm.failed")));
+                      e.target.value = "";
+                    }} />
+                  </label>
+                  <Button size="sm" variant="outline" onClick={() => void exportCsv("leads").catch(() => toast.error(t("adm.failed")))}>
+                    <Download className="size-4" />{t("crm.exportCsv")}
+                  </Button>
+                  <Button size="sm" onClick={() => setAdding(true)}><Plus className="size-4" />{t("crm.newLead")}</Button>
+                </div>
+              }>
       <CrmNav />
       <Card>
         <div className="mb-3 flex flex-wrap gap-2">
@@ -89,9 +105,25 @@ function NewLead({ open, onClose, onDone }: { open: boolean; onClose: () => void
     onSuccess: () => { setF(blank); onDone(); onClose(); },
     onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")),
   });
+  // someone already known: say so before a second record is made
+  const dup = useQuery({
+    queryKey: ["duplicates", f.email, f.company],
+    queryFn: () => duplicates(f.email, f.company),
+    enabled: open && (f.email.includes("@") || f.company.trim().length >= 3),
+  });
+  const seen = (dup.data?.leads.length ?? 0) + (dup.data?.orgs.length ?? 0);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
+        {seen > 0 && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+            <p className="font-medium">{t("crm.maybeDuplicate")}</p>
+            <ul className="mt-1 space-y-0.5">
+              {dup.data?.orgs.map((o) => <li key={`o${o.id}`}>{t("crm.org")} : <a className="underline" href={`/${lang}/crm/orgs/${o.id}`}>{o.name}</a></li>)}
+              {dup.data?.leads.map((l) => <li key={`l${l.id}`}>{t("crm.leads")} : {l.full_name} · {l.company} · {l.email}</li>)}
+            </ul>
+          </div>
+        )}
         <DialogHeader><DialogTitle>{t("crm.newLead")}</DialogTitle></DialogHeader>
         <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
           <TextField label={t("pub.name")} value={f.full_name} onChange={set("full_name")} required />

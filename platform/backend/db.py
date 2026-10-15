@@ -251,6 +251,19 @@ _engine = create_engine(_url(), future=True,
                         connect_args={"timeout": 30} if _url().startswith("sqlite") else {})
 
 
+def add_columns(table: str, columns: List[tuple]) -> None:
+    """Add (name, SQL type) columns a table made before them lacks. For modules whose
+    tables already exist in a serving database: create_all() never alters a table."""
+    from sqlalchemy import inspect, text as _sql
+    if table not in inspect(_engine).get_table_names():
+        return
+    have = {c["name"] for c in inspect(_engine).get_columns(table)}
+    for name, kind in columns:
+        if name not in have:
+            with _engine.begin() as c:
+                c.execute(_sql(f"ALTER TABLE {table} ADD COLUMN {name} {kind}"))
+
+
 def _add_missing_columns() -> None:
     """Add columns that post-date an existing database, in place.
 

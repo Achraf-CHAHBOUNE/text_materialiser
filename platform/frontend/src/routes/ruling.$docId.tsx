@@ -9,7 +9,8 @@ import { FileNumber } from "@/components/FileNumber";
 import { Headnote, HeadnoteFr } from "@/components/ruling/Headnote";
 import { HideAllDialog, ReportDialog, TextEditorDialog } from "@/components/ruling/EditDialogs";
 import { HistoryPanel } from "@/components/ruling/HistoryPanel";
-import { DownloadButton, SaveToFolder } from "@/components/ruling/LibraryButtons";
+import { DownloadButton, LinkToMatter, SaveToFolder } from "@/components/ruling/LibraryButtons";
+import { usePractice } from "@/lib/use-practice";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
 import { FrenchRuling, TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
 import { rulingKey, useEdits } from "@/components/ruling/useEdits";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/ruling/$docId")({
 function RulingPage() {
   const { docId } = Route.useParams();
   const { isAdmin, ready } = useStore();
+  const practice = usePractice();
   const { t, dir, lang, num, chamber: chamberName, court: courtName, city: cityName } = useI18n();
   // An admin reads through the admin route: it also opens rulings not yet published.
   const ruling = useQuery({
@@ -111,6 +113,7 @@ function RulingPage() {
                   <DownloadButton docId={d.doc_id} fileName={d.file_name} />
                 )}
                 {d.state === "published" && <SaveToFolder docId={d.doc_id} />}
+                {d.state === "published" && practice && <LinkToMatter docId={d.doc_id} />}
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="size-4" aria-hidden /> {t("ruling.print")}
                 </Button>
