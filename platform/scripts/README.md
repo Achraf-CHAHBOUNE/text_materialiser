@@ -244,6 +244,11 @@ delivery/fr/<chamber>/<ruling>.fr.docx    the same, in French
 delivery/report.csv                       one row per ruling: what was written, what failed
 ```
 
+Each file opens with a title — «ملخص القرار» (18 pt) / «Résumé de l'arrêt» (15 pt) —
+then the abstract in bold, larger than the ruling (16 pt Arabic, 13 pt French).
+Files written before that layout are brought up to it, without translating anything
+again, by `python restyle_abstracts.py --delivery ../../delivery` (safe to rerun).
+
 `results/` is only read. A machine-written abstract carries a line saying so
 («ملخص محرر آليا» / «Résumé rédigé automatiquement»); `--no-mark` drops it.
 

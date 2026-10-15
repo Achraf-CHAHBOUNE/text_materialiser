@@ -112,6 +112,8 @@ MIN_RATIO = 0.6
 
 MARK_AR = "ملخص محرر آليا — لا يصدر عن المحكمة"
 MARK_FR = "Résumé rédigé automatiquement — ne provient pas de la Cour"
+
+from restyle_abstracts import ABSTRACT_PT, TITLE, TITLE_PT, _size  # noqa: E402  one layout
 PRICE_IN, PRICE_OUT = 0.10, 0.40          # per million tokens, Flash-Lite
 
 # The site's translation prompt tells the model to keep XXXXXXX. Here every XXXXXXX has
@@ -340,13 +342,15 @@ def arabic_docx(source: Path, target: Path, abstract: str, machine: bool, mark: 
     first = d.paragraphs[0]._p if d.paragraphs else None
     block = []
     if abstract:
-        p = d.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        r = p.add_run(abstract)
-        r.bold = True
-        r.font.size = Pt(12)
-        _rtl(p, r)
-        block.append(p)
+        for text, size in ((TITLE["ar"], TITLE_PT["ar"]), (abstract, ABSTRACT_PT["ar"])):
+            p = d.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            r = p.add_run(text)
+            r.bold = True
+            _size(r, size, rtl=True)
+            _rtl(p, r)
+            block.append(p)
+        block[0].paragraph_format.space_after = Pt(4)
         if machine and mark:
             p = d.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -372,10 +376,15 @@ def french_docx(target: Path, abstract: str, body: str, machine: bool, mark: boo
     d.styles["Normal"].font.size = Pt(11)
     if abstract:
         p = d.add_paragraph()
+        p.paragraph_format.space_after = Pt(4)
+        r = p.add_run(TITLE["fr"])
+        r.bold = True
+        r.font.size = Pt(TITLE_PT["fr"])
+        p = d.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         r = p.add_run(abstract)
         r.bold = True
-        r.font.size = Pt(12)
+        r.font.size = Pt(ABSTRACT_PT["fr"])
         if machine and mark:
             r = d.add_paragraph().add_run(MARK_FR)
             r.italic = True

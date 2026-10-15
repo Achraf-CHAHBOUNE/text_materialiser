@@ -91,10 +91,16 @@ def add_to_french(path: Path, french_abstract: str, mark: bool) -> None:
     first = d.paragraphs[0]._p if d.paragraphs else None
     block = []
     p = d.add_paragraph()
+    p.paragraph_format.space_after = Pt(4)
+    r = p.add_run(deliver.TITLE["fr"])
+    r.bold = True
+    r.font.size = Pt(deliver.TITLE_PT["fr"])
+    block.append(p)
+    p = d.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     r = p.add_run(french_abstract)
     r.bold = True
-    r.font.size = Pt(12)
+    r.font.size = Pt(deliver.ABSTRACT_PT["fr"])
     block.append(p)
     if mark:
         r = (p2 := d.add_paragraph()).add_run(deliver.MARK_FR)
