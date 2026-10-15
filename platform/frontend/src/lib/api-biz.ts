@@ -230,6 +230,54 @@ export const deleteAlert = (id: number) => del<{ ok: boolean }>(`/api/me/alerts/
 export const history = () => j<HistoryRow[]>("/api/me/history");
 export const myDownloads = () => j<{ used_today: number; quota: number | null }>("/api/me/downloads");
 
+// ---------- the readers, as the admin sees them ----------
+export type Counts = { view: number; download: number; search: number; search_empty: number; translate: number; login: number };
+export type ReaderRow = {
+  email: string; full_name: string; role: Role; status: "active" | "suspended"; org_id: number | null;
+  org_name: string; plan: string; access: Access; ends_on: string; last_login: string; last_seen: string;
+  reads_30d: number; downloads_30d: number; searches_30d: number; logins_30d: number; reads_total: number;
+  org_paid: number; org_owed: number; sessions: number;
+};
+export type TimelineItem = { ts: string; action: string; query?: string; doc_id?: string; decision_no?: string; date?: string; chamber?: string };
+export type ReaderDetail = {
+  user: { email: string; full_name: string; phone: string; role: Role; status: "active" | "suspended";
+    language: Lang; org_id: number | null; mfa: boolean; created_at: string; last_login: string };
+  org: Org | null; subscription: Subscription | null; access: Access; quota: number; downloads_today: number;
+  money: { paid: number; owed: number; invoices: Invoice[] };
+  totals: Counts; recent: Counts; days: number;
+  series: { day: string; view: number; download: number; search: number }[];
+  chambers: { chamber: string; count: number }[];
+  timeline: TimelineItem[];
+  downloads: { ref: string; doc_id: string; at: string; decision_no?: string; chamber?: string; date?: string }[];
+  sessions: { ip: string; device: string; created_at: string; last_seen: string; ended: string; why: string }[];
+  audit: { ts: string; actor: string; action: string; field: string; old: string; new: string }[];
+};
+type RulingCount = { doc_id: string; count: number; readers: number; decision_no?: string; chamber?: string; date?: string };
+export type Usage = {
+  days: number; readers: number; active_readers: number; totals: Counts;
+  series: { day: string; users: number; view: number; download: number; search: number }[];
+  top_read: RulingCount[]; top_downloaded: RulingCount[];
+  top_searches: { query: string; count: number }[];
+  empty_searches: { query: string; count: number; last: string }[];
+  top_users: { email: string; view: number; download: number; search: number }[];
+};
+export const readers = (q = "") => j<ReaderRow[]>(`/api/crm/users?${qs({ q })}`);
+export const readerDetail = (email: string, days = 30) =>
+  j<ReaderDetail>(`/api/crm/users/${encodeURIComponent(email)}?days=${days}`);
+export const forceLogout = (email: string) => post<{ ended: number }>(`/api/crm/users/${encodeURIComponent(email)}/logout`);
+export const usage = (days = 30) => j<Usage>(`/api/crm/usage?days=${days}`);
+export async function exportActivity(days: number, email = "") {
+  const { apiBase, getToken } = await import("./api");
+  const r = await fetch(`${apiBase}/api/crm/activity/export?${qs({ days, email })}`,
+                        { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = `activite-${email || "tous"}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
 // ---------- quotes, reports, lists in and out ----------
 export type QuoteLine = { label: string; qty: number; unit_price: number };
 export type Quote = {

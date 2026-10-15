@@ -46,7 +46,8 @@ class Plan(db.Base):
     public: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
-    practice: Mapped[bool] = mapped_column(Boolean, default=True)   # the firm module (cabinet)
+    # the firm module (cabinet): off -- readers have a reading space only; kept for later
+    practice: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Subscription(db.Base):
@@ -119,7 +120,7 @@ TRIAL_DAYS = 14
 
 def seed_plans() -> None:
     db.add_columns("subscriptions", [("monthly_price", "INTEGER")])
-    db.add_columns("plans", [("practice", "BOOLEAN DEFAULT TRUE")])
+    db.add_columns("plans", [("practice", "BOOLEAN DEFAULT FALSE")])
     with db.session() as s:
         if s.scalar(select(func.count()).select_from(Plan)):
             return
@@ -167,7 +168,7 @@ def has_practice(org_id: Optional[int]) -> bool:
         return False
     sub = current_subscription(org_id)
     plan = get_plan(sub["plan_code"]) if sub else None
-    return bool(plan and plan.get("practice", True))
+    return bool(plan and plan.get("practice", False))
 
 
 def current_subscription(org_id: Optional[int]) -> Optional[dict]:
@@ -370,7 +371,7 @@ class PlanBody(BaseModel):
     public: bool = True
     active: bool = True
     sort: int = 0
-    practice: bool = True
+    practice: bool = False
 
 
 @router.put("/api/admin/plans/{code}")

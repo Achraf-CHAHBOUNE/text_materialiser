@@ -31,6 +31,7 @@ import auth as authmod
 import billing
 import crm
 import db
+import insights
 import library
 import practice
 import sales
@@ -50,7 +51,7 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
-for _module in (accounts, billing, crm, sales, practice, support, library):
+for _module in (accounts, billing, crm, sales, practice, support, library, insights):
     app.include_router(_module.router)
 
 STORE = get_filestore()
@@ -70,6 +71,7 @@ def _startup() -> None:
         db.upsert_user(ce, authmod.hash_password(cp), role="client")
     billing.seed_plans()
     accounts.adopt_orphan_clients()
+    insights.ensure_indexes()
 
 
 # ---------------- auth plumbing ----------------
@@ -146,6 +148,7 @@ def login(body: LoginBody, request: Request) -> dict:
     _failures.pop(key, None)
     db.touch_login(user["email"])
     sid = accounts.open_session(user, key[1], request.headers.get("user-agent", ""))
+    db.log_activity(user["email"], "login", "")
     return {"token": authmod.make_token(user["email"], sid), "email": user["email"],
             "role": user["role"], "language": user.get("language", "ar"),
             "access": billing.access_state(user.get("org_id")) if user["role"] not in STAFF else "ok"}
@@ -740,10 +743,12 @@ def browse_rulings(chamber: str = "", year: str = "", city: str = "", theme: str
                    q: str = Query(""), limit: int = 50, offset: int = 0, lang: str = "ar",
                    user: dict = Depends(current_user)) -> dict:
     """One page of the listing: number, date, city, chamber, subject -- and the total."""
-    if q.strip():
-        db.log_activity(user["email"], "search", q[:80])
-    return db.browse_rulings(chamber=chamber, year=year, city=city, theme=theme, q=q,
-                             limit=min(limit, 200), offset=offset, lang=_lang(lang))
+    out = db.browse_rulings(chamber=chamber, year=year, city=city, theme=theme, q=q,
+                            limit=min(limit, 200), offset=offset, lang=_lang(lang))
+    if q.strip() and offset == 0:
+        # a search that found nothing is what the corpus is missing: kept apart, to read
+        db.log_activity(user["email"], "search" if out["total"] else "search_empty", q[:80])
+    return out
 
 
 LANGS = ("ar", "fr")

@@ -13,7 +13,8 @@ backend/
   billing.py    plans, subscriptions, invoices, payments
   crm.py        leads, contacts, opportunities, activities, tasks, dashboard
   sales.py      quotes, email from the CRM, revenue reports, CSV in and out, duplicates
-  practice.py   the firm module: a law firm's own clients, cases, hearings, deadlines, fees
+  insights.py   what each reader reads, downloads and searches, what they pay -- for us
+  practice.py   the firm module (switched off): a law firm's own cases, hearings, fees
   support.py    tickets and their messages
   library.py    folders and notes, alerts, history, download quotas and marks
   mailer.py     every email, in the reader's language, through one outbox
@@ -119,7 +120,30 @@ Nothing in the CRM is deleted: records are marked, so history and figures stay t
 
 ---
 
-## The firm module (cabinet): the CRM our customers need
+## Following the readers (admin only)
+
+The CRM is ours: readers have a reading space and nothing else, and never see any of
+this. `insights.py` reads back what the platform already records -- every view,
+search, download, translation and sign-in (`client_activity`), each session's address
+and device, each download's reference -- for admin and sales.
+
+| page | what it answers |
+|---|---|
+| **CRM › Utilisateurs** | every reader: organization, plan and until when, reads, downloads and searches over 30 days, total read, what their organization has paid and still owes, last activity, signed in now or not. Filters: active, idle, subscription ended, owing; sorts by activity, reads, downloads, money |
+| **one reader** | everything they did, newest first (each ruling by number and chamber, each search with its words, *no result* marked); activity per day; the chambers they read most; downloads with the reference printed in the file; devices and IP addresses of each sign-in; invoices and payments. Actions: suspend, sign out everywhere, export their activity |
+| **CRM › Usage** | the platform over 7 to 365 days: active readers, reads, downloads, searches, sign-ins per day; most read and most downloaded rulings (times, distinct readers); most frequent searches; **searches that found nothing** -- what the corpus is missing; the most active readers |
+
+Everything exports to CSV for Excel, for one reader or for all.
+
+---
+
+## The firm module (cabinet) -- switched off
+
+Built, tested, and **off**: readers have a reading space only. Every plan comes with it
+switched off; an administrator could turn it on per plan (*Administration › Offres et
+prix*) if that is ever wanted. What follows describes it for that day.
+
+### What it is
 
 What makes a firm open the platform every day, not only when it researches: its own
 clients and cases, in the same place as the case law. `practice.py`, at `/cabinet`.
@@ -150,7 +174,7 @@ clients and cases, in the same place as the case law. `practice.py`, at `/cabine
    of the firm's client list.
 
 Whether a plan includes the module is a switch on the plan (*Administration › Offres et
-prix*); all four example plans include it, the trial too, so firms can try it.
+prix*); it is off on every plan.
 
 **A deadline is the lawyer's responsibility.** The presets (opposition 10 days, appeal
 30, criminal appeal 10, cassation 30) are the usual ones; public holidays are not

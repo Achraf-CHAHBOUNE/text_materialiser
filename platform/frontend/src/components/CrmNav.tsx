@@ -9,6 +9,8 @@ export function CrmNav() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const tabs = [
     { to: "/crm", label: t("crm.dashboard"), exact: true },
+    { to: "/crm/users", label: t("trk.users") },
+    { to: "/crm/usage", label: t("trk.usage") },
     { to: "/crm/leads", label: t("crm.leads") },
     { to: "/crm/orgs", label: t("crm.orgs") },
     { to: "/crm/tasks", label: t("crm.tasks") },

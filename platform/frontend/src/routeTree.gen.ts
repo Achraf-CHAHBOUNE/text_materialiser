@@ -34,6 +34,7 @@ import { Route as CrmLeadsRouteImport } from './routes/crm.leads'
 import { Route as CrmQuotesRouteImport } from './routes/crm.quotes'
 import { Route as CrmReportsRouteImport } from './routes/crm.reports'
 import { Route as CrmTasksRouteImport } from './routes/crm.tasks'
+import { Route as CrmUsageRouteImport } from './routes/crm.usage'
 import { Route as FeeFeeIdRouteImport } from './routes/fee.$feeId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as InvoiceInvoiceIdRouteImport } from './routes/invoice.$invoiceId'
@@ -50,6 +51,8 @@ import { Route as CabinetMattersIndexRouteImport } from './routes/cabinet.matter
 import { Route as CabinetMattersMatterIdRouteImport } from './routes/cabinet.matters.$matterId'
 import { Route as CrmOrgsIndexRouteImport } from './routes/crm.orgs.index'
 import { Route as CrmOrgsOrgIdRouteImport } from './routes/crm.orgs.$orgId'
+import { Route as CrmUsersIndexRouteImport } from './routes/crm.users.index'
+import { Route as CrmUsersEmailRouteImport } from './routes/crm.users.$email'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -176,6 +179,11 @@ const CrmTasksRoute = CrmTasksRouteImport.update({
   path: '/crm/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CrmUsageRoute = CrmUsageRouteImport.update({
+  id: '/crm/usage',
+  path: '/crm/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeeFeeIdRoute = FeeFeeIdRouteImport.update({
   id: '/fee/$feeId',
   path: '/fee/$feeId',
@@ -256,6 +264,16 @@ const CrmOrgsOrgIdRoute = CrmOrgsOrgIdRouteImport.update({
   path: '/crm/orgs/$orgId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CrmUsersIndexRoute = CrmUsersIndexRouteImport.update({
+  id: '/crm/users/',
+  path: '/crm/users/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmUsersEmailRoute = CrmUsersEmailRouteImport.update({
+  id: '/crm/users/$email',
+  path: '/crm/users/$email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -280,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/crm/quotes': typeof CrmQuotesRoute
   '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/crm/usage': typeof CrmUsageRoute
   '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
@@ -296,9 +315,11 @@ export interface FileRoutesByFullPath {
   '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
   '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/users/$email': typeof CrmUsersEmailRoute
   '/cabinet/clients/': typeof CabinetClientsIndexRoute
   '/cabinet/matters/': typeof CabinetMattersIndexRoute
   '/crm/orgs/': typeof CrmOrgsIndexRoute
+  '/crm/users/': typeof CrmUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -323,6 +344,7 @@ export interface FileRoutesByTo {
   '/crm/quotes': typeof CrmQuotesRoute
   '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/crm/usage': typeof CrmUsageRoute
   '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
@@ -339,9 +361,11 @@ export interface FileRoutesByTo {
   '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
   '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/users/$email': typeof CrmUsersEmailRoute
   '/cabinet/clients': typeof CabinetClientsIndexRoute
   '/cabinet/matters': typeof CabinetMattersIndexRoute
   '/crm/orgs': typeof CrmOrgsIndexRoute
+  '/crm/users': typeof CrmUsersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -367,6 +391,7 @@ export interface FileRoutesById {
   '/crm/quotes': typeof CrmQuotesRoute
   '/crm/reports': typeof CrmReportsRoute
   '/crm/tasks': typeof CrmTasksRoute
+  '/crm/usage': typeof CrmUsageRoute
   '/fee/$feeId': typeof FeeFeeIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
@@ -383,9 +408,11 @@ export interface FileRoutesById {
   '/cabinet/clients/$clientId': typeof CabinetClientsClientIdRoute
   '/cabinet/matters/$matterId': typeof CabinetMattersMatterIdRoute
   '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/users/$email': typeof CrmUsersEmailRoute
   '/cabinet/clients/': typeof CabinetClientsIndexRoute
   '/cabinet/matters/': typeof CabinetMattersIndexRoute
   '/crm/orgs/': typeof CrmOrgsIndexRoute
+  '/crm/users/': typeof CrmUsersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -412,6 +439,7 @@ export interface FileRouteTypes {
     | '/crm/quotes'
     | '/crm/reports'
     | '/crm/tasks'
+    | '/crm/usage'
     | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
@@ -428,9 +456,11 @@ export interface FileRouteTypes {
     | '/cabinet/clients/$clientId'
     | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/crm/users/$email'
     | '/cabinet/clients/'
     | '/cabinet/matters/'
     | '/crm/orgs/'
+    | '/crm/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -455,6 +485,7 @@ export interface FileRouteTypes {
     | '/crm/quotes'
     | '/crm/reports'
     | '/crm/tasks'
+    | '/crm/usage'
     | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
@@ -471,9 +502,11 @@ export interface FileRouteTypes {
     | '/cabinet/clients/$clientId'
     | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/crm/users/$email'
     | '/cabinet/clients'
     | '/cabinet/matters'
     | '/crm/orgs'
+    | '/crm/users'
   id:
     | '__root__'
     | '/'
@@ -498,6 +531,7 @@ export interface FileRouteTypes {
     | '/crm/quotes'
     | '/crm/reports'
     | '/crm/tasks'
+    | '/crm/usage'
     | '/fee/$feeId'
     | '/invite/$token'
     | '/invoice/$invoiceId'
@@ -514,9 +548,11 @@ export interface FileRouteTypes {
     | '/cabinet/clients/$clientId'
     | '/cabinet/matters/$matterId'
     | '/crm/orgs/$orgId'
+    | '/crm/users/$email'
     | '/cabinet/clients/'
     | '/cabinet/matters/'
     | '/crm/orgs/'
+    | '/crm/users/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -542,6 +578,7 @@ export interface RootRouteChildren {
   CrmQuotesRoute: typeof CrmQuotesRoute
   CrmReportsRoute: typeof CrmReportsRoute
   CrmTasksRoute: typeof CrmTasksRoute
+  CrmUsageRoute: typeof CrmUsageRoute
   FeeFeeIdRoute: typeof FeeFeeIdRoute
   InviteTokenRoute: typeof InviteTokenRoute
   InvoiceInvoiceIdRoute: typeof InvoiceInvoiceIdRoute
@@ -558,9 +595,11 @@ export interface RootRouteChildren {
   CabinetClientsClientIdRoute: typeof CabinetClientsClientIdRoute
   CabinetMattersMatterIdRoute: typeof CabinetMattersMatterIdRoute
   CrmOrgsOrgIdRoute: typeof CrmOrgsOrgIdRoute
+  CrmUsersEmailRoute: typeof CrmUsersEmailRoute
   CabinetClientsIndexRoute: typeof CabinetClientsIndexRoute
   CabinetMattersIndexRoute: typeof CabinetMattersIndexRoute
   CrmOrgsIndexRoute: typeof CrmOrgsIndexRoute
+  CrmUsersIndexRoute: typeof CrmUsersIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -740,6 +779,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CrmTasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crm/usage': {
+      id: '/crm/usage'
+      path: '/crm/usage'
+      fullPath: '/crm/usage'
+      preLoaderRoute: typeof CrmUsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fee/$feeId': {
       id: '/fee/$feeId'
       path: '/fee/$feeId'
@@ -852,6 +898,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CrmOrgsOrgIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crm/users/': {
+      id: '/crm/users/'
+      path: '/crm/users'
+      fullPath: '/crm/users/'
+      preLoaderRoute: typeof CrmUsersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/users/$email': {
+      id: '/crm/users/$email'
+      path: '/crm/users/$email'
+      fullPath: '/crm/users/$email'
+      preLoaderRoute: typeof CrmUsersEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -878,6 +938,7 @@ const rootRouteChildren: RootRouteChildren = {
   CrmQuotesRoute: CrmQuotesRoute,
   CrmReportsRoute: CrmReportsRoute,
   CrmTasksRoute: CrmTasksRoute,
+  CrmUsageRoute: CrmUsageRoute,
   FeeFeeIdRoute: FeeFeeIdRoute,
   InviteTokenRoute: InviteTokenRoute,
   InvoiceInvoiceIdRoute: InvoiceInvoiceIdRoute,
@@ -894,9 +955,11 @@ const rootRouteChildren: RootRouteChildren = {
   CabinetClientsClientIdRoute: CabinetClientsClientIdRoute,
   CabinetMattersMatterIdRoute: CabinetMattersMatterIdRoute,
   CrmOrgsOrgIdRoute: CrmOrgsOrgIdRoute,
+  CrmUsersEmailRoute: CrmUsersEmailRoute,
   CabinetClientsIndexRoute: CabinetClientsIndexRoute,
   CabinetMattersIndexRoute: CabinetMattersIndexRoute,
   CrmOrgsIndexRoute: CrmOrgsIndexRoute,
+  CrmUsersIndexRoute: CrmUsersIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

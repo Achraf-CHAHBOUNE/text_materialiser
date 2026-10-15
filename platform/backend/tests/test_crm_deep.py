@@ -66,6 +66,10 @@ def sales():
 
 @pytest.fixture(scope="module")
 def firms():
+    # the module is off by default (readers have a reading space only): on for this plan
+    with db.session() as s:
+        s.get(billing.Plan, "firm").practice = True
+        s.commit()
     a, b = _firm("Alpha"), _firm("Beta")
     return {"a": a, "b": b,
             "a_holder": _person("boss@alpha.ma", "client_admin", a),

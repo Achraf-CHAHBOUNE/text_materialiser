@@ -156,7 +156,8 @@ function People({ o }: { o: OrgDetail }) {
         <Table head={[t("pub.name"), t("adm.colEmail"), t("settings.role"), t("adm.colStatus"), t("adm.colLastLogin"), ""]}>
           {o.members.map((m) => (
             <tr key={m.email}>
-              <Td>{m.full_name || "—"}</Td><Td><span dir="ltr">{m.email}</span></Td>
+              <Td>{m.full_name || "—"}</Td>
+              <Td><Link to="/crm/users/$email" params={{ email: m.email }} className="text-teal hover:underline" dir="ltr">{m.email}</Link></Td>
               <Td>
                 <Select value={m.role} onChange={(v) => changeUser.mutate({ email: m.email, role: v as Role })} className="h-8 text-xs" label={t("settings.role")}
                         options={[{ value: "client", label: t("role.client") }, { value: "client_admin", label: t("role.client_admin") }]} />
