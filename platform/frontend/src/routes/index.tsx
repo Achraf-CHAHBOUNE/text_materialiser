@@ -1,10 +1,12 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Lock, Mail } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { KeyRound, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Wordmark } from "@/components/Brand";
+import { NeedsCode } from "@/lib/api";
+import { forgotPassword } from "@/lib/api-biz";
 import { useStore } from "@/lib/app-store";
 import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
@@ -28,6 +30,9 @@ function LoginPage() {
   const { login } = useStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
+  const [forgot, setForgot] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { t, dir, lang, setLang } = useI18n();
@@ -55,11 +60,23 @@ function LoginPage() {
               setErr(null);
               setBusy(true);
               try {
-                const role = await login(email, password);
+                if (forgot) {
+                  await forgotPassword(email, lang);
+                  toast.success(t("login.resetSent"));
+                  setForgot(false);
+                  return;
+                }
+                const role = await login(email, password, code);
                 toast.success(t("login.welcome"), { description: email });
-                navigate({ to: role === "admin" ? "/admin" : "/dashboard" });
+                navigate({ to: role === "admin" || role === "editor" ? "/admin"
+                  : role === "sales" ? "/crm" : "/browse" });
               } catch (ex) {
-                setErr(ex instanceof Error ? ex.message : t("login.failed"));
+                if (ex instanceof NeedsCode) {
+                  setNeedCode(true);
+                  setErr(ex.wrong ? t("login.wrongCode") : null);
+                } else {
+                  setErr(ex instanceof Error ? ex.message : t("login.failed"));
+                }
               } finally {
                 setBusy(false);
               }
@@ -83,6 +100,7 @@ function LoginPage() {
                 />
               </div>
             </div>
+            {!forgot && (
             <div className="space-y-2">
               <Label htmlFor="password">{t("login.password")}</Label>
               <div className="relative">
@@ -93,7 +111,7 @@ function LoginPage() {
                 <Input
                   id="password"
                   type="password"
-                  required
+                  required={!forgot}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="h-11 ps-9"
@@ -101,6 +119,19 @@ function LoginPage() {
                 />
               </div>
             </div>
+            )}
+
+            {needCode && !forgot && (
+              <div className="space-y-2">
+                <Label htmlFor="code">{t("login.code")}</Label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                  <Input id="code" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6}
+                         value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                         className="h-11 ps-9 tracking-widest" dir="ltr" />
+                </div>
+              </div>
+            )}
 
             {err && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/8 px-3 py-2 text-sm text-destructive">
@@ -109,8 +140,15 @@ function LoginPage() {
             )}
 
             <Button type="submit" disabled={busy} className="h-11 w-full shadow-sm">
-              {busy ? t("login.busy") : t("login.submit")}
+              {busy ? t("login.busy") : forgot ? t("login.sendReset") : t("login.submit")}
             </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <button type="button" className="text-muted-foreground underline-offset-4 hover:underline"
+                      onClick={() => { setForgot(!forgot); setErr(null); }}>
+                {forgot ? t("login.backToSignIn") : t("login.forgot")}
+              </button>
+              <Link to="/pricing" className="text-teal underline-offset-4 hover:underline">{t("login.noAccount")}</Link>
+            </div>
           </form>
         </div>
       </div>

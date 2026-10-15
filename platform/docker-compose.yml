@@ -30,7 +30,7 @@ services:
 
   backend:
     build: ./backend
-    environment:
+    environment: &backend_env
       # Ingest-only: NO engine, NO Gemini key. Stores only anonymized content.
       S3_ENDPOINT: ${S3_ENDPOINT:-minio:9000}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in platform/.env}
@@ -46,8 +46,31 @@ services:
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       SEED_CLIENT_EMAIL: ${SEED_CLIENT_EMAIL:-}
       SEED_CLIENT_PASSWORD: ${SEED_CLIENT_PASSWORD:-}
+      # emails (worker.py sends them; without SMTP_HOST they wait in the outbox)
+      SITE_URL: ${SITE_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-1}
+      # printed on invoices
+      SELLER_NAME: ${SELLER_NAME:-}
+      SELLER_ADDRESS: ${SELLER_ADDRESS:-}
+      SELLER_ICE: ${SELLER_ICE:-}
+      SELLER_RIB: ${SELLER_RIB:-}
     ports:
       - "8000:8000"
+    depends_on:
+      - minio
+      - postgres
+    restart: unless-stopped
+
+  # emails, subscription expiries, renewal reminders, alerts (backend/worker.py)
+  worker:
+    build: ./backend
+    command: python worker.py
+    environment: *backend_env
     depends_on:
       - minio
       - postgres

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ChevronRight, ChevronsLeft, ChevronsRight, FileText, Search, X } from "lucide-react";
+import { BellPlus, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { Fragment, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -11,6 +12,7 @@ import { FileNumber } from "@/components/FileNumber";
 import { FilterMenu } from "@/components/FilterMenu";
 import { Source } from "@/components/ruling/Headnote";
 import { browseCities, browseRulings, browseThemes, browseYears, type ListingRow } from "@/lib/api";
+import { createAlert } from "@/lib/api-biz";
 import { chamberStyle } from "@/lib/chambers";
 import { useI18n } from "@/lib/i18n";
 
@@ -146,6 +148,16 @@ function ChamberListing() {
             options={(cities.data ?? []).map((c) => ({ key: c.city, label: cityName(c.city), count: c.count }))}
             onChange={(k) => setSearch({ city: k })}
           />
+          {(q || theme || filterChamber) && (
+            <Button variant="outline" size="sm" className="h-10"
+                    onClick={() => createAlert({ query: q ?? "", chamber: filterChamber, theme: theme ?? "",
+                      year: year ?? "", city: city ?? "", lang,
+                      name: [q, theme ? themes.data?.find((x) => x.key === theme)?.label : "", filterChamber ? chamberName(filterChamber) : ""].filter(Boolean).join(" · ") })
+                      .then(() => toast.success(t("alert.created")))
+                      .catch((e) => toast.error(e instanceof Error ? e.message : t("adm.failed")))}>
+              <BellPlus className="size-4" />{t("alert.create")}
+            </Button>
+          )}
           <p className="ms-auto hidden text-xs text-muted-foreground sm:block">
             {t("listing.themeNote")}
           </p>

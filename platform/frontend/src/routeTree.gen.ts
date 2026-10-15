@@ -10,27 +10,54 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as CorrectionsRouteImport } from './routes/corrections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as NewJobRouteImport } from './routes/new-job'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProcessingRouteImport } from './routes/processing'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as BrowseIndexRouteImport } from './routes/browse.index'
 import { Route as BrowseChamberRouteImport } from './routes/browse.$chamber'
 import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
+import { Route as CrmIndexRouteImport } from './routes/crm.index'
+import { Route as CrmInvoicesRouteImport } from './routes/crm.invoices'
+import { Route as CrmLeadsRouteImport } from './routes/crm.leads'
+import { Route as CrmTasksRouteImport } from './routes/crm.tasks'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as InvoiceInvoiceIdRouteImport } from './routes/invoice.$invoiceId'
+import { Route as LibraryIndexRouteImport } from './routes/library.index'
+import { Route as LibraryFolderIdRouteImport } from './routes/library.$folderId'
+import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as RulingDocIdRouteImport } from './routes/ruling.$docId'
+import { Route as SupportIndexRouteImport } from './routes/support.index'
+import { Route as SupportTicketIdRouteImport } from './routes/support.$ticketId'
+import { Route as CrmOrgsIndexRouteImport } from './routes/crm.orgs.index'
+import { Route as CrmOrgsOrgIdRouteImport } from './routes/crm.orgs.$orgId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlertsRoute = AlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BillingRoute = BillingRouteImport.update({
@@ -48,9 +75,19 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NewJobRoute = NewJobRouteImport.update({
   id: '/new-job',
   path: '/new-job',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProcessingRoute = ProcessingRouteImport.update({
@@ -83,120 +120,304 @@ const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   path: '/cases/$caseId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CrmIndexRoute = CrmIndexRouteImport.update({
+  id: '/crm/',
+  path: '/crm/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmInvoicesRoute = CrmInvoicesRouteImport.update({
+  id: '/crm/invoices',
+  path: '/crm/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmLeadsRoute = CrmLeadsRouteImport.update({
+  id: '/crm/leads',
+  path: '/crm/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmTasksRoute = CrmTasksRouteImport.update({
+  id: '/crm/tasks',
+  path: '/crm/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoiceInvoiceIdRoute = InvoiceInvoiceIdRouteImport.update({
+  id: '/invoice/$invoiceId',
+  path: '/invoice/$invoiceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryIndexRoute = LibraryIndexRouteImport.update({
+  id: '/library/',
+  path: '/library/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryFolderIdRoute = LibraryFolderIdRouteImport.update({
+  id: '/library/$folderId',
+  path: '/library/$folderId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetTokenRoute = ResetTokenRouteImport.update({
+  id: '/reset/$token',
+  path: '/reset/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RulingDocIdRoute = RulingDocIdRouteImport.update({
   id: '/ruling/$docId',
   path: '/ruling/$docId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SupportIndexRoute = SupportIndexRouteImport.update({
+  id: '/support/',
+  path: '/support/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportTicketIdRoute = SupportTicketIdRouteImport.update({
+  id: '/support/$ticketId',
+  path: '/support/$ticketId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmOrgsIndexRoute = CrmOrgsIndexRouteImport.update({
+  id: '/crm/orgs/',
+  path: '/crm/orgs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmOrgsOrgIdRoute = CrmOrgsOrgIdRouteImport.update({
+  id: '/crm/orgs/$orgId',
+  path: '/crm/orgs/$orgId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
+  '/history': typeof HistoryRoute
   '/new-job': typeof NewJobRoute
+  '/pricing': typeof PricingRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/crm/invoices': typeof CrmInvoicesRoute
+  '/crm/leads': typeof CrmLeadsRoute
+  '/crm/tasks': typeof CrmTasksRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
+  '/library/$folderId': typeof LibraryFolderIdRoute
+  '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
+  '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse/': typeof BrowseIndexRoute
+  '/crm/': typeof CrmIndexRoute
+  '/library/': typeof LibraryIndexRoute
+  '/support/': typeof SupportIndexRoute
+  '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/orgs/': typeof CrmOrgsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
+  '/history': typeof HistoryRoute
   '/new-job': typeof NewJobRoute
+  '/pricing': typeof PricingRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/crm/invoices': typeof CrmInvoicesRoute
+  '/crm/leads': typeof CrmLeadsRoute
+  '/crm/tasks': typeof CrmTasksRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
+  '/library/$folderId': typeof LibraryFolderIdRoute
+  '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
+  '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse': typeof BrowseIndexRoute
+  '/crm': typeof CrmIndexRoute
+  '/library': typeof LibraryIndexRoute
+  '/support': typeof SupportIndexRoute
+  '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/orgs': typeof CrmOrgsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
+  '/history': typeof HistoryRoute
   '/new-job': typeof NewJobRoute
+  '/pricing': typeof PricingRoute
   '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/crm/invoices': typeof CrmInvoicesRoute
+  '/crm/leads': typeof CrmLeadsRoute
+  '/crm/tasks': typeof CrmTasksRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
+  '/library/$folderId': typeof LibraryFolderIdRoute
+  '/reset/$token': typeof ResetTokenRoute
   '/ruling/$docId': typeof RulingDocIdRoute
+  '/support/$ticketId': typeof SupportTicketIdRoute
   '/browse/': typeof BrowseIndexRoute
+  '/crm/': typeof CrmIndexRoute
+  '/library/': typeof LibraryIndexRoute
+  '/support/': typeof SupportIndexRoute
+  '/crm/orgs/$orgId': typeof CrmOrgsOrgIdRoute
+  '/crm/orgs/': typeof CrmOrgsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/account'
     | '/admin'
+    | '/alerts'
     | '/billing'
     | '/corrections'
     | '/dashboard'
+    | '/history'
     | '/new-job'
+    | '/pricing'
     | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/crm/invoices'
+    | '/crm/leads'
+    | '/crm/tasks'
+    | '/invite/$token'
+    | '/invoice/$invoiceId'
+    | '/library/$folderId'
+    | '/reset/$token'
     | '/ruling/$docId'
+    | '/support/$ticketId'
     | '/browse/'
+    | '/crm/'
+    | '/library/'
+    | '/support/'
+    | '/crm/orgs/$orgId'
+    | '/crm/orgs/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/account'
     | '/admin'
+    | '/alerts'
     | '/billing'
     | '/corrections'
     | '/dashboard'
+    | '/history'
     | '/new-job'
+    | '/pricing'
     | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/crm/invoices'
+    | '/crm/leads'
+    | '/crm/tasks'
+    | '/invite/$token'
+    | '/invoice/$invoiceId'
+    | '/library/$folderId'
+    | '/reset/$token'
     | '/ruling/$docId'
+    | '/support/$ticketId'
     | '/browse'
+    | '/crm'
+    | '/library'
+    | '/support'
+    | '/crm/orgs/$orgId'
+    | '/crm/orgs'
   id:
     | '__root__'
     | '/'
+    | '/account'
     | '/admin'
+    | '/alerts'
     | '/billing'
     | '/corrections'
     | '/dashboard'
+    | '/history'
     | '/new-job'
+    | '/pricing'
     | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
     | '/cases/$caseId'
+    | '/crm/invoices'
+    | '/crm/leads'
+    | '/crm/tasks'
+    | '/invite/$token'
+    | '/invoice/$invoiceId'
+    | '/library/$folderId'
+    | '/reset/$token'
     | '/ruling/$docId'
+    | '/support/$ticketId'
     | '/browse/'
+    | '/crm/'
+    | '/library/'
+    | '/support/'
+    | '/crm/orgs/$orgId'
+    | '/crm/orgs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   AdminRoute: typeof AdminRoute
+  AlertsRoute: typeof AlertsRoute
   BillingRoute: typeof BillingRoute
   CorrectionsRoute: typeof CorrectionsRoute
   DashboardRoute: typeof DashboardRoute
+  HistoryRoute: typeof HistoryRoute
   NewJobRoute: typeof NewJobRoute
+  PricingRoute: typeof PricingRoute
   ProcessingRoute: typeof ProcessingRoute
   ResultsRoute: typeof ResultsRoute
   SettingsRoute: typeof SettingsRoute
   BrowseChamberRoute: typeof BrowseChamberRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
+  CrmInvoicesRoute: typeof CrmInvoicesRoute
+  CrmLeadsRoute: typeof CrmLeadsRoute
+  CrmTasksRoute: typeof CrmTasksRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  InvoiceInvoiceIdRoute: typeof InvoiceInvoiceIdRoute
+  LibraryFolderIdRoute: typeof LibraryFolderIdRoute
+  ResetTokenRoute: typeof ResetTokenRoute
   RulingDocIdRoute: typeof RulingDocIdRoute
+  SupportTicketIdRoute: typeof SupportTicketIdRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
+  CrmIndexRoute: typeof CrmIndexRoute
+  LibraryIndexRoute: typeof LibraryIndexRoute
+  SupportIndexRoute: typeof SupportIndexRoute
+  CrmOrgsOrgIdRoute: typeof CrmOrgsOrgIdRoute
+  CrmOrgsIndexRoute: typeof CrmOrgsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -208,11 +429,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts': {
+      id: '/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/billing': {
@@ -236,11 +471,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/new-job': {
       id: '/new-job'
       path: '/new-job'
       fullPath: '/new-job'
       preLoaderRoute: typeof NewJobRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/processing': {
@@ -285,6 +534,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crm/': {
+      id: '/crm/'
+      path: '/crm'
+      fullPath: '/crm/'
+      preLoaderRoute: typeof CrmIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/invoices': {
+      id: '/crm/invoices'
+      path: '/crm/invoices'
+      fullPath: '/crm/invoices'
+      preLoaderRoute: typeof CrmInvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/leads': {
+      id: '/crm/leads'
+      path: '/crm/leads'
+      fullPath: '/crm/leads'
+      preLoaderRoute: typeof CrmLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/tasks': {
+      id: '/crm/tasks'
+      path: '/crm/tasks'
+      fullPath: '/crm/tasks'
+      preLoaderRoute: typeof CrmTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoice/$invoiceId': {
+      id: '/invoice/$invoiceId'
+      path: '/invoice/$invoiceId'
+      fullPath: '/invoice/$invoiceId'
+      preLoaderRoute: typeof InvoiceInvoiceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library/': {
+      id: '/library/'
+      path: '/library'
+      fullPath: '/library/'
+      preLoaderRoute: typeof LibraryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library/$folderId': {
+      id: '/library/$folderId'
+      path: '/library/$folderId'
+      fullPath: '/library/$folderId'
+      preLoaderRoute: typeof LibraryFolderIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset/$token': {
+      id: '/reset/$token'
+      path: '/reset/$token'
+      fullPath: '/reset/$token'
+      preLoaderRoute: typeof ResetTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ruling/$docId': {
       id: '/ruling/$docId'
       path: '/ruling/$docId'
@@ -292,23 +604,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RulingDocIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/support/': {
+      id: '/support/'
+      path: '/support'
+      fullPath: '/support/'
+      preLoaderRoute: typeof SupportIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support/$ticketId': {
+      id: '/support/$ticketId'
+      path: '/support/$ticketId'
+      fullPath: '/support/$ticketId'
+      preLoaderRoute: typeof SupportTicketIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/orgs/': {
+      id: '/crm/orgs/'
+      path: '/crm/orgs'
+      fullPath: '/crm/orgs/'
+      preLoaderRoute: typeof CrmOrgsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm/orgs/$orgId': {
+      id: '/crm/orgs/$orgId'
+      path: '/crm/orgs/$orgId'
+      fullPath: '/crm/orgs/$orgId'
+      preLoaderRoute: typeof CrmOrgsOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   AdminRoute: AdminRoute,
+  AlertsRoute: AlertsRoute,
   BillingRoute: BillingRoute,
   CorrectionsRoute: CorrectionsRoute,
   DashboardRoute: DashboardRoute,
+  HistoryRoute: HistoryRoute,
   NewJobRoute: NewJobRoute,
+  PricingRoute: PricingRoute,
   ProcessingRoute: ProcessingRoute,
   ResultsRoute: ResultsRoute,
   SettingsRoute: SettingsRoute,
   BrowseChamberRoute: BrowseChamberRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
+  CrmInvoicesRoute: CrmInvoicesRoute,
+  CrmLeadsRoute: CrmLeadsRoute,
+  CrmTasksRoute: CrmTasksRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  InvoiceInvoiceIdRoute: InvoiceInvoiceIdRoute,
+  LibraryFolderIdRoute: LibraryFolderIdRoute,
+  ResetTokenRoute: ResetTokenRoute,
   RulingDocIdRoute: RulingDocIdRoute,
+  SupportTicketIdRoute: SupportTicketIdRoute,
   BrowseIndexRoute: BrowseIndexRoute,
+  CrmIndexRoute: CrmIndexRoute,
+  LibraryIndexRoute: LibraryIndexRoute,
+  SupportIndexRoute: SupportIndexRoute,
+  CrmOrgsOrgIdRoute: CrmOrgsOrgIdRoute,
+  CrmOrgsIndexRoute: CrmOrgsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

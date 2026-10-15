@@ -151,6 +151,12 @@ In Docker the environment comes from compose instead and always wins.
 - **edit** a ruling by hand — the Word file is edited too, with full version history;
   removals publish straight away, additions wait for an admin
 - **export** every correction, and a full audit trail
+- **in two languages**: every page at `/ar/…` and `/fr/…`, the rulings, abstracts,
+  subjects and search in French, the Arabic always one click away
+- **sell and serve**: organizations with seats and subscriptions, a CRM (leads,
+  pipeline, renewals, customers at risk), numbered invoices and payments, support
+  tickets, a reader's folders, alerts and history, counted and marked downloads, and a
+  worker for emails and reminders -- see [`platform/docs/BUSINESS.md`](platform/docs/BUSINESS.md)
 
 ---
 

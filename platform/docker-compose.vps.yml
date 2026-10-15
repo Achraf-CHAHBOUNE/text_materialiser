@@ -33,7 +33,7 @@ services:
     image: tok-backend:latest
     cpus: "1.0"
     mem_limit: 4g
-    environment:
+    environment: &backend_env
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anon}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-anonymize}
       FILESTORE_DIR: /documents
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
@@ -45,6 +45,33 @@ services:
       TRANSLATE_API_KEY: ${TRANSLATE_API_KEY-}
       TRANSLATE_MODEL: ${TRANSLATE_MODEL:-gemini-2.5-flash-lite}
       AUTO_PUBLISH: "1"
+      # emails (worker.py sends them; without SMTP_HOST they wait in the outbox)
+      SITE_URL: ${SITE_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-1}
+      # printed on invoices
+      SELLER_NAME: ${SELLER_NAME:-}
+      SELLER_ADDRESS: ${SELLER_ADDRESS:-}
+      SELLER_ICE: ${SELLER_ICE:-}
+      SELLER_RIB: ${SELLER_RIB:-}
+    volumes:
+      - documents:/documents
+      - ./incoming:/incoming:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # emails, subscription expiries, renewal reminders, alerts (backend/worker.py)
+  worker:
+    image: tok-backend:latest
+    command: python worker.py
+    environment: *backend_env
+    mem_limit: 512m
     volumes:
       - documents:/documents
       - ./incoming:/incoming:ro

@@ -26,13 +26,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+import accounts
 import auth as authmod
+import billing
+import crm
 import db
+import library
+import support
 import docedit
 import piigate
 import textextract
 import textnorm
 import translate
+from deps import STAFF, current_user, flex_user, require_admin, require_editor, require_staff
 from filestore import get_filestore
 
 app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0")
@@ -41,6 +47,9 @@ app.add_middleware(
     allow_origins=os.getenv("ALLOW_ORIGINS", "*").split(","),
     allow_methods=["*"], allow_headers=["*"],
 )
+
+for _module in (accounts, billing, crm, support, library):
+    app.include_router(_module.router)
 
 STORE = get_filestore()
 CATEGORIES = ["إدارية", "تجارية", "مدنية", "جنائية", "اجتماعية", "أحوال شخصية", "عقارية"]
@@ -57,43 +66,18 @@ def _startup() -> None:
     ce, cp = os.getenv("SEED_CLIENT_EMAIL", ""), os.getenv("SEED_CLIENT_PASSWORD", "")
     if ce and cp and not db.get_user(ce):
         db.upsert_user(ce, authmod.hash_password(cp), role="client")
+    billing.seed_plans()
+    accounts.adopt_orphan_clients()
 
 
 # ---------------- auth plumbing ----------------
-def _user_from_token(token: str) -> dict:
-    email = authmod.verify_token(token or "")
-    if not email:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    user = db.get_user(email)
-    if not user:
-        raise HTTPException(status_code=401, detail="Unknown account")
-    if user["status"] != "active":               # suspension takes effect immediately (§C-2)
-        raise HTTPException(status_code=403, detail="Account suspended")
-    return user
-
-
-def current_user(authorization: Optional[str] = Header(None)) -> dict:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return _user_from_token(authorization.split(" ", 1)[1])
-
-
-def require_admin(user: dict = Depends(current_user)) -> dict:
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
-    return user
-
-
-def _flex_user(authorization: Optional[str], token: str) -> dict:
-    """Auth for browser file links: Bearer header OR ?token= query."""
-    tok = (authorization.split(" ", 1)[1]
-           if authorization and authorization.startswith("Bearer ") else token)
-    return _user_from_token(tok)
+# Who is asking and what they may do lives in deps.py, shared by every route module.
 
 
 class LoginBody(BaseModel):
     email: str
     password: str
+    code: str = ""          # the six digits, for an account with a second factor
 
 
 # ---------------- guarding the sign-in ----------------
@@ -146,16 +130,30 @@ def login(body: LoginBody, request: Request) -> dict:
         _note_failure(key)
         db.add_audit(body.email, "login_failed", "user", body.email, new=key[1])
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    _failures.pop(key, None)
     if user["status"] != "active":
         raise HTTPException(status_code=403, detail="Account suspended")
-    db.touch_login(body.email)
-    return {"token": authmod.make_token(body.email), "email": body.email, "role": user["role"]}
+    secret = user.get("mfa_secret", "")
+    if secret and not secret.startswith("pending:"):
+        if not body.code:
+            # the password was right: ask for the second factor, count nothing yet
+            raise HTTPException(status_code=401, detail={"mfa": True})
+        if not authmod.verify_totp(secret, body.code):
+            _note_failure(key)
+            db.add_audit(body.email, "login_failed", "user", body.email, new="wrong code")
+            raise HTTPException(status_code=401, detail={"mfa": True, "wrong": True})
+    _failures.pop(key, None)
+    db.touch_login(user["email"])
+    sid = accounts.open_session(user, key[1], request.headers.get("user-agent", ""))
+    return {"token": authmod.make_token(user["email"], sid), "email": user["email"],
+            "role": user["role"], "language": user.get("language", "ar"),
+            "access": billing.access_state(user.get("org_id")) if user["role"] not in STAFF else "ok"}
 
 
 @app.get("/api/auth/me")
 def me(user: dict = Depends(current_user)) -> dict:
-    return {"email": user["email"], "role": user["role"], "status": user["status"]}
+    return {"email": user["email"], "role": user["role"], "status": user["status"],
+            "full_name": user.get("full_name", ""), "language": user.get("language", "ar"),
+            "org_id": user.get("org_id")}
 
 
 @app.get("/health")
@@ -171,7 +169,7 @@ _extract_text = textextract.extract
 
 # ---------------- admin: integration / import ----------------
 @app.post("/api/admin/import")
-async def import_batch(file: UploadFile = File(...), user: dict = Depends(require_admin)) -> dict:
+async def import_batch(file: UploadFile = File(...), user: dict = Depends(require_editor)) -> dict:
     """Import a pipeline batch: a .zip of records.json + anonymized files.
 
     Import gate (§I-2): a record with no matching file is rejected; a file that still
@@ -253,24 +251,24 @@ async def import_batch(file: UploadFile = File(...), user: dict = Depends(requir
 @app.get("/api/admin/decisions")
 def admin_decisions(state: str = "", category: str = "", level: str = "",
                     limit: int = 200, offset: int = 0,
-                    _: dict = Depends(require_admin)) -> list:
+                    _: dict = Depends(require_editor)) -> list:
     states = (state,) if state else None
     return db.list_decisions(states=states, category=category, level=level,
                              limit=limit, offset=offset)
 
 
 @app.get("/api/admin/queue")
-def admin_queue(_: dict = Depends(require_admin)) -> list:
+def admin_queue(_: dict = Depends(require_editor)) -> list:
     return db.work_queue()
 
 
 @app.get("/api/admin/stats")
-def admin_stats(_: dict = Depends(require_admin)) -> dict:
+def admin_stats(_: dict = Depends(require_staff)) -> dict:
     return db.counts()
 
 
 @app.get("/api/admin/decisions/{doc_id}")
-def admin_decision(doc_id: str, _: dict = Depends(require_admin)) -> dict:
+def admin_decision(doc_id: str, _: dict = Depends(require_editor)) -> dict:
     d = db.get_decision(doc_id, body=True)
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
@@ -312,7 +310,7 @@ def _check_fields(changes: dict) -> None:
 
 
 @app.patch("/api/admin/decisions/{doc_id}")
-def admin_correct(doc_id: str, body: FieldPatch, user: dict = Depends(require_admin)) -> dict:
+def admin_correct(doc_id: str, body: FieldPatch, user: dict = Depends(require_editor)) -> dict:
     _check_fields(body.changes)
     d = db.update_decision_fields(doc_id, body.changes, user["email"])
     if not d:
@@ -342,7 +340,7 @@ class StateBody(BaseModel):
 
 
 @app.post("/api/admin/decisions/{doc_id}/state")
-def admin_set_state(doc_id: str, body: StateBody, user: dict = Depends(require_admin)) -> dict:
+def admin_set_state(doc_id: str, body: StateBody, user: dict = Depends(require_editor)) -> dict:
     d = db.set_decision_state(doc_id, body.state, user["email"])
     if not d:
         raise HTTPException(status_code=400, detail="Unknown decision or state")
@@ -351,7 +349,7 @@ def admin_set_state(doc_id: str, body: StateBody, user: dict = Depends(require_a
 
 @app.post("/api/admin/decisions/{doc_id}/file")
 async def admin_replace_file(doc_id: str, file: UploadFile = File(...),
-                             user: dict = Depends(require_admin)) -> dict:
+                             user: dict = Depends(require_editor)) -> dict:
     """Correct/replace the anonymized file itself (§I-4), re-checked by the gate."""
     if not (file.filename or "").lower().endswith(".docx"):
         raise HTTPException(status_code=400, detail="Upload a Word (.docx) file")
@@ -365,11 +363,11 @@ async def admin_replace_file(doc_id: str, file: UploadFile = File(...),
 
 
 @app.get("/api/admin/decisions/{doc_id}/file")
-def admin_file(doc_id: str, authorization: Optional[str] = Header(None),
+def admin_file(doc_id: str, request: Request, authorization: Optional[str] = Header(None),
                token: str = "") -> StreamingResponse:
-    user = _flex_user(authorization, token)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    user = flex_user(request, authorization, token)
+    if user["role"] not in ("admin", "editor"):
+        raise HTTPException(status_code=403, detail="Editors only")
     return _serve_file(doc_id)
 
 
@@ -450,7 +448,7 @@ class HideBody(BaseModel):
 
 
 @app.post("/api/admin/decisions/{doc_id}/hide")
-def admin_hide(doc_id: str, body: HideBody, user: dict = Depends(require_admin)) -> dict:
+def admin_hide(doc_id: str, body: HideBody, user: dict = Depends(require_editor)) -> dict:
     """Hide the selected text -- this occurrence, or every occurrence as a whole word."""
     st = _editable(doc_id, body.base_version)
     text = st["body_text"]
@@ -477,7 +475,7 @@ class TextBody(BaseModel):
 
 
 @app.post("/api/admin/decisions/{doc_id}/text")
-def admin_edit_text(doc_id: str, body: TextBody, user: dict = Depends(require_admin)) -> dict:
+def admin_edit_text(doc_id: str, body: TextBody, user: dict = Depends(require_editor)) -> dict:
     """Save the whole text as edited. dry_run shows the change and where it would go."""
     st = _editable(doc_id, body.base_version)
     new_text = body.text.replace("\r\n", "\n").replace("\r", "\n")
@@ -495,7 +493,7 @@ class RestoreBody(BaseModel):
 
 
 @app.post("/api/admin/decisions/{doc_id}/restore")
-def admin_restore(doc_id: str, body: RestoreBody, user: dict = Depends(require_admin)) -> dict:
+def admin_restore(doc_id: str, body: RestoreBody, user: dict = Depends(require_editor)) -> dict:
     """Go back to an earlier version. If that brings back hidden text, it is a draft."""
     st = _editable(doc_id, body.base_version)
     target = db.version_by_number(doc_id, body.version)
@@ -506,14 +504,14 @@ def admin_restore(doc_id: str, body: RestoreBody, user: dict = Depends(require_a
 
 
 @app.get("/api/admin/decisions/{doc_id}/history")
-def admin_history(doc_id: str, _: dict = Depends(require_admin)) -> dict:
+def admin_history(doc_id: str, _: dict = Depends(require_editor)) -> dict:
     if not db.get_decision(doc_id):
         raise HTTPException(status_code=404, detail="Not found")
     return dict(db.history(doc_id), reports=db.list_reports(status="open", doc_id=doc_id))
 
 
 @app.get("/api/admin/decisions/{doc_id}/versions/{version}")
-def admin_version_diff(doc_id: str, version: int, _: dict = Depends(require_admin)) -> dict:
+def admin_version_diff(doc_id: str, version: int, _: dict = Depends(require_editor)) -> dict:
     """What restoring this version would change, against the live text."""
     st = _editable(doc_id, None)
     target = db.version_by_number(doc_id, version)
@@ -524,12 +522,12 @@ def admin_version_diff(doc_id: str, version: int, _: dict = Depends(require_admi
 
 
 @app.post("/api/admin/decisions/{doc_id}/purge-history")
-def admin_purge_history(doc_id: str, user: dict = Depends(require_admin)) -> dict:
+def admin_purge_history(doc_id: str, user: dict = Depends(require_editor)) -> dict:
     return _outcome(doc_id, deleted=db.purge_history(doc_id, user["email"]))
 
 
 @app.get("/api/admin/drafts")
-def admin_drafts(_: dict = Depends(require_admin)) -> list:
+def admin_drafts(_: dict = Depends(require_editor)) -> list:
     return db.pending_drafts()
 
 
@@ -541,7 +539,7 @@ def _draft(draft_id: int) -> dict:
 
 
 @app.get("/api/admin/drafts/{draft_id}")
-def admin_draft(draft_id: int, _: dict = Depends(require_admin)) -> dict:
+def admin_draft(draft_id: int, _: dict = Depends(require_editor)) -> dict:
     v = _draft(draft_id)
     st = _editable(v["doc_id"], None)
     stale = v["base_version"] != st["version"]
@@ -552,7 +550,7 @@ def admin_draft(draft_id: int, _: dict = Depends(require_admin)) -> dict:
 
 
 @app.post("/api/admin/drafts/{draft_id}/approve")
-def admin_approve_draft(draft_id: int, user: dict = Depends(require_admin)) -> dict:
+def admin_approve_draft(draft_id: int, user: dict = Depends(require_editor)) -> dict:
     v = _draft(draft_id)
     st = _editable(v["doc_id"], v["base_version"])      # 409 if the ruling moved on
     version = _go_live(st, v["body_text"], user["email"], v["action"], v["summary"],
@@ -561,7 +559,7 @@ def admin_approve_draft(draft_id: int, user: dict = Depends(require_admin)) -> d
 
 
 @app.post("/api/admin/drafts/{draft_id}/discard")
-def admin_discard_draft(draft_id: int, user: dict = Depends(require_admin)) -> dict:
+def admin_discard_draft(draft_id: int, user: dict = Depends(require_editor)) -> dict:
     v = _draft(draft_id)
     db.discard_draft(draft_id, user["email"])
     return _outcome(v["doc_id"], applied=False)
@@ -572,26 +570,26 @@ class ReportStatus(BaseModel):
 
 
 @app.get("/api/admin/reports")
-def admin_reports(status: str = "open", _: dict = Depends(require_admin)) -> list:
+def admin_reports(status: str = "open", _: dict = Depends(require_editor)) -> list:
     return db.list_reports(status=status)
 
 
 @app.post("/api/admin/reports/{report_id}")
 def admin_resolve_report(report_id: int, body: ReportStatus,
-                         user: dict = Depends(require_admin)) -> dict:
+                         user: dict = Depends(require_editor)) -> dict:
     if not db.resolve_report(report_id, body.status, user["email"]):
         raise HTTPException(status_code=400, detail="Unknown report or status")
     return {"ok": True}
 
 
 @app.get("/api/admin/edits/export")
-def admin_export_edits(authorization: Optional[str] = Header(None),
+def admin_export_edits(request: Request, authorization: Optional[str] = Header(None),
                        token: str = "") -> StreamingResponse:
     """Every hand-edited ruling as a zip -- edits.json plus the edited Word files --
     for the pipeline to fold into results/ (python -m anonymizer.assemble --edits)."""
-    user = _flex_user(authorization, token)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    user = flex_user(request, authorization, token)
+    if user["role"] not in ("admin", "editor"):
+        raise HTTPException(status_code=403, detail="Editors only")
     buf = io.BytesIO()
     rows = []
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -635,21 +633,25 @@ def create_client(body: ClientCreate, user: dict = Depends(require_admin)) -> di
     if db.get_user(body.email):
         raise HTTPException(status_code=409, detail="Account already exists")
     db.upsert_user(body.email, authmod.hash_password(body.password), role="client")
+    # an account made here is a customer of its own, with a year to read: the CRM is
+    # where organizations of several people are set up
+    accounts.adopt_orphan_clients()
     db.add_audit(user["email"], "create_client", "user", body.email)
-    return {"email": body.email, "role": "client", "status": "active"}
+    return {"email": body.email, "role": db.get_user(body.email)["role"], "status": "active"}
 
 
 @app.patch("/api/admin/clients/{email}")
 def update_client(email: str, body: ClientPatch, user: dict = Depends(require_admin)) -> dict:
     target = db.get_user(email)
-    if not target or target["role"] != "client":
+    if not target or target["role"] not in ("client", "client_admin"):
         raise HTTPException(status_code=404, detail="Client not found")
     if body.status in ("active", "suspended"):
         db.set_user_status(email, body.status)
         db.add_audit(user["email"], body.status, "user", email, field="status")
     if body.password:
-        db.upsert_user(email, authmod.hash_password(body.password), role="client",
+        db.upsert_user(email, authmod.hash_password(body.password), role=target["role"],
                        status=body.status or target["status"])
+        accounts.end_sessions(target["id"], "password reset by an administrator")
         db.add_audit(user["email"], "reset_password", "user", email)
     result = db.get_user(email)
     result.pop("password_hash", None)
@@ -659,7 +661,7 @@ def update_client(email: str, body: ClientPatch, user: dict = Depends(require_ad
 @app.delete("/api/admin/clients/{email}")
 def delete_client(email: str, user: dict = Depends(require_admin)) -> dict:
     target = db.get_user(email)
-    if not target or target["role"] != "client":
+    if not target or target["role"] not in ("client", "client_admin"):
         raise HTTPException(status_code=404, detail="Client not found")
     db.delete_user(email)
     db.add_audit(user["email"], "delete_client", "user", email)
@@ -757,6 +759,7 @@ def client_decision(doc_id: str, lang: str = "ar", user: dict = Depends(current_
     # only expose links whose target is also published
     d["links"] = [l for l in db.links_for(doc_id)
                   if (db.get_decision(l["to"]) or {}).get("state") == "published"]
+    library.note_view(user)
     db.log_activity(user["email"], "view", doc_id)
     lang = _lang(lang)
     if lang != "ar":
@@ -827,11 +830,20 @@ def client_report(doc_id: str, body: ReportBody, user: dict = Depends(current_us
 
 
 @app.get("/api/decisions/{doc_id}/file")
-def client_file(doc_id: str, authorization: Optional[str] = Header(None),
+def client_file(doc_id: str, request: Request, authorization: Optional[str] = Header(None),
                 token: str = "") -> StreamingResponse:
-    user = _flex_user(authorization, token)
+    user = flex_user(request, authorization, token)
     d = db.get_decision(doc_id)
     if not d or d["state"] != "published":            # clients get published files only
         raise HTTPException(status_code=404, detail="Not found")
+    if not d["file_name"] or not STORE.exists(d["file_name"]):
+        raise HTTPException(status_code=404, detail="File not found")
+    ref = library.start_download(user, doc_id)
     db.log_activity(user["email"], "download", doc_id)
-    return _serve_file(doc_id)
+    data = STORE.get(d["file_name"])
+    if d["file_name"].lower().endswith(".docx"):
+        when = time.strftime("%d/%m/%Y %H:%M")
+        data = library.mark_docx(data, f"{user['email']} · {when} · réf. {ref}")
+    media = mimetypes.guess_type(d["file_name"])[0] or "application/octet-stream"
+    return StreamingResponse(io.BytesIO(data), media_type=media,
+                             headers={"Content-Disposition": f'attachment; filename="{d["file_name"]}"'})

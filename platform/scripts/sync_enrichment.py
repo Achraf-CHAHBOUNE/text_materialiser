@@ -5,7 +5,9 @@ again on the server would cost the same money for the same answers, and would no
 give the same ones, so this carries the computed values across instead.
 
 Only what was derived travels -- subject, its key, where it came from, the written
-summary, and the outcome. The ruling's text, its file and anything edited by hand are never touched.
+summary, and the outcome; and the French: each ruling's translated text, abstract and
+keywords, and each subject's French name. The ruling's Arabic text, its file and
+anything edited by hand are never touched.
 
     python sync_enrichment.py export out.jsonl      # from the machine that has them
     python sync_enrichment.py apply out.jsonl       # on the one that needs them
@@ -39,9 +41,13 @@ def opener(path: Path, mode: str):
         else open(path, mode, encoding="utf-8")
 
 
+I18N_FIELDS = ("doc_id", "lang", "abstract", "abstract_of", "keywords", "body_text",
+               "model", "source_version")
+
+
 def export(path: Path) -> int:
-    D = db.Decision
-    n = 0
+    D, I, S = db.Decision, db.DecisionI18n, db.Subject
+    n = t = k = 0
     with db.session() as s, opener(path, "w") as f:
         rows = s.execute(
             select(D.doc_id, *(getattr(D, c) for c in FIELDS))
@@ -50,8 +56,43 @@ def export(path: Path) -> int:
         for r in rows:
             f.write(json.dumps(dict(zip(("doc_id", *FIELDS), r)), ensure_ascii=False) + "\n")
             n += 1
-    print(f"exported {n:,} rulings to {path}")
+        # the French, one line each, marked so they are told apart from the rulings
+        for r in s.execute(select(*(getattr(I, c) for c in I18N_FIELDS)).order_by(I.doc_id)):
+            f.write(json.dumps({"i18n": dict(zip(I18N_FIELDS, r))}, ensure_ascii=False) + "\n")
+            t += 1
+        for key, ar, fr in s.execute(select(S.key, S.label_ar, S.label_fr)):
+            f.write(json.dumps({"subject": {"key": key, "label_ar": ar, "label_fr": fr}},
+                               ensure_ascii=False) + "\n")
+            k += 1
+    print(f"exported {n:,} rulings, {t:,} French rows and {k:,} subjects to {path}")
     return 0
+
+
+def _apply_i18n(s, rec: dict) -> bool:
+    I = db.DecisionI18n
+    row = s.scalar(select(I).where(I.doc_id == rec["doc_id"], I.lang == rec["lang"]))
+    if row is None:
+        row = I(doc_id=rec["doc_id"], lang=rec["lang"])
+        s.add(row)
+    changed = False
+    for c in I18N_FIELDS[2:]:
+        if getattr(row, c) != rec.get(c):
+            setattr(row, c, rec.get(c))
+            changed = True
+    if changed:
+        row.search_text = db._fold_i18n(row)
+    return changed
+
+
+def _apply_subject(s, rec: dict) -> bool:
+    row = s.get(db.Subject, rec["key"])
+    if row is None:
+        s.add(db.Subject(**rec))
+        return True
+    if (row.label_ar, row.label_fr) != (rec["label_ar"], rec["label_fr"]):
+        row.label_ar, row.label_fr = rec["label_ar"], rec["label_fr"]
+        return True
+    return False
 
 
 def apply(path: Path, batch: int = 500) -> int:
@@ -62,6 +103,12 @@ def apply(path: Path, batch: int = 500) -> int:
         for line in f:
             rec = json.loads(line)
             seen += 1
+            if "i18n" in rec or "subject" in rec:
+                changed += bool(_apply_i18n(s, rec["i18n"]) if "i18n" in rec
+                                else _apply_subject(s, rec["subject"]))
+                if seen % batch == 0:
+                    s.commit()
+                continue
             d = s.get(D, rec["doc_id"])
             if d is None:
                 missing += 1

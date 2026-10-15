@@ -80,21 +80,29 @@ export type ClientAccount = {
   recent_activity?: { ts: string; action: string; decision_id: string }[];
 };
 
-async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const r = await fetch(BASE + path, { ...init, headers });
-  if (r.status === 401) clearAuth();
+  if (r.status === 401 && token) {
+    // signed out elsewhere, or the session ended: back to the sign-in page
+    clearAuth();
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("session-ended"));
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
-    throw new ApiError(r.status, detailText(body.detail, r.status));
+    if (r.status === 402 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("subscription-lapsed", { detail: body.detail }));
+    }
+    throw new ApiError(r.status, detailText(body.detail, r.status), body.detail);
   }
   return (await r.json()) as T;
 }
+const j = request;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public detail?: unknown) {
     super(message);
   }
 }
@@ -113,14 +121,27 @@ function detailText(detail: unknown, status: number): string {
 }
 
 // ---------- auth ----------
-export async function login(email: string, password: string) {
+/** Thrown when the password was right and the account wants its six-digit code. */
+export class NeedsCode extends Error {
+  constructor(public wrong: boolean) {
+    super(wrong ? "wrong code" : "code required");
+  }
+}
+
+export async function login(email: string, password: string, code = "") {
   const r = await fetch(BASE + "/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, code }),
   });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Invalid email or password");
-  const data = (await r.json()) as { token: string; email: string; role: string };
+  if (!r.ok) {
+    const detail = (await r.json().catch(() => ({}))).detail;
+    if (detail && typeof detail === "object" && (detail as { mfa?: boolean }).mfa) {
+      throw new NeedsCode(Boolean((detail as { wrong?: boolean }).wrong));
+    }
+    throw new Error(typeof detail === "string" ? detail : "Invalid email or password");
+  }
+  const data = (await r.json()) as { token: string; email: string; role: string; language?: string };
   window.localStorage.setItem(TOKEN_KEY, data.token);
   window.localStorage.setItem(EMAIL_KEY, data.email);
   window.localStorage.setItem(ROLE_KEY, data.role);
@@ -128,6 +149,17 @@ export async function login(email: string, password: string) {
 }
 
 const tokenQ = () => `token=${encodeURIComponent(getToken())}`;
+
+export const apiBase = BASE;
+
+/** End this session on the server too, so the token cannot be reused. */
+export async function logoutRemote() {
+  try {
+    await j<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+  } catch {
+    /* already ended: nothing to do */
+  }
+}
 
 // ---------- client space ----------
 export const getCategories = () => j<string[]>("/api/categories");

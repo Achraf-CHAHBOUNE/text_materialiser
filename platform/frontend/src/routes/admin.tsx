@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChamberBadge, LevelBadge, Pill } from "@/components/chips";
+import { OutboxPanel, PlansPanel, StaffPanel } from "@/components/AdminPanels";
 import { useStore } from "@/lib/app-store";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -23,21 +24,36 @@ export const Route = createFileRoute("/admin")({
 
 function AdminConsole() {
   const navigate = useNavigate();
-  const { isAdmin } = useStore();
+  const { isAdmin, isSuper, ready } = useStore();
   const { t } = useI18n();
-  useEffect(() => { if (!isAdmin) navigate({ to: "/dashboard" }); }, [isAdmin, navigate]);
+  // only once the session is read: before that everyone looks signed out
+  useEffect(() => { if (ready && !isAdmin) navigate({ to: "/browse" }); }, [ready, isAdmin, navigate]);
 
   return (
     <AppShell title={t("adm.title")} description={t("adm.subtitle")}>
       <Tabs defaultValue="import">
-        <TabsList className="h-11">
+        <TabsList className="h-11 flex-wrap">
           <TabsTrigger value="import" className="px-5">{t("adm.tabImport")}</TabsTrigger>
           <TabsTrigger value="queue" className="px-5">{t("adm.tabQueue")}</TabsTrigger>
-          <TabsTrigger value="clients" className="px-5">{t("adm.tabClients")}</TabsTrigger>
+          {isSuper && (
+            <>
+              <TabsTrigger value="clients" className="px-5">{t("adm.tabClients")}</TabsTrigger>
+              <TabsTrigger value="staff" className="px-5">{t("adm.tabStaff")}</TabsTrigger>
+              <TabsTrigger value="plans" className="px-5">{t("adm.tabPlans")}</TabsTrigger>
+              <TabsTrigger value="mail" className="px-5">{t("adm.tabMail")}</TabsTrigger>
+            </>
+          )}
         </TabsList>
         <TabsContent value="import" className="mt-5"><ImportPanel /></TabsContent>
         <TabsContent value="queue" className="mt-5"><QueuePanel /></TabsContent>
-        <TabsContent value="clients" className="mt-5"><ClientsPanel /></TabsContent>
+        {isSuper && (
+          <>
+            <TabsContent value="clients" className="mt-5"><ClientsPanel /></TabsContent>
+            <TabsContent value="staff" className="mt-5"><StaffPanel /></TabsContent>
+            <TabsContent value="plans" className="mt-5"><PlansPanel /></TabsContent>
+            <TabsContent value="mail" className="mt-5"><OutboxPanel /></TabsContent>
+          </>
+        )}
       </Tabs>
     </AppShell>
   );

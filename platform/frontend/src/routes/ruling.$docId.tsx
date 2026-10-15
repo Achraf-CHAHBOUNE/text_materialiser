@@ -9,12 +9,13 @@ import { FileNumber } from "@/components/FileNumber";
 import { Headnote, HeadnoteFr } from "@/components/ruling/Headnote";
 import { HideAllDialog, ReportDialog, TextEditorDialog } from "@/components/ruling/EditDialogs";
 import { HistoryPanel } from "@/components/ruling/HistoryPanel";
+import { DownloadButton, SaveToFolder } from "@/components/ruling/LibraryButtons";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
 import { FrenchRuling, TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
 import { rulingKey, useEdits } from "@/components/ruling/useEdits";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { adminFileUrl, adminGetDecision, decisionFileUrl, getDecision, hideText } from "@/lib/api";
+import { adminFileUrl, adminGetDecision, getDecision, hideText } from "@/lib/api";
 import { useStore } from "@/lib/app-store";
 import { chamberStyle } from "@/lib/chambers";
 import { useI18n } from "@/lib/i18n";
@@ -100,11 +101,16 @@ function RulingPage() {
               {lang === "fr" ? <HeadnoteFr d={d} /> : <Headnote d={d} />}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button asChild size="sm">
-                  <a href={isAdmin ? adminFileUrl(d.doc_id) : decisionFileUrl(d.doc_id)} download>
-                    <Download className="size-4" aria-hidden /> {t("ruling.download")}
-                  </a>
-                </Button>
+                {isAdmin ? (
+                  <Button asChild size="sm">
+                    <a href={adminFileUrl(d.doc_id)} download>
+                      <Download className="size-4" aria-hidden /> {t("ruling.download")}
+                    </a>
+                  </Button>
+                ) : (
+                  <DownloadButton docId={d.doc_id} fileName={d.file_name} />
+                )}
+                {d.state === "published" && <SaveToFolder docId={d.doc_id} />}
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="size-4" aria-hidden /> {t("ruling.print")}
                 </Button>

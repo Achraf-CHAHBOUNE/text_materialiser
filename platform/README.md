@@ -1,8 +1,12 @@
 # Project 2 — Web platform
 
-Web platform for consulting **anonymized** Moroccan court decisions. Three parts:
-admin integration (import/review/publish), admin clients (accounts), and the client
-space (browse/search/view).
+Web platform for consulting **anonymized** Moroccan court decisions, in Arabic and in
+French: the client space (browse, search, read, folders, alerts), the rulings' tools
+(import, review, correct, publish), and the business around them -- customer accounts
+with seats and subscriptions, a CRM, invoices and support.
+
+**The languages, the customers, the CRM and billing are described in
+[`docs/BUSINESS.md`](docs/BUSINESS.md).**
 
 Brief: [`../docs/website_brief.md`](../docs/website_brief.md).
 
@@ -96,9 +100,10 @@ own working folders.
 
 ## Reading a ruling in French
 
-A reader opens a ruling and presses **الترجمة الفرنسية / Traduction française**. The
-Arabic and the French then sit side by side, so a lawyer can check one against the
-other; on a phone they stack, Arabic first.
+On the French site (`/fr/...`) a ruling opens in French, with the original Arabic
+alone or side by side one click away; see [`docs/BUSINESS.md`](docs/BUSINESS.md). On
+the Arabic site a reader presses **الترجمة الفرنسية** and the two sit side by side;
+on a phone they stack, Arabic first.
 
 A ruling is translated **once**: the first reader waits about five seconds, everyone
 after that gets it in milliseconds from the database. It costs roughly $0.001 per

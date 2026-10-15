@@ -117,7 +117,7 @@ Same `--provider` / `--model` / `--workers` / `--batch` / `--dry-run`, plus:
 ## Choosing a model
 
 Every setting lives in **`platform/.env`** — copy `platform/.env.example`, which
-documents all 27 fields with their defaults. The scripts read it automatically; inside
+documents all 38 fields with their defaults. The scripts read it automatically; inside
 Docker, compose's environment wins instead.
 
 | provider | key | get one at | notes |

@@ -28,6 +28,12 @@ stop () {
       echo "  stopped port $p"
     fi
   done
+  if [ -f "$DB_DIR/worker.pid" ]; then
+    wpid="$(cat "$DB_DIR/worker.pid")"
+    taskkill //PID "$wpid" //F >/dev/null 2>&1 || kill "$wpid" 2>/dev/null || true
+    rm -f "$DB_DIR/worker.pid"
+    echo "  stopped the worker"
+  fi
 }
 
 if [ "${1:-}" = "stop" ]; then stop; exit 0; fi
@@ -39,6 +45,9 @@ echo "starting the API on $API_PORT ..."
 ( cd "$ROOT/platform/backend" \
   && nohup python -m uvicorn server:app --host 127.0.0.1 --port "$API_PORT" \
        > "$DB_DIR/api.log" 2>&1 & )
+
+echo "starting the worker (emails, expiries, reminders, alerts) ..."
+( cd "$ROOT/platform/backend"   && { nohup python worker.py > "$DB_DIR/worker.log" 2>&1 & echo $! > "$DB_DIR/worker.pid"; } )
 
 echo "starting the site on $WEB_PORT ..."
 ( cd "$ROOT/platform/frontend" \
@@ -66,5 +75,6 @@ cat <<EOF
 
   logs        $DB_DIR/api.log
               $DB_DIR/web.log
+              $DB_DIR/worker.log
   stop        ./run-local.sh stop
 EOF

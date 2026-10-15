@@ -14,6 +14,7 @@ import {
   getRole,
   isAuthed as apiIsAuthed,
   login as apiLogin,
+  logoutRemote,
 } from "./api";
 
 type Theme = "light" | "dark";
@@ -27,8 +28,13 @@ type Store = {
   authed: boolean;
   /** false until the saved session has been read (nothing is known before that) */
   ready: boolean;
+  /** the rulings' tools: import, correct, publish (admin and editor) */
   isAdmin: boolean;
-  login: (email: string, password: string) => Promise<string>; // resolves to role
+  isSuper: boolean;          // admin
+  isSales: boolean;          // admin or sales: the CRM
+  isStaff: boolean;          // admin, editor or sales
+  isClientAdmin: boolean;    // a customer's account holder
+  login: (email: string, password: string, code?: string) => Promise<string>; // resolves to role
   logout: () => void;
   // reference data
   categories: string[];
@@ -76,8 +82,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (mail: string, password: string) => {
-      const data = await apiLogin(mail, password);
+    async (mail: string, password: string, code = "") => {
+      const data = await apiLogin(mail, password, code);
       setEmail(data.email);
       setRole(data.role);
       setAuthed(true);
@@ -86,7 +92,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // A session ended elsewhere (signed in on another device, suspended, password
+  // reset) arrives as a 401: forget it here too.
+  useEffect(() => {
+    const ended = () => {
+      setEmail("");
+      setRole("");
+      setAuthed(false);
+    };
+    window.addEventListener("session-ended", ended);
+    return () => window.removeEventListener("session-ended", ended);
+  }, []);
+
   const logout = useCallback(() => {
+    void logoutRemote();
     clearAuth();
     setEmail("");
     setRole("");
@@ -101,7 +120,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       role,
       authed,
       ready,
-      isAdmin: role === "admin",
+      isAdmin: role === "admin" || role === "editor",
+      isSuper: role === "admin",
+      isSales: role === "admin" || role === "sales",
+      isStaff: role === "admin" || role === "editor" || role === "sales",
+      isClientAdmin: role === "client_admin",
       login,
       logout,
       categories,

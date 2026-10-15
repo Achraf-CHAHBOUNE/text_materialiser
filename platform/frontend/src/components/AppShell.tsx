@@ -1,6 +1,11 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  Bell,
+  Briefcase,
+  FolderOpen,
+  History,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   ListChecks,
   Menu,
@@ -33,18 +38,31 @@ import { cn } from "@/lib/utils";
 
 export { Wordmark, BrandMark };
 
+/** What each role sees in the menu: a reader their research, an editor the rulings'
+ *  tools, sales the CRM, an administrator everything. */
 function useNav() {
-  const { isAdmin } = useStore();
+  const { isAdmin, isSales, isStaff } = useStore();
   const { t } = useI18n();
-  const items = [
-    { to: "/browse", label: t("nav.browse"), icon: Scale },
-    { to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard },
-    { to: "/results", label: t("nav.decisions"), icon: ScrollText },
-  ];
-  if (isAdmin) {
-    items.push({ to: "/corrections", label: t("nav.review"), icon: ListChecks });
-    items.push({ to: "/admin", label: t("nav.admin"), icon: ShieldCheck });
+  const items = [{ to: "/browse", label: t("nav.browse"), icon: Scale }];
+  if (!isStaff) {
+    items.push({ to: "/library", label: t("nav.library"), icon: FolderOpen });
+    items.push({ to: "/alerts", label: t("nav.alerts"), icon: Bell });
+    items.push({ to: "/history", label: t("nav.history"), icon: History });
+    items.push({ to: "/support", label: t("nav.support"), icon: LifeBuoy });
+    items.push({ to: "/account", label: t("nav.account"), icon: User });
+    return items;
   }
+  if (isSales) {
+    items.unshift({ to: "/crm", label: t("nav.crm"), icon: Briefcase });
+    items.push({ to: "/support", label: t("nav.support"), icon: LifeBuoy });
+  }
+  if (isAdmin) {
+    items.push({ to: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard });
+    items.push({ to: "/results", label: t("nav.decisions"), icon: ScrollText });
+    items.push({ to: "/corrections", label: t("nav.review"), icon: ListChecks });
+  }
+  if (isAdmin) items.push({ to: "/admin", label: t("nav.admin"), icon: ShieldCheck });
+  items.push({ to: "/library", label: t("nav.library"), icon: FolderOpen });
   return items;
 }
 
@@ -140,11 +158,14 @@ function AvatarMenu() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span className="text-sm font-medium">{email || "—"}</span>
-          <span className="text-xs font-normal capitalize text-muted-foreground">{role || "client"}</span>
+          <span className="text-xs font-normal text-muted-foreground">{role ? t(`role.${role}` as "role.client") : ""}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/settings"><User className="size-4" />{t("shell.profile")}</Link>
+          <Link to="/account"><User className="size-4" />{t("nav.account")}</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/settings"><Sun className="size-4" />{t("settings.appearance")}</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -168,8 +189,8 @@ export function AppShell({
   action,
   children,
 }: {
-  title?: string;
-  description?: string;
+  title?: string | undefined;
+  description?: string | undefined;
   action?: ReactNode;
   children: ReactNode;
 }) {
@@ -178,6 +199,15 @@ export function AppShell({
   const { t } = useI18n();
   const navigate = useNavigate();
   const { authed, ready, refreshCategories } = useStore();
+  const [lapsed, setLapsed] = useState(false);
+
+  // a 402 anywhere means the organization's subscription has lapsed: say so once,
+  // with the way to put it right, instead of a page of failed requests
+  useEffect(() => {
+    const on = () => setLapsed(true);
+    window.addEventListener("subscription-lapsed", on);
+    return () => window.removeEventListener("subscription-lapsed", on);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;                    // the saved session has not been read yet
@@ -260,7 +290,18 @@ export function AppShell({
             </div>
           </header>
           <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-6xl animate-fade-in">{children}</div>
+            <div className="mx-auto max-w-6xl animate-fade-in">
+              {lapsed && (
+                <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <span>{t("acc.lapsed")}</span>
+                  <span className="flex gap-3">
+                    <Link to="/account" className="font-medium underline">{t("nav.account")}</Link>
+                    <Link to="/support" className="font-medium underline">{t("nav.support")}</Link>
+                  </span>
+                </div>
+              )}
+              {children}
+            </div>
           </main>
         </div>
       </div>

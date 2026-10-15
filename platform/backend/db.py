@@ -51,8 +51,14 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String, default="")
-    role: Mapped[str] = mapped_column(String, default="client")     # admin | client
+    # admin | editor | sales (staff) -- client_admin | client (a customer's people)
+    role: Mapped[str] = mapped_column(String, default="client")
     status: Mapped[str] = mapped_column(String, default="active")   # active | suspended
+    full_name: Mapped[str] = mapped_column(String, default="")
+    phone: Mapped[str] = mapped_column(String, default="")
+    language: Mapped[str] = mapped_column(String, default="ar")     # ar | fr
+    org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    mfa_secret: Mapped[str] = mapped_column(String, default="")     # empty: no second factor
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     last_login: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -264,6 +270,13 @@ def _add_missing_columns() -> None:
         if name not in have:
             with _engine.begin() as c:
                 c.execute(_sql(f"ALTER TABLE decisions ADD COLUMN {name} {kind}"))
+    have = {c["name"] for c in inspect(_engine).get_columns("users")}
+    for name, kind in (("full_name", "VARCHAR DEFAULT ''"), ("phone", "VARCHAR DEFAULT ''"),
+                       ("language", "VARCHAR DEFAULT 'ar'"), ("org_id", "INTEGER"),
+                       ("mfa_secret", "VARCHAR DEFAULT ''")):
+        if name not in have:
+            with _engine.begin() as c:
+                c.execute(_sql(f"ALTER TABLE users ADD COLUMN {name} {kind}"))
 
 
 # ---------------- full-text search ----------------
@@ -476,6 +489,9 @@ def get_user(email: str) -> Optional[dict]:
 def _user_dict(u: User) -> dict:
     return {"id": u.id, "email": u.email, "role": u.role, "status": u.status,
             "password_hash": u.password_hash,
+            "full_name": u.full_name or "", "phone": u.phone or "",
+            "language": u.language or "ar", "org_id": u.org_id,
+            "mfa": bool(u.mfa_secret), "mfa_secret": u.mfa_secret or "",
             "created_at": u.created_at.isoformat() if u.created_at else "",
             "last_login": u.last_login.isoformat() if u.last_login else ""}
 
@@ -494,7 +510,8 @@ def upsert_user(email: str, password_hash: str, role: str = "client",
 def list_clients() -> List[dict]:
     with session() as s:
         return [_user_dict(u) for u in
-                s.scalars(select(User).where(User.role == "client").order_by(User.email))]
+                s.scalars(select(User).where(User.role.in_(("client", "client_admin")))
+                          .order_by(User.email))]
 
 
 def set_user_status(email: str, status: str) -> bool:
@@ -905,6 +922,14 @@ def browse_rulings(*, chamber: str = "", year: str = "", city: str = "", q: str 
                 # whose text happens to contain those digits.
                 exact_first = case((Decision.decision_no == q.strip(), 0), else_=1)
         total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
+        if (total == 0 and q.strip() and _engine.dialect.name == "postgresql"
+                and not (lang != "ar" and not textnorm.has_arabic(q))):
+            # The word index files بالتحفيظ apart from التحفيظ. A search that finds
+            # nothing is tried again as a substring over the trigram index, so a word
+            # met only with a letter glued to it is still found -- slower, but only
+            # when the fast way came back empty.
+            where[-1] = Decision.search_text.like(f"%{textnorm.normalize(q)}%")
+            total = s.execute(select(func.count(Decision.doc_id)).where(*where)).scalar_one()
         # Newest first, straight off the sort key.
         order = [] if exact_first is None else [exact_first]
         # Only the columns a row shows. Selecting whole objects dragged every ruling's
