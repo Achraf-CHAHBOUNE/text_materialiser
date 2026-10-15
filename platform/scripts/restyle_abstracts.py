@@ -5,11 +5,11 @@ smaller than the text it summarises -- and in the Arabic files only Word's ordin
 size was set, not the separate size Word uses for Arabic script, so it may not have
 applied at all. This restyles the files already written; nothing is translated again.
 
-    Arabic   «ملخص القرار» 24 pt bold, centred, then the abstract at 16 pt bold
-    French   «Résumé de l'arrêt» 20 pt bold, centred, then the abstract at 13 pt bold
+    Arabic   «ملخص القرار» 24 pt bold, centred, then the abstract at 14 pt bold, justified
+    French   «Résumé de l'arrêt» 20 pt bold, centred, then the abstract at 12 pt bold, justified
 
-Safe to run twice: a file that already has the title only has the title's size and
-placement brought up to date.
+Safe to run twice: a file that already has the title only has the title's and the
+abstract's size and alignment brought up to date.
 
     python restyle_abstracts.py --delivery ../../delivery
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 
 TITLE = {"ar": "ملخص القرار", "fr": "Résumé de l'arrêt"}
 TITLE_PT = {"ar": 24, "fr": 20}
-ABSTRACT_PT = {"ar": 16, "fr": 13}
+ABSTRACT_PT = {"ar": 14, "fr": 12}
 
 
 def _size(run, pt: int, rtl: bool) -> None:
@@ -57,21 +57,30 @@ def restyle(job: tuple) -> tuple:
     if not paras:
         return path, "empty"
     rtl = lang == "ar"
+
+    def fits(p, pt, align):
+        return p.alignment == align and all(r.font.size == Pt(pt) for r in p.runs)
+
+    def fix(p, pt, align):
+        p.alignment = align
+        for r in p.runs:
+            _size(r, pt, rtl)
+
     if paras[0].text.strip() == TITLE[lang]:
-        head = paras[0]
-        if head.alignment == WD_ALIGN_PARAGRAPH.CENTER and                 all(r.font.size == Pt(TITLE_PT[lang]) for r in head.runs):
+        head, body = paras[0], (paras[1] if len(paras) > 1 else None)
+        if body is None or not any(r.bold for r in body.runs):
+            return path, "no abstract under the title"
+        if fits(head, TITLE_PT[lang], WD_ALIGN_PARAGRAPH.CENTER) and                 fits(body, ABSTRACT_PT[lang], WD_ALIGN_PARAGRAPH.JUSTIFY):
             return path, "already done"
-        head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for r in head.runs:
-            _size(r, TITLE_PT[lang], rtl)
+        fix(head, TITLE_PT[lang], WD_ALIGN_PARAGRAPH.CENTER)
+        fix(body, ABSTRACT_PT[lang], WD_ALIGN_PARAGRAPH.JUSTIFY)
         d.save(path)
-        return path, "title updated"
+        return path, "updated"
+
     first = paras[0]
     if not first.text.strip() or not any(r.bold for r in first.runs):
         return path, "first paragraph is not the abstract"
-
-    for r in first.runs:
-        _size(r, ABSTRACT_PT[lang], rtl)
+    fix(first, ABSTRACT_PT[lang], WD_ALIGN_PARAGRAPH.JUSTIFY)
 
     title = d.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -112,7 +121,7 @@ def main() -> int:
     for k, v in c.most_common():
         print(f"   {v:>7,}  {k}")
     for p, r in res:
-        if r not in ("restyled", "title updated", "already done"):
+        if r not in ("restyled", "updated", "already done"):
             print(f"   e.g. {Path(p).name}: {r}")
             break
     return 0

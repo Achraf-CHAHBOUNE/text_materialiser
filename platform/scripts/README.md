@@ -245,7 +245,7 @@ delivery/report.csv                       one row per ruling: what was written, 
 ```
 
 Each file opens with a centred title — «ملخص القرار» (24 pt) / «Résumé de l'arrêt» (20 pt) —
-then the abstract in bold, larger than the ruling (16 pt Arabic, 13 pt French).
+then the abstract in bold and justified (14 pt Arabic, 12 pt French).
 Files written before that layout are brought up to it, without translating anything
 again, by `python restyle_abstracts.py --delivery ../../delivery` (safe to rerun).
 

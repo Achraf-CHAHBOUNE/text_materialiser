@@ -352,6 +352,7 @@ def arabic_docx(source: Path, target: Path, abstract: str, machine: bool, mark: 
             block.append(p)
         block[0].paragraph_format.space_after = Pt(4)
         block[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        block[1].alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         if machine and mark:
             p = d.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
