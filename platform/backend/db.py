@@ -457,9 +457,45 @@ def _add_browse_indexes() -> None:
             c.execute(_sql(f"CREATE INDEX IF NOT EXISTS {name} ON decisions ({cols})"))
 
 
+def _alembic(action: str, target: str) -> None:
+    from alembic import command
+    from alembic.config import Config
+    here = Path(__file__).resolve().parent
+    cfg = Config(str(here / "alembic.ini"))
+    cfg.set_main_option("script_location", str(here / "migrations"))
+    with _engine.begin() as conn:
+        cfg.attributes["connection"] = conn
+        getattr(command, action)(cfg, target)
+
+
+def _baseline_tables() -> List[str]:
+    import re
+    here = Path(__file__).resolve().parent / "migrations" / "versions" / "0001_baseline.py"
+    return re.findall(r"op\.create_table\('(\w+)'", here.read_text(encoding="utf-8"))
+
+
+def migrate() -> None:
+    """Bring the database's structure up to date (migrations/versions, by Alembic).
+
+    A database made before migrations existed is first brought to the baseline the way
+    it always was -- missing tables made, missing columns added -- and marked 0001, so
+    only the migrations written after it run there."""
+    from sqlalchemy import inspect
+    tables = set(inspect(_engine).get_table_names())
+    if "alembic_version" not in tables and "decisions" in tables:
+        base = set(_baseline_tables())
+        Base.metadata.create_all(_engine, tables=[t for t in Base.metadata.sorted_tables if t.name in base])
+        _add_missing_columns()
+        add_columns("subscriptions", [("monthly_price", "INTEGER")])
+        _alembic("stamp", "0001")
+    _alembic("upgrade", "head")
+
+
 def init_db() -> None:
-    Base.metadata.create_all(_engine)
-    _add_missing_columns()
+    """The structure up to date, then the search indexes in place. Several API and
+    worker copies may start together: one migrates while the others wait their turn."""
+    with exclusive("schema", wait=True):
+        migrate()
     _add_browse_indexes()
     _init_fts()
     _init_i18n_search()

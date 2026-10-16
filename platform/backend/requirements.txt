@@ -9,6 +9,7 @@ uvicorn[standard]==0.32.1
 python-multipart==0.0.12   # multipart import upload
 minio==7.2.10              # anonymized-file object storage (never raw documents)
 SQLAlchemy==2.0.36
+alembic==1.20.0           # the database structure, by numbered migrations (migrations/)
 psycopg[binary]==3.2.3     # PostgreSQL driver
 httpx==0.28.1              # the one outbound call: a ruling translated into French
 

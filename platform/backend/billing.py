@@ -118,7 +118,6 @@ TRIAL_DAYS = 14
 
 
 def seed_plans() -> None:
-    db.add_columns("subscriptions", [("monthly_price", "INTEGER")])
     with db.session() as s:
         if s.scalar(select(func.count()).select_from(Plan)):
             return
