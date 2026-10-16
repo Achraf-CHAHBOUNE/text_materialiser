@@ -1,3 +1,9 @@
 # Line endings the interpreters need, whatever the checkout platform.
 *.bat text eol=crlf
 *.sh  text eol=lf
+# Read inside Linux containers: Docker, Caddy, Garage, compose.
+Dockerfile   text eol=lf
+Caddyfile    text eol=lf
+*.toml       text eol=lf
+*.yml        text eol=lf
+.dockerignore text eol=lf
