@@ -9,9 +9,12 @@
 # On a server, set COMPOSE as for backup.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Git Bash on Windows rewrites arguments that look like paths (/backups/... becomes
+# C:/Program Files/Git/backups/...) and the container writes somewhere else: not here.
+export MSYS_NO_PATHCONV=1
 
 COMPOSE="${COMPOSE:-docker compose}"
-SRC="$(cd "${1:?usage: restore.sh BACKUP_FOLDER}" && pwd)"
+SRC="$(cd "${1:?usage: restore.sh BACKUP_FOLDER}" && (pwd -W 2>/dev/null || pwd))"
 [ -f "$SRC/database.dump" ] && [ -f "$SRC/files/manifest.json" ] \
   || { echo "Not a finished backup: $SRC (database.dump or files/manifest.json missing)"; exit 1; }
 set -a; . ./.env; set +a

@@ -15,13 +15,16 @@
 #   (crontab -l 2>/dev/null; echo "30 3 * * * cd $PWD && ./scripts/backup.sh >> backups/backup.log 2>&1") | crontab -
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Git Bash on Windows rewrites arguments that look like paths (/backups/... becomes
+# C:/Program Files/Git/backups/...) and the container writes somewhere else: not here.
+export MSYS_NO_PATHCONV=1
 
 COMPOSE="${COMPOSE:-docker compose}"
 ROOT="${1:-backups}"
 KEEP="${KEEP:-14}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$ROOT/$STAMP"
-ROOT_ABS="$(cd "$ROOT" && pwd)"
+ROOT_ABS="$(cd "$ROOT" && (pwd -W 2>/dev/null || pwd))"   # pwd -W: C:/... in Git Bash
 DEST="$ROOT_ABS/$STAMP"
 set -a; . ./.env; set +a
 

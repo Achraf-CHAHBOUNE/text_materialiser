@@ -11,9 +11,12 @@
 # On a server, add the server file:  docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
 # To move the data of a SQLite install in:  see "Moving in" in docs/OPERATIONS.md
 
+name: tok-platform                 # volumes and containers are tok-platform-*, never mixed with another project
+
+# One image for the API, the worker and storage-init; only `backend` builds it.
 x-backend: &backend
-  build: ./backend
   image: tok-backend:local
+  pull_policy: never
   restart: unless-stopped
   environment: &backend_env
     DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anon}:${POSTGRES_PASSWORD:?REQUIRED - set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-anonymize}
@@ -87,8 +90,8 @@ services:
 
   # Gives Garage its node, key and bucket, then exits. Changes nothing already in place.
   storage-init:
-    build: ./backend
     image: tok-backend:local
+    pull_policy: never
     command: python -m ops.storage_init
     restart: "no"
     environment:
@@ -103,6 +106,7 @@ services:
 
   backend:
     <<: *backend
+    build: ./backend
 
   # emails, expiries, reminders, the admin digest (backend/worker.py)
   worker:
