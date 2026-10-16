@@ -42,6 +42,7 @@ import support
 import docedit
 import importer
 import piigate
+import settings
 import textnorm
 import translate
 from deps import STAFF, current_user, flex_user, require_admin, require_editor, require_staff
@@ -50,7 +51,7 @@ from filestore import get_filestore
 app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOW_ORIGINS", "*").split(","),
+    allow_origins=settings.S.allow_origins.split(","),
     allow_methods=["*"], allow_headers=["*"],
 )
 
@@ -59,12 +60,23 @@ for _module in (accounts, billing, contracts, crm, support, library, insights):
 
 STORE = get_filestore()
 CATEGORIES = ["إدارية", "تجارية", "مدنية", "جنائية", "اجتماعية", "أحوال شخصية", "عقارية"]
-# Publish imports straight away (no manual pending step). Set AUTO_PUBLISH=0 to require review.
-AUTO_PUBLISH = os.getenv("AUTO_PUBLISH", "1") not in ("0", "false", "False", "no")
+# Imports are published straight away unless AUTO_PUBLISH=0 (settings.S.auto_publish).
+
+
+def configure() -> None:
+    """Read the settings again and reconnect the database and the store -- for tests,
+    each of which runs with its own."""
+    global STORE
+    settings.reload()
+    db.configure()
+    STORE = get_filestore()
+    billing.forget_plans()
+    _startup()
 
 
 @app.on_event("startup")
 def _startup() -> None:
+    settings.check()
     db.init_db()
     email, pw = os.getenv("SEED_EMAIL", ""), os.getenv("SEED_PASSWORD", "")
     if email and pw and not db.get_user(email):
@@ -94,8 +106,6 @@ class LoginBody(BaseModel):
 # for LOGIN_LOCKOUT_SECONDS whether or not the next password is right, and a correct
 # password clears the count. Kept in the database (limits.py), so every copy of the
 # API sees the same count and a restart does not hand out fresh tries.
-LOGIN_MAX_TRIES = int(os.getenv("LOGIN_MAX_TRIES", "8"))
-LOGIN_LOCKOUT_SECONDS = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "900"))
 
 
 def _login_key(email: str, request: Request) -> tuple:
@@ -106,12 +116,13 @@ def _login_key(email: str, request: Request) -> tuple:
 
 def _locked_for(key: tuple) -> int:
     """Seconds still to wait, 0 if the caller may try."""
-    fails = limits.recent("login", f"{key[0]}|{key[1]}", LOGIN_LOCKOUT_SECONDS)
-    if len(fails) < LOGIN_MAX_TRIES:
+    tries, lockout = settings.S.login_max_tries, settings.S.login_lockout_seconds
+    fails = limits.recent("login", f"{key[0]}|{key[1]}", lockout)
+    if len(fails) < tries:
         return 0
     # locked until the lockout has run from the failure that reached the limit
-    reached = fails[-LOGIN_MAX_TRIES]
-    return max(0, int((reached - dt.datetime.utcnow()).total_seconds()) + LOGIN_LOCKOUT_SECONDS)
+    reached = fails[-tries]
+    return max(0, int((reached - dt.datetime.utcnow()).total_seconds()) + lockout)
 
 
 def _note_failure(key: tuple) -> None:
@@ -161,7 +172,6 @@ def health() -> dict:
 # importer.py does the work, the same way the command line does: a small batch is
 # imported at once and the answer comes back; a large one is kept in the store and
 # imported by the worker, and the page follows it through /api/admin/import/jobs.
-IMPORT_INLINE_MAX = int(os.getenv("IMPORT_INLINE_MAX", "200"))
 
 
 @app.post("/api/admin/import")
@@ -183,9 +193,9 @@ def import_batch(file: UploadFile = File(...), user: dict = Depends(require_edit
             s.add(job)
             s.commit()
             job_id = job.id
-        if n <= IMPORT_INLINE_MAX:
+        if n <= settings.S.import_inline_max:
             importer._save(job_id, status="running", started_at=dt.datetime.utcnow())
-            result = importer.run(Path(tmp), publish=AUTO_PUBLISH, actor=user["email"], store=STORE, workers=1)
+            result = importer.run(Path(tmp), publish=settings.S.auto_publish, actor=user["email"], store=STORE, workers=1)
             importer._save(job_id, status="done", finished_at=dt.datetime.utcnow(),
                            result=json.dumps(result, ensure_ascii=False))
         else:

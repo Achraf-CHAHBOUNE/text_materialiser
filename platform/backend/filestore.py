@@ -68,6 +68,12 @@ class LocalFileStore:
         """{name: bytes} for every file -- what a copy is checked against."""
         return {p.name: p.stat().st_size for p in self.base.iterdir() if p.is_file()}
 
+    def listing(self) -> Dict[str, tuple]:
+        """{name: (bytes, md5)} -- enough to tell a changed file from an unchanged one."""
+        import hashlib
+        return {p.name: (p.stat().st_size, hashlib.md5(p.read_bytes()).hexdigest())
+                for p in self.base.iterdir() if p.is_file()}
+
 
 class S3FileStore:
     """Any S3-compatible storage, through the `minio` client library."""
@@ -134,6 +140,11 @@ class S3FileStore:
 
     def sizes(self) -> Dict[str, int]:
         return {o.object_name: o.size for o in self.client.list_objects(self.bucket)}
+
+    def listing(self) -> Dict[str, tuple]:
+        """{name: (bytes, etag)}; the store's own checksum, no file read."""
+        return {o.object_name: (o.size, (o.etag or "").strip('"'))
+                for o in self.client.list_objects(self.bucket)}
 
 
 MinioFileStore = S3FileStore          # the name this class had before

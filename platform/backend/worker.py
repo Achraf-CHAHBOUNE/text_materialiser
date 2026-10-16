@@ -36,6 +36,7 @@ import importer
 import library
 import limits
 import mailer
+import settings
 import support  # noqa: F401
 
 REMIND_DAYS = (30, 15, 7)
@@ -205,7 +206,7 @@ def daily(force: bool = False) -> dict:
 def once(force_daily: bool = False) -> dict:
     out = daily(force_daily)
     # deliveries uploaded too large to import during the request
-    out["imports"] = importer.run_queued(publish=os.getenv("AUTO_PUBLISH", "1") not in ("0", "false", "False", "no"))
+    out["imports"] = importer.run_queued(publish=settings.S.auto_publish)
     with db.exclusive("worker:mail") as mine:           # one sender, so no email goes twice
         out["mail"] = mailer.send_pending() if mine else {}
     return out
@@ -217,6 +218,7 @@ def main() -> int:
     ap.add_argument("--interval", type=int, default=int(os.getenv("WORKER_INTERVAL", "60")))
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
+    settings.check()
     db.init_db()
     billing.seed_plans()
     if args.once:

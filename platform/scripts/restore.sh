@@ -1,27 +1,37 @@
 #!/usr/bin/env bash
-# Restore the platform's state from a backup made by backup.sh.
+# Put the platform back as it was at one backup made by backup.sh: the database and
+# the Word files together.
 #
-#   ./scripts/restore.sh BACKUP_DIR
+#   ./scripts/restore.sh backups/20261016-033000
 #
-# Stops the stack, replaces the volume contents, and restarts. Destructive — the
-# current data is overwritten by the backup.
+# Destructive: what the platform holds now is replaced by the backup. The site is
+# stopped meanwhile and started again at the end. Postgres and Garage keep running.
+# On a server, set COMPOSE as for backup.sh.
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-PROJECT="${COMPOSE_PROJECT_NAME:-platform}"
-SRC="${1:?usage: restore.sh BACKUP_DIR}"
-ABS="$(cd "$SRC" && pwd)"
-[ -f "$ABS/pg-data.tgz" ] && [ -f "$ABS/minio-data.tgz" ] || { echo "backup files missing in $ABS"; exit 1; }
+COMPOSE="${COMPOSE:-docker compose}"
+SRC="$(cd "${1:?usage: restore.sh BACKUP_FOLDER}" && pwd)"
+[ -f "$SRC/database.dump" ] && [ -f "$SRC/files/manifest.json" ] \
+  || { echo "Not a finished backup: $SRC (database.dump or files/manifest.json missing)"; exit 1; }
+set -a; . ./.env; set +a
 
-echo "Stopping stack ..."
-docker compose down
+if [ "${YES:-}" != "1" ]; then
+  read -r -p "Replace everything the platform holds with the backup $(basename "$SRC")? [yes/no] " ok
+  [ "$ok" = "yes" ] || { echo "Nothing changed."; exit 1; }
+fi
 
-for vol in pg-data minio-data; do
-  echo "Restoring ${PROJECT}_${vol} ..."
-  docker volume create "${PROJECT}_${vol}" >/dev/null
-  docker run --rm -v "${PROJECT}_${vol}:/data" -v "$ABS:/b" alpine \
-    sh -c "rm -rf /data/* /data/..?* /data/.[!.]* 2>/dev/null; tar xzf /b/${vol}.tgz -C /data"
-done
+echo "Stopping the site ..."
+$COMPOSE stop proxy frontend worker backend
 
-echo "Starting stack ..."
-docker compose up -d
-echo "Restore complete."
+echo "Restoring the database ..."
+$COMPOSE exec -T postgres pg_restore -U "${POSTGRES_USER:-anon}" -d "${POSTGRES_DB:-anonymize}" \
+  --clean --if-exists --no-owner < "$SRC/database.dump"
+
+echo "Restoring the files ..."
+$COMPOSE run --rm --no-deps -T -u 0 -v "$SRC:/restore:ro" backend \
+  python -m ops.backup restore /restore
+
+echo "Starting the site ..."
+$COMPOSE up -d
+echo "Restored from $(basename "$SRC")."

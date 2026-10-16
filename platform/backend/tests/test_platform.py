@@ -319,7 +319,9 @@ def _forget_login_failures():
 
 def test_guessing_a_password_is_cut_off_after_a_few_tries(monkeypatch):
     """A site holding court rulings must not let anyone guess passwords all day."""
-    monkeypatch.setattr(server, "LOGIN_MAX_TRIES", 3)
+    import dataclasses
+    import settings
+    monkeypatch.setattr(settings, "S", dataclasses.replace(settings.S, login_max_tries=3))
     _forget_login_failures()
     codes = [client.post("/api/auth/login",
                          json={"email": "admin@x.com", "password": "wrong"}).status_code
@@ -352,3 +354,16 @@ def test_limits_are_shared_by_every_copy_of_the_api(monkeypatch):
     with server.db.exclusive("test:lock") as mine:
         assert mine                                  # granted (always, on SQLite)
     _forget_login_failures()
+
+
+def test_a_production_start_with_unsafe_settings_is_refused(monkeypatch):
+    import settings
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@db/x")
+    monkeypatch.setenv("AUTH_SECRET", "short")
+    monkeypatch.delenv("S3_ENDPOINT", raising=False)
+    monkeypatch.delenv("FILESTORE_DIR", raising=False)
+    found = settings.problems(settings.load())
+    assert any("AUTH_SECRET" in p for p in found) and any("S3_ENDPOINT" in p for p in found)
+    monkeypatch.setenv("AUTH_SECRET", "x" * 40)
+    monkeypatch.setenv("S3_ENDPOINT", "garage:3900")
+    assert settings.problems(settings.load()) == []

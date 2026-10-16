@@ -18,27 +18,19 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
+import settings  # noqa: F401  -- reads platform/.env before anything connects
 import textnorm
-
-# Settings live in platform/.env when this runs from a terminal. Inside Docker they
-# come from compose instead, and load_dotenv leaves anything already set alone, so the
-# container's environment always wins. Every script reaches the database through this
-# module, so loading it here means a key goes in one file and is found everywhere.
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-except ImportError:                       # python-dotenv is optional at runtime
-    pass
 
 # Publication lifecycle (website_brief §I-6).
 STATES = ("imported", "under_review", "published", "withdrawn")
 
 
 def _url() -> str:
-    url = os.getenv("DATABASE_URL", "")
+    import settings
+    url = settings.S.database_url
     if url:
         return url
-    p = Path(os.getenv("DB_DIR", "data"))
+    p = Path(settings.S.db_dir)
     p.mkdir(parents=True, exist_ok=True)
     return f"sqlite:///{(p / 'app.db').as_posix()}"
 
@@ -248,8 +240,22 @@ class ClientActivity(Base):
 # SQLite (development) locks the whole file while a script writes; a reader waits up
 # to 30 s for it rather than failing after the default 5 -- a sign-in during a long
 # import used to error out. Postgres has no such lock.
-_engine = create_engine(_url(), future=True,
-                        connect_args={"timeout": 30} if _url().startswith("sqlite") else {})
+def _make_engine():
+    url = _url()
+    return create_engine(url, future=True, pool_pre_ping=True,
+                         connect_args={"timeout": 30} if url.startswith("sqlite") else {})
+
+
+_engine = _make_engine()
+
+
+def configure() -> None:
+    """Connect again with the current settings (settings.reload() first): for tests,
+    which each run against a database of their own."""
+    global _engine
+    _engine.dispose()
+    _engine = _make_engine()
+    _FTS["ok"] = False
 
 
 def add_columns(table: str, columns: List[tuple]) -> None:

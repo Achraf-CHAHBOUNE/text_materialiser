@@ -178,7 +178,9 @@ def test_the_upload_reads_the_ruling_as_the_command_line_does(tmp_path):
 
 def test_a_large_upload_waits_for_the_worker_and_loses_nothing(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    monkeypatch.setattr(server, "IMPORT_INLINE_MAX", 2)
+    import dataclasses
+    import settings
+    monkeypatch.setattr(settings, "S", dataclasses.replace(settings.S, import_inline_max=2))
     rulings = [(f"up_big_{i}", f"نص رقم {i}") for i in range(5)]
     with TestClient(server.app) as client:
         job = _upload(client, _zip_of(_folder(tmp_path, rulings))).json()

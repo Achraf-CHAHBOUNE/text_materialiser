@@ -83,3 +83,7 @@ vps-*.png
 # The delivery: every ruling's full text, in Arabic and French. Never committed.
 delivery/
 delivery-*/
+
+# Backups: database dumps, every Word file, and a copy of .env -- never in git
+platform/backups/
+backups/

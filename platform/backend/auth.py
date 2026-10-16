@@ -12,8 +12,7 @@ import json
 import os
 import time
 
-_SECRET = os.getenv("AUTH_SECRET", "dev-secret-change-me").encode()
-_TOKEN_TTL = int(os.getenv("AUTH_TTL_SECONDS", str(7 * 24 * 3600)))  # 7 days
+import settings
 
 
 # ---------- passwords ----------
@@ -44,11 +43,11 @@ def _unb64(s: str) -> bytes:
 def make_token(email: str, sid: str = "") -> str:
     """A signed token for `email`. `sid` names the server-side session it belongs to,
     so signing out -- or signing in on another device -- can end it before it expires."""
-    body = {"sub": email, "exp": int(time.time()) + _TOKEN_TTL}
+    body = {"sub": email, "exp": int(time.time()) + settings.S.auth_ttl_seconds}
     if sid:
         body["sid"] = sid
     payload = _b64(json.dumps(body).encode())
-    sig = _b64(hmac.new(_SECRET, payload.encode(), hashlib.sha256).digest())
+    sig = _b64(hmac.new(settings.S.auth_secret.encode(), payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{sig}"
 
 
@@ -56,7 +55,7 @@ def read_token(token: str) -> dict | None:
     """{"sub", "sid"} if the token is valid and unexpired, else None."""
     try:
         payload, sig = token.split(".")
-        expected = _b64(hmac.new(_SECRET, payload.encode(), hashlib.sha256).digest())
+        expected = _b64(hmac.new(settings.S.auth_secret.encode(), payload.encode(), hashlib.sha256).digest())
         if not hmac.compare_digest(sig, expected):
             return None
         data = json.loads(_unb64(payload))
