@@ -96,6 +96,9 @@ class Decision(Base):
     # an export. An empty theme_source means the ruling has no subject at all.
     theme_source: Mapped[str] = mapped_column(String, default="", index=True)  # court|model
     abstract: Mapped[str] = mapped_column(Text, default="")     # written for us, not by the court
+    # when the model was asked for a subject and summary (enrich.py); set once, so a
+    # ruling is never paid for twice
+    enriched_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True, index=True)
     outcome: Mapped[str] = mapped_column(String, default="")
     pii_removed: Mapped[int] = mapped_column(Integer, default=0)
     review: Mapped[str] = mapped_column(String, default="ok")          # ok | check
@@ -332,7 +335,8 @@ _FTS_SETUP = (
     "  INSERT INTO decisions_fts(decisions_fts, rowid, search_text)"
     "  VALUES ('delete', old.rowid, old.search_text);"
     " END",
-    "CREATE TRIGGER IF NOT EXISTS decisions_fts_au AFTER UPDATE ON decisions BEGIN"
+    # only when the text changes: publishing or giving a subject re-indexes nothing
+    "CREATE TRIGGER IF NOT EXISTS decisions_fts_au AFTER UPDATE OF search_text ON decisions BEGIN"
     "  INSERT INTO decisions_fts(decisions_fts, rowid, search_text)"
     "  VALUES ('delete', old.rowid, old.search_text);"
     "  INSERT INTO decisions_fts(rowid, search_text) VALUES (new.rowid, new.search_text);"
@@ -375,7 +379,7 @@ _FTS_FR_SETUP = (
     "  INSERT INTO decision_i18n_fts(decision_i18n_fts, rowid, search_text)"
     "  VALUES ('delete', old.id, old.search_text);"
     " END",
-    "CREATE TRIGGER IF NOT EXISTS decision_i18n_fts_au AFTER UPDATE ON decision_i18n BEGIN"
+    "CREATE TRIGGER IF NOT EXISTS decision_i18n_fts_au AFTER UPDATE OF search_text ON decision_i18n BEGIN"
     "  INSERT INTO decision_i18n_fts(decision_i18n_fts, rowid, search_text)"
     "  VALUES ('delete', old.id, old.search_text);"
     "  INSERT INTO decision_i18n_fts(rowid, search_text) VALUES (new.id, new.search_text);"

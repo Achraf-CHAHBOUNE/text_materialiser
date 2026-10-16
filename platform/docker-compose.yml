@@ -33,6 +33,13 @@ x-backend: &backend
     # the French translation button; without a key it says it is unavailable
     TRANSLATE_API_KEY: ${TRANSLATE_API_KEY:-}
     TRANSLATE_MODEL: ${TRANSLATE_MODEL:-}
+    # the model step after each import (backend/enrich.py): off unless AUTO_ENRICH=1
+    AUTO_ENRICH: ${AUTO_ENRICH:-0}
+    ENRICH_PER_PASS: ${ENRICH_PER_PASS:-200}
+    LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+    LLM_MODEL: ${LLM_MODEL:-}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    LOG_FORMAT: ${LOG_FORMAT:-json}
     # emails: the worker sends them; without SMTP_HOST they wait in the outbox
     SITE_URL: ${SITE_URL:-http://localhost:8080}
     SMTP_HOST: ${SMTP_HOST:-}

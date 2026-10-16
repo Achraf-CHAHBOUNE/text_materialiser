@@ -194,10 +194,24 @@ def daily(force: bool = False) -> dict:
         return out
 
 
+def enrich_new() -> dict:
+    """With AUTO_ENRICH=1: a subject and a summary from the model for the rulings that
+    arrived printing none, each asked once. One worker at a time."""
+    if not settings.S.auto_enrich:
+        return {}
+    import enrich
+    with db.exclusive("worker:enrich") as mine:
+        if not mine:
+            return {}
+        got = enrich.run(limit=settings.S.enrich_per_pass, only_new=True, quiet=True)
+        return {k: got[k] for k in ("processed", "subject", "abstract", "proposed", "failed", "cost")}             if got.get("processed") else {}
+
+
 def once(force_daily: bool = False) -> dict:
     out = daily(force_daily)
     # deliveries uploaded too large to import during the request
     out["imports"] = importer.run_queued(publish=settings.S.auto_publish)
+    out["enriched"] = enrich_new()
     with db.exclusive("worker:mail") as mine:           # one sender, so no email goes twice
         out["mail"] = mailer.send_pending() if mine else {}
     return out

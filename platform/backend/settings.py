@@ -55,6 +55,8 @@ class Settings:
     login_lockout_seconds: int
     import_inline_max: int
     allow_origins: str
+    auto_enrich: bool               # the worker asks the model for new rulings' subjects
+    enrich_per_pass: int
 
     @property
     def production(self) -> bool:
@@ -74,6 +76,8 @@ def load() -> Settings:
         login_lockout_seconds=_int("LOGIN_LOCKOUT_SECONDS", 900),
         import_inline_max=_int("IMPORT_INLINE_MAX", 200),
         allow_origins=os.getenv("ALLOW_ORIGINS", "*"),
+        auto_enrich=_flag("AUTO_ENRICH", False),
+        enrich_per_pass=_int("ENRICH_PER_PASS", 200),
     )
 
 
@@ -86,6 +90,9 @@ def problems(s: Settings) -> list:
         out.append("AUTH_SECRET must be set to a long random value (32 characters or more)")
     if not s.s3_endpoint and s.filestore_dir == "data/files":
         out.append("set S3_ENDPOINT (object store) or FILESTORE_DIR (a mounted folder) for the Word files")
+    if s.auto_enrich and not (os.getenv("TRANSLATE_API_KEY") or os.getenv("GEMINI_API_KEY")
+                              or os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENCODE_API_KEY")):
+        out.append("AUTO_ENRICH=1 needs a model key (GEMINI_API_KEY, TRANSLATE_API_KEY, ...)")
     if s.login_max_tries < 1 or s.login_lockout_seconds < 1:
         out.append("LOGIN_MAX_TRIES and LOGIN_LOCKOUT_SECONDS must be positive")
     return out

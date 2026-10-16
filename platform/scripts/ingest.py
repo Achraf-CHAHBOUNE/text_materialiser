@@ -85,11 +85,11 @@ def main() -> int:
         print("\nstep 2/2  skipped (--no-model)" if args.no_model else "\nstep 2/2  skipped (dry run)")
     else:
         print("\nstep 2/2  asking a model for the rulings that printed nothing")
-        import classify_rulings
-        sys.argv = ["classify_rulings", "--provider", args.provider]
+        import enrich
+        sys.argv = ["enrich", "--provider", args.provider]
         if args.model:
             sys.argv += ["--model", args.model]
-        classify_rulings.main()
+        enrich.main()
 
     print("\n" + json.dumps(db.counts(), ensure_ascii=False, indent=2))
     return 0

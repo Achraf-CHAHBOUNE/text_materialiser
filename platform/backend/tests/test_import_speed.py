@@ -215,3 +215,32 @@ def test_a_subject_a_model_wrote_survives_importing_the_ruling_again(tmp_path):
     importer.run(folder, publish=True, actor="t", workers=1)
     d = db.get_decision("up_model")
     assert (d["theme"], d["theme_source"], d["abstract"]) == ("الكراء", "model", "ملخص")
+
+
+def test_the_worker_asks_the_model_once_for_a_new_ruling(tmp_path, monkeypatch):
+    """AUTO_ENRICH=1: a ruling that arrives printing no subject gets a summary from the
+    model, and is never asked again -- whatever the model answered."""
+    import dataclasses
+    import enrich
+    import settings
+    import worker
+    long_text = "محكمة النقض\n" + "حيث إن الطاعن يعيب على القرار المطعون فيه خرق القانون. " * 40
+    importer.run(_folder(tmp_path, [("enrich_new", long_text)]), publish=True, actor="t", workers=1)
+    with db.session() as s:      # what the corpus was already: asked long ago
+        from sqlalchemy import update
+        s.execute(update(db.Decision).where(db.Decision.doc_id != "enrich_new")
+                  .values(enriched_at=db.dt.datetime.utcnow()))
+        s.commit()
+    asked = []
+
+    def fake_ask(client, text, chamber, vocab, **kw):
+        asked.append(text[:20])
+        return {"theme": "", "abstract": "لا يقبل الطعن بالنقض إلا ممن كان طرفا في الحكم المطعون فيه، والمحكمة تراقب ذلك تلقائيا."}, None
+
+    monkeypatch.setattr(enrich, "ask", fake_ask)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "S", dataclasses.replace(settings.S, auto_enrich=True))
+    first = worker.enrich_new()
+    assert first["processed"] == 1 and first["abstract"] == 1 and len(asked) == 1
+    assert db.get_decision("enrich_new", body=True)["abstract"].startswith("لا يقبل")
+    assert worker.enrich_new() == {} and len(asked) == 1, "never asked twice"

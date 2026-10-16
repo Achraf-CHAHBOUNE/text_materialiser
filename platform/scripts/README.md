@@ -93,7 +93,11 @@ skipped, so running it again costs only what was left.
 | `--actor` | `ingest` | name recorded in the audit log |
 | `--dry-run` | off | read and count, write nothing |
 
-### `classify_rulings.py` — step 2 on its own
+### `python -m enrich` (in `backend/`) — step 2 on its own
+
+The model step now lives in the backend (`backend/enrich.py`), so the worker can run it
+too: with `AUTO_ENRICH=1` it asks, after each import, for the rulings that arrived
+printing no subject -- each one once (`decisions.enriched_at`). By hand:
 
 Same `--provider` / `--model` / `--workers` / `--batch` / `--dry-run`, plus:
 
@@ -160,7 +164,7 @@ the same refused request 16,585 times.
 |---|---|
 | `ingest.py` | **the one you want** — a new delivery |
 | `backfill_themes.py` | re-derive subject, rule and outcome from text already stored, after the parser improves. Never overwrites a model-written subject. |
-| `classify_rulings.py` | the model step alone, if you want to run it separately |
+| `backend/enrich.py` | the model step alone (`python -m enrich`); the worker runs it with `AUTO_ENRICH=1` |
 | `reconcile_proposals.py` | fold proposed subjects back in where they were ours all along under a different spelling (`دعوى إفراغ` → `دعوى الإفراغ`) |
 | `approve_subjects.py` | rule on the subjects a model suggested, and file the rulings under what you approve |
 | `sync_enrichment.py` | carry the derived fields to another copy of the database instead of paying to compute them twice |

@@ -17,9 +17,12 @@ Work is spread over threads because each call waits on the network: one at a tim
 would take seven hours. Progress is committed in batches and the run skips what is
 already done, so an interruption costs only the batch in flight.
 
-    python classify_rulings.py --limit 100        # a sample first
-    python classify_rulings.py                    # the rest
-    python classify_rulings.py --dry-run --limit 20
+    python -m enrich --limit 100        # a sample first
+    python -m enrich                    # the rest
+    python -m enrich --dry-run --limit 20
+
+The worker runs it too, after each import, when AUTO_ENRICH=1: then only the rulings
+never put to the model are asked (decisions.enriched_at), so each is paid for once.
 """
 from __future__ import annotations
 
@@ -32,20 +35,14 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+import datetime as dt
 from pathlib import Path
 
-try:
-    _backend = Path(__file__).resolve().parents[1] / "backend"
-except NameError:
-    _backend = Path.cwd()
-if not (_backend / "db.py").exists():
-    _backend = Path.cwd()
-sys.path.insert(0, str(_backend))
-sys.stdout.reconfigure(encoding="utf-8")
+from sqlalchemy import and_, func, select, update
 
-import db  # noqa: E402
-import headnotes  # noqa: E402
-from sqlalchemy import and_, func, select  # noqa: E402
+import db
+import headnotes
+import settings
 
 # Three gateways, one job, two request shapes between them. `style` is what actually
 # differs: Gemini has its own, everyone else speaks OpenAI's.
@@ -212,43 +209,42 @@ def ask(client, text, chamber, vocab, *, key, model, budget, provider="gemini"):
     return None, "gave up"
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Classify the rulings with no headnote")
-    ap.add_argument("--limit", type=int, default=0, help="stop after this many")
-    ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--batch", type=int, default=100, help="rulings per commit")
-    ap.add_argument("--vocab", type=int, default=60)
-    ap.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "gemini"),
-                    choices=sorted(PROVIDERS))
-    ap.add_argument("--model", default="", help="override the provider's default")
-    ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+def key_for(provider: str) -> str:
+    return next((os.getenv(v) for v in PROVIDERS[provider]["env"] if os.getenv(v)), "")
 
-    spec = PROVIDERS[args.provider]
-    model = args.model or os.getenv("LLM_MODEL") or spec["model"]
-    key = next((os.getenv(v) for v in spec["env"] if os.getenv(v)), "")
+
+def run(*, limit: int = 0, workers: int = 8, batch: int = 100, vocab_size: int = 60,
+        provider: str = "", model: str = "", dry_run: bool = False, only_new: bool = False,
+        quiet: bool = False) -> dict:
+    """Ask the model for the rulings that print no subject. only_new: just those never
+    asked before (the worker's way); otherwise every one still without a summary."""
+    provider = provider or os.getenv("LLM_PROVIDER", "gemini")
+    spec = PROVIDERS[provider]
+    model = model or os.getenv("LLM_MODEL") or spec["model"]
+    key = key_for(provider)
     if not key:
-        print(f"no API key for {args.provider}: set " + " or ".join(spec["env"]),
-              file=sys.stderr)
-        return 2
+        raise RuntimeError(f"no API key for {provider}: set " + " or ".join(spec["env"]))
+    say = (lambda *a, **k: None) if quiet else print
 
     import httpx
-    db.init_db()
     D = db.Decision
+    args = argparse.Namespace(limit=limit, workers=workers, batch=batch, vocab=vocab_size,
+                              provider=provider, model=model, dry_run=dry_run)
 
     chambers = ["مدنية", "جنائية", "إدارية", "أحوال شخصية", "تجارية", "اجتماعية", "عقارية"]
     vocab = {c: [t["label"] for t in db.browse_themes(c)[:args.vocab]] for c in chambers}
     allowed = {c: {headnotes.normalise(v): v for v in vs} for c, vs in vocab.items()}
 
     with db.session() as s:
-        todo = s.execute(
-            select(D.doc_id).where(and_(D.state == "published", D.theme == "",
+        q = select(D.doc_id).where(and_(D.state == "published", D.theme == "",
                                         D.abstract == "", func.length(D.body_text) > 800))
-            .order_by(D.doc_id)).scalars().all()
+        if only_new:
+            q = q.where(D.enriched_at.is_(None))
+        todo = s.execute(q.order_by(D.doc_id)).scalars().all()
     if args.limit:
         todo = todo[:args.limit]
-    print("to classify : {:,}".format(len(todo)))
-    print("provider    : {} / {}   workers: {}".format(args.provider, model, args.workers))
+    say("to classify : {:,}".format(len(todo)))
+    say("provider    : {} / {}   workers: {}".format(args.provider, model, args.workers))
 
     budget = Budget()
     proposals: list = []
@@ -314,45 +310,67 @@ def main() -> int:
                         d.abstract = abstract
                         stats["abstract"] += 1
                 if not args.dry_run:
+                    # asked, whatever came back: never paid for twice by the worker
+                    s.execute(update(D).where(D.doc_id.in_(chunk)).values(enriched_at=dt.datetime.utcnow()))
                     s.commit()
 
             if stats["locked"] and stats["locked"] == done:
-                print(f"\n  {model} refused every request. OpenCode reserves its -free"
+                say(f"\n  {model} refused every request. OpenCode reserves its -free"
                       "\n  models for the OpenCode app itself, so they cannot be called"
                       "\n  from a script. Choose a paid model id, or another provider.",
                       flush=True)
                 break
             rate = done / max(1e-9, time.time() - started)
             left = (len(todo) - done) / max(1e-9, rate) / 60
-            print("  {:,}/{:,}  {:.1f}/s  ${:.3f}  ~{:.0f} min left".format(
+            say("  {:,}/{:,}  {:.1f}/s  ${:.3f}  ~{:.0f} min left".format(
                 done, len(todo), rate, budget.cost, left), flush=True)
     finally:
         client.close()
 
     if proposals and not args.dry_run:
-        out = Path(os.getenv("DB_DIR", "data"))
+        out = Path(settings.S.db_dir)
         out.mkdir(parents=True, exist_ok=True)
         f = out / "proposed_subjects.json"
         old = json.loads(f.read_text(encoding="utf-8")) if f.exists() else []
         f.write_text(json.dumps(old + proposals, ensure_ascii=False, indent=1),
                      encoding="utf-8")
-        print("\n  {:,} proposed subjects written to {}".format(len(proposals), f))
+        say("\n  {:,} proposed subjects written to {}".format(len(proposals), f))
 
-    secs = time.time() - started
+    stats.update(processed=done, minutes=round((time.time() - started) / 60, 1),
+                 tokens_in=budget.tin, tokens_out=budget.tout, cost=round(budget.cost, 4))
+    return stats
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Give a subject and a summary to the rulings with no headnote")
+    ap.add_argument("--limit", type=int, default=0, help="stop after this many")
+    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--batch", type=int, default=100, help="rulings per commit")
+    ap.add_argument("--vocab", type=int, default=60)
+    ap.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "gemini"), choices=sorted(PROVIDERS))
+    ap.add_argument("--model", default="", help="override the provider's default")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8")
+    if not key_for(args.provider):
+        print(f"no API key for {args.provider}: set " + " or ".join(PROVIDERS[args.provider]["env"]),
+              file=sys.stderr)
+        return 2
+    db.init_db()
+    st = run(limit=args.limit, workers=args.workers, batch=args.batch, vocab_size=args.vocab,
+             provider=args.provider, model=args.model, dry_run=args.dry_run)
     print("\n" + "=" * 58)
-    print("  processed             : {:,} in {:.1f} min".format(done, secs / 60))
-    print("  subject written       : {:,}".format(stats["subject"]))
-    print("  subject proposed      : {:,}  (held for approval)".format(stats["proposed"]))
-    print("  abstract written      : {:,}".format(stats["abstract"]))
-    print("  no general rule       : {:,}".format(stats["no_rule"]))
-    print("  dropped, named a party: {:,}".format(stats["named"]))
-    print("  failed calls          : {:,}".format(stats["failed"]))
-    if stats["locked"]:
-        print("  refused, free tier    : {:,}".format(stats["locked"]))
-    print("  tokens                : {:,} in, {:,} out".format(budget.tin, budget.tout))
-    print("  cost                  : ${:.3f}".format(budget.cost))
-    if done:
-        print("  -> per ruling         : ${:.5f}".format(budget.cost / done))
+    print("  processed             : {:,} in {} min".format(st["processed"], st["minutes"]))
+    print("  subject written       : {:,}".format(st["subject"]))
+    print("  subject proposed      : {:,}  (held for approval)".format(st["proposed"]))
+    print("  abstract written      : {:,}".format(st["abstract"]))
+    print("  no general rule       : {:,}".format(st["no_rule"]))
+    print("  dropped, named a party: {:,}".format(st["named"]))
+    print("  failed calls          : {:,}".format(st["failed"]))
+    if st["locked"]:
+        print("  refused, free tier    : {:,}".format(st["locked"]))
+    print("  tokens                : {:,} in, {:,} out".format(st["tokens_in"], st["tokens_out"]))
+    print("  cost                  : ${:.3f}".format(st["cost"]))
     return 0
 
 
