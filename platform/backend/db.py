@@ -520,29 +520,12 @@ def upsert_user(email: str, password_hash: str, role: str = "client",
         s.commit()
 
 
-def list_clients() -> List[dict]:
-    with session() as s:
-        return [_user_dict(u) for u in
-                s.scalars(select(User).where(User.role.in_(("client", "client_admin")))
-                          .order_by(User.email))]
-
-
 def set_user_status(email: str, status: str) -> bool:
     with session() as s:
         u = s.scalar(select(User).where(User.email == email))
         if not u:
             return False
         u.status = status
-        s.commit()
-        return True
-
-
-def delete_user(email: str) -> bool:
-    with session() as s:
-        u = s.scalar(select(User).where(User.email == email))
-        if not u:
-            return False
-        s.delete(u)
         s.commit()
         return True
 

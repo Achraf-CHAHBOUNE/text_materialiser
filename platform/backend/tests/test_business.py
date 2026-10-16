@@ -226,27 +226,24 @@ def test_a_lapsed_subscription_closes_the_rulings_not_the_account(customer):
     assert client.get("/api/account", headers=boss).json()["seats"]["total"] == 5
 
 
-def test_invoices_are_numbered_without_gaps_and_paid_in_parts(customer):
+def test_invoices_from_transfers_are_numbered_without_gaps(customer):
     oid, sales = customer["org_id"], customer["sales"]
-    a = client.post(f"/api/crm/orgs/{oid}/invoices", headers=sales,
-                    json={"amount_ht": 149900, "description": "Cabinet, 1 mois"}).json()
-    b = client.post(f"/api/crm/orgs/{oid}/invoices", headers=sales,
-                    json={"amount_ht": 10000}).json()
+    c = client.post(f"/api/crm/orgs/{oid}/contracts", headers=sales,
+                    json={"plan_code": "firm", "amount_ht": 149900})
+    c = next(x for x in client.get(f"/api/crm/orgs/{oid}", headers=sales).json()["contracts"] if x["id"] == c.json()["id"])
+    assert c["amount_ttc"] == 179880                                        # 20% VAT, exact
+    t1 = client.post(f"/api/crm/contracts/{c['id']}/transfers", headers=sales, json={"amount": 79880}).json()
+    t2 = client.post(f"/api/crm/contracts/{c['id']}/transfers", headers=sales, json={"amount": 100000}).json()
+    a = client.post(f"/api/crm/transfers/{t1['id']}/invoice", headers=sales).json()
+    b = client.post(f"/api/crm/transfers/{t2['id']}/invoice", headers=sales).json()
     year = dt.date.today().year
-    assert int(b["number"].rsplit("-", 1)[1]) == int(a["number"].rsplit("-", 1)[1]) + 1
     assert a["number"].startswith(f"F-{year}-")
-    assert a["vat"] == 29980 and a["amount_ttc"] == 179880                # 20% VAT, exact
-    half = client.post(f"/api/crm/invoices/{a['id']}/payments", headers=sales,
-                       json={"amount": 79880, "method": "transfer"}).json()
-    assert half["status"] == "sent" and half["balance"] == 100000
-    paid = client.post(f"/api/crm/invoices/{a['id']}/payments", headers=sales,
-                       json={"amount": 100000, "method": "cheque"}).json()
-    assert paid["status"] == "paid" and paid["balance"] == 0
-    assert client.post(f"/api/crm/invoices/{a['id']}/cancel", headers=sales).status_code == 409
+    assert int(b["number"].rsplit("-", 1)[1]) == int(a["number"].rsplit("-", 1)[1]) + 1
+    assert client.get(f"/api/invoices/{a['invoice_id']}", headers=admin()).json()["status"] == "paid"
     # the account holder sees the firm's invoices, a reader none
     mine = client.get("/api/account/invoices", headers=customer["boss"]).json()
     assert {i["number"] for i in mine} >= {a["number"], b["number"]}
-    assert client.get(f"/api/invoices/{a['id']}", headers=_login("clerk@firm.ma")).status_code == 404
+    assert client.get(f"/api/invoices/{a['invoice_id']}", headers=_login("clerk@firm.ma")).status_code == 404
 
 
 def test_folders_are_private_unless_shared_with_the_firm(customer):

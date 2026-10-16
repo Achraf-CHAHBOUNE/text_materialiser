@@ -71,15 +71,6 @@ export type Decision = {
   audit?: { ts: string; actor: string; action: string; field: string; old: string; new: string }[];
 };
 
-export type ClientAccount = {
-  email: string;
-  role: string;
-  status: "active" | "suspended";
-  created_at: string;
-  last_login: string;
-  recent_activity?: { ts: string; action: string; decision_id: string }[];
-};
-
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
   const token = getToken();
@@ -197,13 +188,6 @@ export async function importBatch(file: File) {
 export const adminStats = () =>
   j<{ decisions: number; published: number; pending: number; clients: number }>("/api/admin/stats");
 export const adminQueue = () => j<Decision[]>("/api/admin/queue");
-export function adminListDecisions(p: { state?: string; category?: string; level?: string } = {}) {
-  const q = new URLSearchParams();
-  if (p.state) q.set("state", p.state);
-  if (p.category) q.set("category", p.category);
-  if (p.level) q.set("level", p.level);
-  return j<Decision[]>(`/api/admin/decisions?${q}`);
-}
 export const adminGetDecision = (id: string) =>
   j<Decision>(`/api/admin/decisions/${encodeURIComponent(id)}`);
 export const correctDecision = (id: string, changes: Record<string, string>) =>
@@ -218,20 +202,6 @@ export const setDecisionState = (id: string, state: PubState) =>
   });
 export const adminFileUrl = (id: string) =>
   `${BASE}/api/admin/decisions/${encodeURIComponent(id)}/file?${tokenQ()}`;
-
-export const listClients = () => j<ClientAccount[]>("/api/admin/clients");
-export const createClient = (email: string, password: string) =>
-  j<ClientAccount>("/api/admin/clients", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-export const updateClient = (email: string, body: { status?: string; password?: string }) =>
-  j<ClientAccount>(`/api/admin/clients/${encodeURIComponent(email)}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-export const deleteClient = (email: string) =>
-  j<{ deleted: string }>(`/api/admin/clients/${encodeURIComponent(email)}`, { method: "DELETE" });
 
 // ---------- browse: court > chamber > year > ruling ----------
 // Mirrors how a court portal is read (the JURISMAROC layout the client asked for).

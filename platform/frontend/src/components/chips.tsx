@@ -1,37 +1,5 @@
-import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Review } from "@/lib/mock-data";
 import { useI18n } from "@/lib/i18n";
-
-export function ReviewBadge({ review }: { review: Review }) {
-  if (review === "ok") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-success/12 px-2.5 py-1 text-xs font-medium text-success ring-1 ring-success/25">
-        <CheckCircle2 className="size-3.5" aria-hidden />
-        ok
-      </span>
-    );
-  }
-  return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            tabIndex={0}
-            className="inline-flex cursor-help items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning-foreground ring-1 ring-warning/40 dark:text-warning"
-          >
-            <ShieldAlert className="size-3.5" aria-hidden />
-            check
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-56">
-          Low-confidence matches detected — a human should verify the redactions before export.
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 export function Pill({
   children,
@@ -98,27 +66,3 @@ export function ChamberBadge({ chamber }: { chamber: string }) {
   );
 }
 
-export function StatusChip({ status }: { status: "completed" | "processing" | "failed" }) {
-  const map = {
-    completed: { label: "Completed", cls: "bg-success/12 text-success ring-success/25" },
-    processing: { label: "Processing", cls: "bg-teal/12 text-teal ring-teal/25" },
-    failed: { label: "Failed", cls: "bg-destructive/12 text-destructive ring-destructive/25" },
-  } as const;
-  const s = map[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1",
-        s.cls,
-      )}
-    >
-      <span
-        className={cn(
-          "me-1.5 self-center size-1.5 rounded-full bg-current",
-          status === "processing" && "animate-pulse",
-        )}
-      />
-      {s.label}
-    </span>
-  );
-}

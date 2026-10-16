@@ -153,13 +153,6 @@ def login(body: LoginBody, request: Request) -> dict:
             "access": billing.access_state(user.get("org_id")) if user["role"] not in STAFF else "ok"}
 
 
-@app.get("/api/auth/me")
-def me(user: dict = Depends(current_user)) -> dict:
-    return {"email": user["email"], "role": user["role"], "status": user["status"],
-            "full_name": user.get("full_name", ""), "language": user.get("language", "ar"),
-            "org_id": user.get("org_id")}
-
-
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "storage": type(STORE).__name__}
@@ -612,71 +605,6 @@ def admin_export_edits(request: Request, authorization: Optional[str] = Header(N
 
 
 # ---------------- admin: clients ----------------
-class ClientCreate(BaseModel):
-    email: str
-    password: str
-
-
-class ClientPatch(BaseModel):
-    status: Optional[str] = None
-    password: Optional[str] = None
-
-
-@app.get("/api/admin/clients")
-def list_clients(_: dict = Depends(require_admin)) -> list:
-    out = []
-    for c in db.list_clients():
-        c.pop("password_hash", None)
-        c["recent_activity"] = db.activity_for(c["email"], limit=5)
-        out.append(c)
-    return out
-
-
-@app.post("/api/admin/clients")
-def create_client(body: ClientCreate, user: dict = Depends(require_admin)) -> dict:
-    if db.get_user(body.email):
-        raise HTTPException(status_code=409, detail="Account already exists")
-    db.upsert_user(body.email, authmod.hash_password(body.password), role="client")
-    # an account made here is a customer of its own, with a year to read: the CRM is
-    # where organizations of several people are set up
-    accounts.adopt_orphan_clients()
-    db.add_audit(user["email"], "create_client", "user", body.email)
-    return {"email": body.email, "role": db.get_user(body.email)["role"], "status": "active"}
-
-
-@app.patch("/api/admin/clients/{email}")
-def update_client(email: str, body: ClientPatch, user: dict = Depends(require_admin)) -> dict:
-    target = db.get_user(email)
-    if not target or target["role"] not in ("client", "client_admin"):
-        raise HTTPException(status_code=404, detail="Client not found")
-    if body.status in ("active", "suspended"):
-        db.set_user_status(email, body.status)
-        db.add_audit(user["email"], body.status, "user", email, field="status")
-    if body.password:
-        db.upsert_user(email, authmod.hash_password(body.password), role=target["role"],
-                       status=body.status or target["status"])
-        accounts.end_sessions(target["id"], "password reset by an administrator")
-        db.add_audit(user["email"], "reset_password", "user", email)
-    result = db.get_user(email)
-    result.pop("password_hash", None)
-    return result
-
-
-@app.delete("/api/admin/clients/{email}")
-def delete_client(email: str, user: dict = Depends(require_admin)) -> dict:
-    target = db.get_user(email)
-    if not target or target["role"] not in ("client", "client_admin"):
-        raise HTTPException(status_code=404, detail="Client not found")
-    db.delete_user(email)
-    db.add_audit(user["email"], "delete_client", "user", email)
-    return {"deleted": email}
-
-
-@app.get("/api/admin/clients/{email}/activity")
-def client_activity(email: str, _: dict = Depends(require_admin)) -> list:
-    return db.activity_for(email, limit=200)
-
-
 # ---------------- client space (published only) ----------------
 def _serve_file(doc_id: str) -> StreamingResponse:
     d = db.get_decision(doc_id)

@@ -84,6 +84,16 @@ def _token(email, pw):
     return client.post("/api/auth/login", json={"email": email, "password": pw}).json()["token"]
 
 
+
+def _make_reader(email, pw):
+    """A reader with a year to read -- what a paid contract gives, made directly."""
+    import accounts
+    import auth as _auth
+    import db as _db
+    if not _db.get_user(email):
+        _db.upsert_user(email, _auth.hash_password(pw), role="client")
+        accounts.adopt_orphan_clients()
+
 def _h(tok):
     return {"Authorization": f"Bearer {tok}"}
 
@@ -99,8 +109,7 @@ def admin():
 
 def reader():
     if "r" not in ADMIN:
-        client.post("/api/admin/clients", headers=admin(),
-                    json={"email": "reader@x.com", "password": "reader-pass"})
+        _make_reader("reader@x.com", "reader-pass")
         ADMIN["r"] = _h(_token("reader@x.com", "reader-pass"))
     return ADMIN["r"]
 

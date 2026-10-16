@@ -63,6 +63,16 @@ def _token(email, pw):
     return r.json()["token"]
 
 
+
+def _make_reader(email, pw):
+    """A reader with a year to read -- what a paid contract gives, made directly."""
+    import accounts
+    import auth as _auth
+    import db as _db
+    if not _db.get_user(email):
+        _db.upsert_user(email, _auth.hash_password(pw), role="client")
+        accounts.adopt_orphan_clients()
+
 def _h(tok):
     return {"Authorization": f"Bearer {tok}"}
 
@@ -104,15 +114,13 @@ def test_unauthenticated_blocked():
 
 
 def test_client_cannot_reach_admin():
-    r = client.post("/api/admin/clients", headers=_h(_admin()),
-                    json={"email": "c1@x.com", "password": "pw123456"})
-    assert r.status_code == 200
+    _make_reader("c1@x.com", "pw123456")
     ctok = _token("c1@x.com", "pw123456")
     # every admin surface must be forbidden for a client
     assert client.get("/api/admin/decisions", headers=_h(ctok)).status_code == 403
     assert client.get("/api/admin/queue", headers=_h(ctok)).status_code == 403
-    assert client.post("/api/admin/clients", headers=_h(ctok),
-                       json={"email": "x@x.com", "password": "pw123456"}).status_code == 403
+    assert client.post("/api/admin/staff", headers=_h(ctok),
+                       json={"email": "x@x.com", "role": "editor"}).status_code == 403
 
 
 def test_publish_workflow_and_client_visibility():
@@ -160,7 +168,7 @@ def test_suspension_is_immediate():
     ctok = _token("c1@x.com", "pw123456")
     assert client.get("/api/decisions", headers=_h(ctok)).status_code == 200
     # admin suspends; the SAME existing token must stop working on the next request
-    client.patch("/api/admin/clients/c1@x.com", headers=_h(_admin()),
+    client.patch("/api/admin/users/c1@x.com", headers=_h(_admin()),
                  json={"status": "suspended"})
     assert client.get("/api/decisions", headers=_h(ctok)).status_code == 403
     assert client.post("/api/auth/login",

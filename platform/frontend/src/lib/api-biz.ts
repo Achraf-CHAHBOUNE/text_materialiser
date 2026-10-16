@@ -219,7 +219,6 @@ export const updateAlert = (id: number, b: { active?: boolean; frequency?: strin
   patch<AlertRow>(`/api/me/alerts/${id}`, b);
 export const deleteAlert = (id: number) => del<{ ok: boolean }>(`/api/me/alerts/${id}`);
 export const history = () => j<HistoryRow[]>("/api/me/history");
-export const myDownloads = () => j<{ used_today: number; quota: number | null }>("/api/me/downloads");
 
 // ---------- the readers, as the admin sees them ----------
 export type Counts = { view: number; download: number; search: number; search_empty: number; translate: number; login: number };

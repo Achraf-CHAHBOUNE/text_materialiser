@@ -13,18 +13,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AlertsRouteImport } from './routes/alerts'
-import { Route as BillingRouteImport } from './routes/billing'
 import { Route as CorrectionsRouteImport } from './routes/corrections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as HistoryRouteImport } from './routes/history'
-import { Route as NewJobRouteImport } from './routes/new-job'
 import { Route as PricingRouteImport } from './routes/pricing'
-import { Route as ProcessingRouteImport } from './routes/processing'
 import { Route as ResultsRouteImport } from './routes/results'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as BrowseIndexRouteImport } from './routes/browse.index'
 import { Route as BrowseChamberRouteImport } from './routes/browse.$chamber'
-import { Route as CasesCaseIdRouteImport } from './routes/cases.$caseId'
 import { Route as CrmIndexRouteImport } from './routes/crm.index'
 import { Route as CrmAlertsRouteImport } from './routes/crm.alerts'
 import { Route as CrmContractsRouteImport } from './routes/crm.contracts'
@@ -63,11 +59,6 @@ const AlertsRoute = AlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BillingRoute = BillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CorrectionsRoute = CorrectionsRouteImport.update({
   id: '/corrections',
   path: '/corrections',
@@ -83,19 +74,9 @@ const HistoryRoute = HistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NewJobRoute = NewJobRouteImport.update({
-  id: '/new-job',
-  path: '/new-job',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProcessingRoute = ProcessingRouteImport.update({
-  id: '/processing',
-  path: '/processing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResultsRoute = ResultsRouteImport.update({
@@ -116,11 +97,6 @@ const BrowseIndexRoute = BrowseIndexRouteImport.update({
 const BrowseChamberRoute = BrowseChamberRouteImport.update({
   id: '/browse/$chamber',
   path: '/browse/$chamber',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
-  id: '/cases/$caseId',
-  path: '/cases/$caseId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CrmIndexRoute = CrmIndexRouteImport.update({
@@ -214,17 +190,13 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
-  '/new-job': typeof NewJobRoute
   '/pricing': typeof PricingRoute
-  '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
-  '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/alerts': typeof CrmAlertsRoute
   '/crm/contracts': typeof CrmContractsRoute
   '/crm/new': typeof CrmNewRoute
@@ -249,17 +221,13 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
-  '/new-job': typeof NewJobRoute
   '/pricing': typeof PricingRoute
-  '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
-  '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/alerts': typeof CrmAlertsRoute
   '/crm/contracts': typeof CrmContractsRoute
   '/crm/new': typeof CrmNewRoute
@@ -285,17 +253,13 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/admin': typeof AdminRoute
   '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
   '/corrections': typeof CorrectionsRoute
   '/dashboard': typeof DashboardRoute
   '/history': typeof HistoryRoute
-  '/new-job': typeof NewJobRoute
   '/pricing': typeof PricingRoute
-  '/processing': typeof ProcessingRoute
   '/results': typeof ResultsRoute
   '/settings': typeof SettingsRoute
   '/browse/$chamber': typeof BrowseChamberRoute
-  '/cases/$caseId': typeof CasesCaseIdRoute
   '/crm/alerts': typeof CrmAlertsRoute
   '/crm/contracts': typeof CrmContractsRoute
   '/crm/new': typeof CrmNewRoute
@@ -322,17 +286,13 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/alerts'
-    | '/billing'
     | '/corrections'
     | '/dashboard'
     | '/history'
-    | '/new-job'
     | '/pricing'
-    | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
-    | '/cases/$caseId'
     | '/crm/alerts'
     | '/crm/contracts'
     | '/crm/new'
@@ -357,17 +317,13 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/alerts'
-    | '/billing'
     | '/corrections'
     | '/dashboard'
     | '/history'
-    | '/new-job'
     | '/pricing'
-    | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
-    | '/cases/$caseId'
     | '/crm/alerts'
     | '/crm/contracts'
     | '/crm/new'
@@ -392,17 +348,13 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/alerts'
-    | '/billing'
     | '/corrections'
     | '/dashboard'
     | '/history'
-    | '/new-job'
     | '/pricing'
-    | '/processing'
     | '/results'
     | '/settings'
     | '/browse/$chamber'
-    | '/cases/$caseId'
     | '/crm/alerts'
     | '/crm/contracts'
     | '/crm/new'
@@ -428,17 +380,13 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   AdminRoute: typeof AdminRoute
   AlertsRoute: typeof AlertsRoute
-  BillingRoute: typeof BillingRoute
   CorrectionsRoute: typeof CorrectionsRoute
   DashboardRoute: typeof DashboardRoute
   HistoryRoute: typeof HistoryRoute
-  NewJobRoute: typeof NewJobRoute
   PricingRoute: typeof PricingRoute
-  ProcessingRoute: typeof ProcessingRoute
   ResultsRoute: typeof ResultsRoute
   SettingsRoute: typeof SettingsRoute
   BrowseChamberRoute: typeof BrowseChamberRoute
-  CasesCaseIdRoute: typeof CasesCaseIdRoute
   CrmAlertsRoute: typeof CrmAlertsRoute
   CrmContractsRoute: typeof CrmContractsRoute
   CrmNewRoute: typeof CrmNewRoute
@@ -489,13 +437,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/billing': {
-      id: '/billing'
-      path: '/billing'
-      fullPath: '/billing'
-      preLoaderRoute: typeof BillingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/corrections': {
       id: '/corrections'
       path: '/corrections'
@@ -517,25 +458,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/new-job': {
-      id: '/new-job'
-      path: '/new-job'
-      fullPath: '/new-job'
-      preLoaderRoute: typeof NewJobRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
       fullPath: '/pricing'
       preLoaderRoute: typeof PricingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/processing': {
-      id: '/processing'
-      path: '/processing'
-      fullPath: '/processing'
-      preLoaderRoute: typeof ProcessingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/results': {
@@ -564,13 +491,6 @@ declare module '@tanstack/react-router' {
       path: '/browse/$chamber'
       fullPath: '/browse/$chamber'
       preLoaderRoute: typeof BrowseChamberRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cases/$caseId': {
-      id: '/cases/$caseId'
-      path: '/cases/$caseId'
-      fullPath: '/cases/$caseId'
-      preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/crm/': {
@@ -700,17 +620,13 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   AdminRoute: AdminRoute,
   AlertsRoute: AlertsRoute,
-  BillingRoute: BillingRoute,
   CorrectionsRoute: CorrectionsRoute,
   DashboardRoute: DashboardRoute,
   HistoryRoute: HistoryRoute,
-  NewJobRoute: NewJobRoute,
   PricingRoute: PricingRoute,
-  ProcessingRoute: ProcessingRoute,
   ResultsRoute: ResultsRoute,
   SettingsRoute: SettingsRoute,
   BrowseChamberRoute: BrowseChamberRoute,
-  CasesCaseIdRoute: CasesCaseIdRoute,
   CrmAlertsRoute: CrmAlertsRoute,
   CrmContractsRoute: CrmContractsRoute,
   CrmNewRoute: CrmNewRoute,

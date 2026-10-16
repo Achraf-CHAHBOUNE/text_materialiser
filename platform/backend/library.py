@@ -436,8 +436,3 @@ def reading_beat(doc_id: str, body: BeatBody, user: dict = Depends(current_user)
     return {"ok": True}
 
 
-@router.get("/api/me/downloads")
-def my_downloads(user: dict = Depends(current_user)) -> dict:
-    import billing
-    return {"used_today": downloads_today(user["email"]),
-            "quota": None if user["role"] in STAFF else billing.daily_downloads(user.get("org_id"))}

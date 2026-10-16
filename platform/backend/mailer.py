@@ -108,11 +108,6 @@ TEMPLATES = {
         "ar": ("مهامك اليوم", "{body}\n\n{link}"),
         "fr": ("Votre journée", "{body}\n\n{link}"),
     },
-    "invoice": {
-        "ar": ("فاتورة {number}", "مرحبا،\n\nتجدون فاتورة {number} بمبلغ {amount} درهم، تستحق في {due}:\n{link}"),
-        "fr": ("Facture {number}", "Bonjour,\n\nVeuillez trouver la facture {number} d'un montant de {amount} MAD, "
-               "à régler avant le {due} :\n{link}"),
-    },
 }
 
 

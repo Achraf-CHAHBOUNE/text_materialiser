@@ -70,18 +70,6 @@ const FALLBACK: ChamberStyle = {
 export const chamberStyle = (chamber: string): ChamberStyle => STYLES[chamber] ?? FALLBACK;
 
 /** "أحوال شخصية" -> "غرفة الأحوال الشخصية", the way a portal names it. */
-export function chamberLabel(chamber: string): string {
-  const named: Record<string, string> = {
-    "أحوال شخصية": "غرفة الأحوال الشخصية",
-    "تجارية": "الغرفة التجارية",
-    "اجتماعية": "الغرفة الاجتماعية",
-    "عقارية": "الغرفة العقارية",
-    "جنائية": "الغرفة الجنائية",
-    "مدنية": "الغرفة المدنية",
-    "إدارية": "الغرفة الإدارية",
-  };
-  return named[chamber] ?? chamber;
-}
 
 /** Display order: the portal's own order, then anything unexpected. */
 export const CHAMBER_ORDER = [
