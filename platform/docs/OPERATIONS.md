@@ -36,8 +36,12 @@ the stack with one command, run once the stack is up. The source is only read; a
 that stops half-way is simply run again.
 
 ```bash
-docker compose run --rm -v "$PWD/../data/platform:/source:ro" backend     python -m ops.migrate --sqlite /source/app.db --files /source/files --replace
+docker compose stop backend worker            # nothing may write while it copies
+docker compose run --rm --no-deps -v "$PWD/../data/platform:/source:ro" backend     python -m ops.migrate --sqlite /source/app.db --files /source/files --replace
+docker compose up -d
 ```
+
+It refuses to start while anything else is connected to the database.
 
 `--replace` empties the new database first (the backend has already seeded it with
 the plans and the admin). It ends by checking the row count of every table and the

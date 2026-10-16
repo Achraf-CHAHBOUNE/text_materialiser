@@ -47,6 +47,13 @@ def copy_database(sqlite_path: str, replace: bool) -> None:
     if dst.dialect.name != "postgresql":
         raise SystemExit("DATABASE_URL must point at Postgres for this move.")
     db.init_db()
+    dst.dispose()                                     # our own idle connections are not "others"
+    with dst.connect() as c:                          # nothing else may write meanwhile
+        others = c.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                                "AND pid <> pg_backend_pid()")).scalar()
+    if others:
+        raise SystemExit(f"{others} other connection(s) to the database: stop the site and the worker "
+                         f"first (docker compose stop backend worker), then run this again.")
     tables = db.Base.metadata.sorted_tables          # parents before children
     src_tables = set(inspect(src).get_table_names())
 
