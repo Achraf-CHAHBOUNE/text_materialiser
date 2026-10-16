@@ -7,26 +7,27 @@ appear here. Uses DATABASE_URL (Postgres in Docker) or a local SQLite file for d
 from __future__ import annotations
 
 import datetime as dt
-import os
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Iterator, List, Optional
 
 from sqlalchemy import (
-    DateTime, LargeBinary, UniqueConstraint, case, literal_column, ForeignKey, Integer, String, Text,
-    create_engine, func, or_, select, text, update,
+    DateTime, LargeBinary, UniqueConstraint, case, literal_column, Integer, String, Text,
+    create_engine, func, or_, select, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-import settings  # noqa: F401  -- reads platform/.env before anything connects
+import settings  # reads platform/.env before anything connects
 import textnorm
+
+# The chambers a ruling is filed under, in the order the site lists them.
+CATEGORIES = ["إدارية", "تجارية", "مدنية", "جنائية", "اجتماعية", "أحوال شخصية", "عقارية"]
 
 # Publication lifecycle (website_brief §I-6).
 STATES = ("imported", "under_review", "published", "withdrawn")
 
 
 def _url() -> str:
-    import settings
     url = settings.S.database_url
     if url:
         return url
@@ -226,6 +227,16 @@ class AuditLog(Base):
     field: Mapped[str] = mapped_column(String, default="")
     old_value: Mapped[str] = mapped_column(Text, default="")
     new_value: Mapped[str] = mapped_column(Text, default="")
+
+
+class WorkerState(Base):
+    """What the worker remembers between passes, e.g. the day it last ran the daily jobs.
+    Here rather than in worker.py: that file runs as a program, and a table declared in
+    it would be declared twice once anything imports it as a module."""
+    __tablename__ = "worker_state"
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, default="")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 class ClientActivity(Base):
@@ -1035,237 +1046,6 @@ def browse_cities(chamber: str = "", states: tuple = ("published",)) -> List[dic
             q = q.where(Decision.category == chamber)
         rows = s.execute(q).all()
     return [{"city": c, "count": n} for c, n in sorted(rows, key=lambda r: -r[1])]
-
-
-# ---------------- hand edits: versions, drafts, reports ----------------
-class Conflict(Exception):
-    """The ruling changed since the edit was prepared."""
-
-
-def editing_state(doc_id: str) -> Optional[dict]:
-    with session() as s:
-        d = s.get(Decision, doc_id)
-        if not d:
-            return None
-        return {"doc_id": d.doc_id, "version": d.version or 0, "body_text": d.body_text,
-                "file_name": d.file_name, "court": d.court, "category": d.category}
-
-
-def apply_version(doc_id: str, *, base_version: int, current_file: bytes, new_file: bytes,
-                  new_text: str, actor: str, action: str, summary: str,
-                  restore_of: Optional[int] = None, draft_id: Optional[int] = None) -> int:
-    """Make new_text/new_file the live ruling, in one transaction. Returns the new version.
-
-    The first edit also records the ruling as imported (version 1), so it can always be
-    restored. The decision row is only updated while it is still at base_version, and a
-    version number can be taken once: of two admins saving at the same moment, the
-    second gets Conflict instead of silently replacing the first.
-    """
-    from sqlalchemy.exc import IntegrityError
-
-    now = dt.datetime.utcnow()
-    with session() as s:
-        d = s.get(Decision, doc_id)
-        if d is None:
-            raise LookupError(doc_id)
-        if (d.version or 0) != base_version:
-            raise Conflict(doc_id)
-        if base_version == 0:
-            s.add(DecisionVersion(doc_id=doc_id, version=1, status="applied", action="import",
-                                  summary="as imported", actor="pipeline", base_version=0,
-                                  body_text=d.body_text, file_data=current_file,
-                                  created_at=d.created_at or now))
-        new_version = max(base_version, 1) + 1
-        if draft_id is not None:
-            v = s.get(DecisionVersion, draft_id)
-            if v is None or v.doc_id != doc_id or v.status != "draft":
-                raise LookupError(draft_id)
-            v.version, v.status, v.decided_by, v.decided_at = new_version, "applied", actor, now
-            v.body_text, v.file_data = new_text, new_file
-        else:
-            s.add(DecisionVersion(doc_id=doc_id, version=new_version, status="applied",
-                                  action=action, summary=summary, actor=actor,
-                                  base_version=base_version, restore_of=restore_of,
-                                  body_text=new_text, file_data=new_file, decided_by=actor,
-                                  decided_at=now))
-        done = s.execute(
-            update(Decision)
-            .where(Decision.doc_id == doc_id, Decision.version == d.version)
-            .values(version=new_version, body_text=new_text,
-                    search_text=textnorm.normalize(new_text),
-                    edited_at=now, edited_by=actor, updated_at=now)
-            .execution_options(synchronize_session=False))
-        if done.rowcount != 1:
-            s.rollback()
-            raise Conflict(doc_id)
-        s.add(AuditLog(actor=actor, action=action, entity="decision", entity_id=doc_id,
-                       field="text", old_value=f"v{max(base_version, 1)}",
-                       new_value=f"v{new_version}: {summary}"))
-        try:
-            s.commit()
-        except IntegrityError:
-            s.rollback()
-            raise Conflict(doc_id)
-        return new_version
-
-
-def add_draft(doc_id: str, *, base_version: int, text: str, actor: str, action: str,
-              summary: str, restore_of: Optional[int] = None) -> int:
-    with session() as s:
-        v = DecisionVersion(doc_id=doc_id, version=None, status="draft", action=action,
-                            summary=summary, actor=actor, base_version=base_version,
-                            restore_of=restore_of, body_text=text)
-        s.add(v)
-        s.add(AuditLog(actor=actor, action="draft", entity="decision", entity_id=doc_id,
-                       field="text", old_value=f"v{base_version}", new_value=summary))
-        s.commit()
-        return v.id
-
-
-def _version_dict(v: DecisionVersion, *, full: bool = False) -> dict:
-    r = {"id": v.id, "doc_id": v.doc_id, "version": v.version, "status": v.status,
-         "action": v.action, "summary": v.summary, "actor": v.actor,
-         "created_at": v.created_at.isoformat() if v.created_at else "",
-         "base_version": v.base_version, "restore_of": v.restore_of,
-         "decided_by": v.decided_by,
-         "decided_at": v.decided_at.isoformat() if v.decided_at else ""}
-    if full:
-        r["body_text"], r["file_data"] = v.body_text, v.file_data
-    return r
-
-
-def get_version_row(row_id: int) -> Optional[dict]:
-    with session() as s:
-        v = s.get(DecisionVersion, row_id)
-        return _version_dict(v, full=True) if v else None
-
-
-def version_by_number(doc_id: str, version: int) -> Optional[dict]:
-    with session() as s:
-        v = s.scalar(select(DecisionVersion).where(DecisionVersion.doc_id == doc_id,
-                                                   DecisionVersion.version == version,
-                                                   DecisionVersion.status == "applied"))
-        return _version_dict(v, full=True) if v else None
-
-
-def history(doc_id: str) -> dict:
-    """Versions newest first, and the drafts still waiting -- no text, no files."""
-    with session() as s:
-        rows = list(s.scalars(select(DecisionVersion)
-                              .where(DecisionVersion.doc_id == doc_id,
-                                     DecisionVersion.status.in_(("applied", "draft")))
-                              .order_by(DecisionVersion.id.desc())))
-        versions = sorted((v for v in rows if v.status == "applied"),
-                          key=lambda v: v.version or 0, reverse=True)
-        return {"versions": [_version_dict(v) for v in versions],
-                "drafts": [_version_dict(v) for v in rows if v.status == "draft"]}
-
-
-def discard_draft(row_id: int, actor: str) -> bool:
-    with session() as s:
-        v = s.get(DecisionVersion, row_id)
-        if v is None or v.status != "draft":
-            return False
-        v.status, v.decided_by, v.decided_at = "discarded", actor, dt.datetime.utcnow()
-        v.body_text = ""                     # a refused edit may carry a name: keep nothing
-        s.add(AuditLog(actor=actor, action="discard", entity="decision", entity_id=v.doc_id,
-                       field="text", new_value=v.summary))
-        s.commit()
-        return True
-
-
-def purge_history(doc_id: str, actor: str) -> int:
-    """Delete every earlier version of a ruling, keeping the live one.
-
-    Undo needs the old text, and the old text still holds whatever was hidden since.
-    Once an admin is sure of a hide, this removes the last copy of the name.
-    """
-    with session() as s:
-        d = s.get(Decision, doc_id)
-        if d is None:
-            return 0
-        old = list(s.scalars(select(DecisionVersion).where(
-            DecisionVersion.doc_id == doc_id,
-            or_(DecisionVersion.status == "discarded",
-                (DecisionVersion.status == "applied")
-                & (DecisionVersion.version < (d.version or 0))))))
-        for v in old:
-            s.delete(v)
-        s.add(AuditLog(actor=actor, action="purge_history", entity="decision", entity_id=doc_id,
-                       field="text", new_value=f"{len(old)} earlier version(s) deleted"))
-        s.commit()
-        return len(old)
-
-
-def pending_drafts(limit: int = 200) -> List[dict]:
-    with session() as s:
-        rows = s.execute(select(DecisionVersion, Decision.decision_no, Decision.category)
-                         .join(Decision, Decision.doc_id == DecisionVersion.doc_id)
-                         .where(DecisionVersion.status == "draft")
-                         .order_by(DecisionVersion.created_at).limit(limit))
-        return [dict(_version_dict(v), decision_no=no, category=cat) for v, no, cat in rows]
-
-
-MAX_OPEN_REPORTS_PER_READER = 50
-
-
-def add_report(doc_id: str, reporter: str, quote: str, note: str) -> Optional[int]:
-    with session() as s:
-        open_mine = s.scalar(select(func.count()).select_from(Report).where(
-            Report.reporter == reporter, Report.status == "open")) or 0
-        if open_mine >= MAX_OPEN_REPORTS_PER_READER:
-            return None
-        r = Report(doc_id=doc_id, reporter=reporter, quote=quote[:500], note=note[:1000])
-        s.add(r)
-        s.commit()
-        return r.id
-
-
-def list_reports(status: str = "open", doc_id: str = "", limit: int = 200) -> List[dict]:
-    with session() as s:
-        q = (select(Report, Decision.decision_no, Decision.category)
-             .join(Decision, Decision.doc_id == Report.doc_id))
-        if status:
-            q = q.where(Report.status == status)
-        if doc_id:
-            q = q.where(Report.doc_id == doc_id)
-        q = q.order_by(Report.created_at.desc()).limit(limit)
-        return [{"id": r.id, "doc_id": r.doc_id, "decision_no": no, "category": cat,
-                 "reporter": r.reporter, "quote": r.quote, "note": r.note, "status": r.status,
-                 "created_at": r.created_at.isoformat() if r.created_at else "",
-                 "resolved_by": r.resolved_by,
-                 "resolved_at": r.resolved_at.isoformat() if r.resolved_at else ""}
-                for r, no, cat in s.execute(q)]
-
-
-def resolve_report(report_id: int, status: str, actor: str) -> bool:
-    if status not in ("resolved", "dismissed"):
-        return False
-    with session() as s:
-        r = s.get(Report, report_id)
-        if r is None:
-            return False
-        r.status, r.resolved_by, r.resolved_at = status, actor, dt.datetime.utcnow()
-        r.quote = ""                          # the quoted text is usually the name itself
-        s.add(AuditLog(actor=actor, action=f"report_{status}", entity="decision",
-                       entity_id=r.doc_id, field="report", new_value=str(report_id)))
-        s.commit()
-        return True
-
-
-def edited_decisions() -> List[dict]:
-    with session() as s:
-        return [_dec_dict(d) for d in s.scalars(
-            select(Decision).where(Decision.edited_at.is_not(None)).order_by(Decision.doc_id))]
-
-
-def attach_draft_file(row_id: int, data: bytes) -> None:
-    """A draft that is a whole uploaded file keeps the file, to apply it as given."""
-    with session() as s:
-        v = s.get(DecisionVersion, row_id)
-        if v is not None and v.status == "draft":
-            v.file_data = data
-            s.commit()
 
 
 # ---------------- other languages ----------------

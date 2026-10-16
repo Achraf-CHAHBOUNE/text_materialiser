@@ -22,8 +22,10 @@ os.environ.pop("DATABASE_URL", None)
 os.environ.pop("MINIO_ENDPOINT", None)
 
 import db  # noqa: E402
+import versions  # noqa: E402
 import importer  # noqa: E402
 import server  # noqa: E402
+import storage  # noqa: E402
 
 server._startup()
 
@@ -109,10 +111,10 @@ def test_a_hand_edited_ruling_is_left_exactly_as_edited(tmp_path):
     before = db.get_decision("imp_edited", body=True)
 
     import docedit
-    current = server.STORE.get(before["file_name"])
+    current = storage.STORE.get(before["file_name"])
     new_text = before["body_text"].replace("الأصلي", "XXXXXXX")
     new_file, stored = docedit.apply_to_docx(current, new_text)
-    db.apply_version("imp_edited", base_version=before["version"], current_file=current,
+    versions.apply_version("imp_edited", base_version=before["version"], current_file=current,
                      new_file=new_file, new_text=stored, actor="admin", action="hide",
                      summary="1 hidden")
 
@@ -191,7 +193,7 @@ def test_a_large_upload_waits_for_the_worker_and_loses_nothing(tmp_path, monkeyp
         done = client.get(f"/api/admin/import/jobs/{job['id']}", headers={"Authorization": f"Bearer {tok}"}).json()
     assert done["status"] == "done" and done["imported"] == 5
     assert all(db.get_decision(d, body=True)["body_text"] == t for d, t in rulings)
-    assert not [n for n in server.STORE.list() if n.startswith("import-")], "the upload is not kept once imported"
+    assert not [n for n in storage.STORE.list() if n.startswith("import-")], "the upload is not kept once imported"
 
 
 def test_an_upload_that_is_not_a_delivery_is_refused(tmp_path):

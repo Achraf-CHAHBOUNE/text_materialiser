@@ -56,3 +56,17 @@ def test_a_database_from_before_migrations_is_brought_into_line(tmp_path):
 
     db.init_db()                                   # a second start changes nothing
     assert _version() == "0002"
+
+
+def test_the_worker_starts_as_a_program(tmp_path):
+    """Run the way Docker runs it, not imported: a table declared in a file that runs
+    as __main__ is declared twice once anything imports that file, and the worker died
+    at its first line without a single test noticing."""
+    import subprocess
+    import sys
+    env = {**os.environ, "DB_DIR": str(tmp_path), "FILESTORE_DIR": str(tmp_path / "files")}
+    env.pop("DATABASE_URL", None)
+    done = subprocess.run([sys.executable, "worker.py", "--once"], env=env, capture_output=True,
+                          text=True, timeout=120, cwd=os.path.dirname(os.path.dirname(__file__)))
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert "'imports'" in done.stdout

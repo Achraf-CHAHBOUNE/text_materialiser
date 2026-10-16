@@ -25,19 +25,16 @@ import os
 import sys
 import time
 
-from sqlalchemy import DateTime, String, select
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import select
 
 import accounts
 import billing
-import crm  # noqa: F401  -- its tables must exist
 import db
 import importer
 import library
 import limits
 import mailer
 import settings
-import support  # noqa: F401
 
 REMIND_DAYS = (30, 15, 7)
 
@@ -72,22 +69,15 @@ def admin_digest(today: dt.date) -> int:
     return sent
 
 
-class WorkerState(db.Base):
-    __tablename__ = "worker_state"
-    key: Mapped[str] = mapped_column(String, primary_key=True)
-    value: Mapped[str] = mapped_column(String, default="")
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
-
-
 def _get(key: str) -> str:
     with db.session() as s:
-        row = s.get(WorkerState, key)
+        row = s.get(db.WorkerState, key)
         return row.value if row else ""
 
 
 def _set(key: str, value: str) -> None:
     with db.session() as s:
-        row = s.get(WorkerState, key) or WorkerState(key=key)
+        row = s.get(db.WorkerState, key) or db.WorkerState(key=key)
         row.value, row.updated_at = value, dt.datetime.utcnow()
         s.add(row)
         s.commit()

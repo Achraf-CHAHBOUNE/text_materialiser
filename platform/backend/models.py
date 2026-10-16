@@ -15,4 +15,3 @@ import library  # noqa: F401
 import limits  # noqa: F401
 import mailer  # noqa: F401
 import support  # noqa: F401
-import worker  # noqa: F401

@@ -279,7 +279,7 @@ def _date(v) -> Optional[dt.date]:
 
 
 def _store_file(prefix: str, org_id: int, upload: UploadFile, data: bytes) -> tuple:
-    from server import STORE
+    from storage import STORE
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     if len(data) > 15 * 1024 * 1024:
@@ -293,7 +293,7 @@ def _store_file(prefix: str, org_id: int, upload: UploadFile, data: bytes) -> tu
 
 def _send_file(key: str, name: str) -> StreamingResponse:
     from urllib.parse import quote
-    from server import STORE
+    from storage import STORE
     if not key or not STORE.exists(key):
         raise HTTPException(status_code=404, detail="No file")
     plain = name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "")

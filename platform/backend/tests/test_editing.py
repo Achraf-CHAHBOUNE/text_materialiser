@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import docedit  # noqa: E402
 import server  # noqa: E402
+import storage  # noqa: E402
 
 server._startup()
 client = TestClient(server.app)
@@ -42,7 +43,7 @@ def _leave_no_trace():
     with db.session() as s:
         ids = list(s.scalars(select(db.Decision.doc_id).where(db.Decision.doc_id.like("edit_%"))))
         for doc_id in ids:
-            server.STORE.delete(f"{doc_id}.docx")
+            storage.STORE.delete(f"{doc_id}.docx")
         for model in (db.DecisionVersion, db.Report, db.Link):
             col = model.doc_id if hasattr(model, "doc_id") else model.parent_doc
             s.execute(delete(model).where(col.in_(ids)))
@@ -135,7 +136,7 @@ def _live(doc_id):
 
 
 def _file(doc_id) -> bytes:
-    return server.STORE.get(_live(doc_id)["file_name"])
+    return storage.STORE.get(_live(doc_id)["file_name"])
 
 
 # ------------------------------------------------------------------ the Word file

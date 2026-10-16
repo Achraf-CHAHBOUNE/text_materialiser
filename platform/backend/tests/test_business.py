@@ -28,6 +28,7 @@ import db  # noqa: E402
 import library  # noqa: E402
 import mailer  # noqa: E402
 import server  # noqa: E402
+import storage  # noqa: E402
 import textnorm  # noqa: E402
 import worker  # noqa: E402
 
@@ -76,7 +77,7 @@ def _ruling(doc_id, created=None):
     d.add_paragraph("وحيث إن عقد الكراء صحيح")
     b = io.BytesIO()
     d.save(b)
-    server.STORE.put(f"{doc_id}.docx", b.getvalue())
+    storage.STORE.put(f"{doc_id}.docx", b.getvalue())
     with db.session() as s:
         s.merge(db.Decision(doc_id=doc_id, category="مدنية", court="محكمة النقض",
                             decision_no=doc_id[-3:], decision_date="01/02/2020", year="2020",

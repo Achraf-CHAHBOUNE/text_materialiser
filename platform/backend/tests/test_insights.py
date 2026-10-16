@@ -23,6 +23,7 @@ import auth as authmod  # noqa: E402
 import billing  # noqa: E402
 import db  # noqa: E402
 import server  # noqa: E402
+import storage  # noqa: E402
 import textnorm  # noqa: E402
 
 server._startup()
@@ -43,7 +44,7 @@ def reader():
     d.add_paragraph("وحيث إن عقد الكراء صحيح")
     b = io.BytesIO()
     d.save(b)
-    server.STORE.put("ins_001.docx", b.getvalue())
+    storage.STORE.put("ins_001.docx", b.getvalue())
     with db.session() as s:
         s.merge(db.Decision(doc_id="ins_001", category="تجارية", decision_no="501", decision_date="02/03/2021",
                             state="published", file_name="ins_001.docx", body_text="وحيث إن عقد الكراء صحيح",
