@@ -62,6 +62,9 @@ class Extracted(NamedTuple):
     keywords: str
     outcome: str
     error: str
+    # what the PII gate saw, as "TYPE:ab***" -- the kind and a masked hint, so a report
+    # can say why a file was refused without itself holding the personal data
+    findings: tuple = ()
 
 
 def _canonical(found: str) -> str:
@@ -106,13 +109,14 @@ def read(name: str, data: bytes) -> Extracted:
     except Exception as e:                        # a damaged file must not stop a run
         return empty._replace(error=f"{type(e).__name__}: {e}")
 
+    found = piigate.scan(text)
     note = headnotes.read(text)
     chain = []
     if note:
         chain = [note.theme, *note.sub] + ([note.qualifier] if note.qualifier else [])
     return Extracted(
         text=text,
-        clean=not piigate.scan(text),
+        clean=not found,
         theme=note.theme if note else "",
         sub=list(note.sub) if note else [],
         qualifier=note.qualifier if note else "",
@@ -120,6 +124,7 @@ def read(name: str, data: bytes) -> Extracted:
         keywords=" - ".join(chain),
         outcome=outcome(text),
         error="",
+        findings=tuple(f"{f.type}:{str(f.value)[:2]}***" for f in found[:5]),
     )
 
 

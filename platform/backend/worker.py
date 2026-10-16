@@ -1,6 +1,7 @@
 """The background worker: what happens without anyone asking.
 
 Every minute
+    import the deliveries uploaded too large to import during the request
     send the emails waiting in the outbox (when SMTP is set)
 Once a day
     end the subscriptions whose last day has passed
@@ -31,7 +32,9 @@ import accounts
 import billing
 import crm  # noqa: F401  -- its tables must exist
 import db
+import importer
 import library
+import limits
 import mailer
 import support  # noqa: F401
 
@@ -186,19 +189,25 @@ def run_alerts(now: dt.datetime) -> int:
 
 
 def daily(force: bool = False) -> dict:
-    today = dt.date.today()
-    if not force and _get("daily") == today.isoformat():
-        return {}
-    out = {"expired": expire_subscriptions(today), "overdue": mark_overdue(today),
-           "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow()),
-           "admin_digest": admin_digest(today)}
-    _set("daily", today.isoformat())
-    return out
+    # Several workers may run; the lock lets one of them do the day's jobs, and the
+    # date it records tells the others the day is done.
+    with db.exclusive("worker:daily") as mine:
+        today = dt.date.today()
+        if not mine or (not force and _get("daily") == today.isoformat()):
+            return {}
+        out = {"expired": expire_subscriptions(today), "overdue": mark_overdue(today),
+               "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow()),
+               "admin_digest": admin_digest(today), "limits_pruned": limits.prune()}
+        _set("daily", today.isoformat())
+        return out
 
 
 def once(force_daily: bool = False) -> dict:
     out = daily(force_daily)
-    out["mail"] = mailer.send_pending()
+    # deliveries uploaded too large to import during the request
+    out["imports"] = importer.run_queued(publish=os.getenv("AUTO_PUBLISH", "1") not in ("0", "false", "False", "no"))
+    with db.exclusive("worker:mail") as mine:           # one sender, so no email goes twice
+        out["mail"] = mailer.send_pending() if mine else {}
     return out
 
 

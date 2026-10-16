@@ -4,7 +4,7 @@ A flat, name-keyed store with two backings:
 
   - a folder on disk (the default, and what the tests use);
   - any S3-compatible object storage -- AWS S3, Google Cloud Storage through its
-    S3 interface, or a MinIO server. One protocol, so moving between them is a
+    S3 interface, or a self-hosted Garage. One protocol, so moving between them is a
     change of settings, never of code.
 
 Raw documents never pass through here: the pipeline produced these files and the
@@ -14,13 +14,14 @@ Settings (S3_* preferred; the older MINIO_* names still work):
 
     S3_ENDPOINT      host[:port], no scheme        s3.amazonaws.com
                                                    storage.googleapis.com   (GCS)
-                                                   minio:9000               (MinIO)
+                                                   garage:3900              (Garage, local)
     S3_BUCKET        bucket name                   default "anonymized"
     S3_ACCESS_KEY    access key      (GCS: an HMAC key from Cloud Storage settings)
     S3_SECRET_KEY    secret key
     S3_REGION        the bucket's region           eu-west-3, europe-west1, ...
-    S3_SECURE        "false" only for a local MinIO over plain HTTP (default: HTTPS)
-    S3_CREATE_BUCKET "true" creates the bucket when missing -- local MinIO only.
+    S3_SECURE        "false" only for a local store over plain HTTP (default: HTTPS)
+    S3_CREATE_BUCKET "true" creates the bucket when missing, for a store whose key
+                     may do so. (Garage's bucket is made by ops/storage_init.py.)
                      On S3/GCS the app's key normally may not create buckets, so
                      a missing bucket is an error with a clear message instead.
     S3_VERIFY_BUCKET "false" skips the startup check (a key allowed to read and
@@ -33,7 +34,7 @@ from __future__ import annotations
 import io
 import os
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 
 class LocalFileStore:
@@ -43,6 +44,11 @@ class LocalFileStore:
 
     def put(self, name: str, data: bytes) -> None:
         (self.base / name).write_bytes(data)
+
+    def put_file(self, name: str, path: str) -> None:
+        """Store a file from disk without holding it in memory."""
+        import shutil
+        shutil.copyfile(path, self.base / name)
 
     def get(self, name: str) -> bytes:
         return (self.base / name).read_bytes()
@@ -57,6 +63,10 @@ class LocalFileStore:
 
     def list(self) -> List[str]:
         return [p.name for p in self.base.iterdir() if p.is_file()]
+
+    def sizes(self) -> Dict[str, int]:
+        """{name: bytes} for every file -- what a copy is checked against."""
+        return {p.name: p.stat().st_size for p in self.base.iterdir() if p.is_file()}
 
 
 class S3FileStore:
@@ -90,11 +100,15 @@ class S3FileStore:
         if not create_bucket:
             raise RuntimeError(
                 f"The bucket {where} does not exist. Create it (S3/GCS keys usually may "
-                f"not), or set S3_CREATE_BUCKET=true for a local MinIO.")
+                f"not), or set S3_CREATE_BUCKET=true if this key may create it.")
         self.client.make_bucket(self.bucket)
 
     def put(self, name: str, data: bytes) -> None:
         self.client.put_object(self.bucket, name, io.BytesIO(data), length=len(data))
+
+    def put_file(self, name: str, path: str) -> None:
+        """Store a file from disk without holding it in memory (multipart when large)."""
+        self.client.fput_object(self.bucket, name, path)
 
     def get(self, name: str) -> bytes:
         resp = self.client.get_object(self.bucket, name)
@@ -117,6 +131,9 @@ class S3FileStore:
 
     def list(self) -> List[str]:
         return [o.object_name for o in self.client.list_objects(self.bucket)]
+
+    def sizes(self) -> Dict[str, int]:
+        return {o.object_name: o.size for o in self.client.list_objects(self.bucket)}
 
 
 MinioFileStore = S3FileStore          # the name this class had before

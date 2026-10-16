@@ -13,8 +13,8 @@ import { useStore } from "@/lib/app-store";
 import { useI18n } from "@/lib/i18n";
 import {
   adminFileUrl, adminGetDecision, adminQueue, correctDecision,
-  importBatch, setDecisionState,
-  type Decision,
+  importBatch, importJob, importJobs, setDecisionState,
+  type Decision, type ImportJob,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/admin")({
@@ -61,49 +61,106 @@ function ImportPanel() {
   const { t, num } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Awaited<ReturnType<typeof importBatch>> | null>(null);
+  const [job, setJob] = useState<ImportJob | null>(null);
+  const [history, setHistory] = useState<ImportJob[]>([]);
+  const loadHistory = () => importJobs().then(setHistory).catch(() => setHistory([]));
+  useEffect(() => { loadHistory(); }, []);
+
+  // a large delivery is imported by the worker: follow it until it ends
+  useEffect(() => {
+    if (!job || job.status === "done" || job.status === "failed") return;
+    const timer = setInterval(() => {
+      importJob(job.id).then((j) => {
+        setJob(j);
+        if (j.status === "done") { toast.success(`${t("adm.importDone")} — ${t("adm.imported")} ${num(j.imported ?? 0)}, ${t("adm.updated")} ${num(j.updated ?? 0)}`); loadHistory(); }
+        if (j.status === "failed") { toast.error(`${t("adm.importFailed")}: ${j.error}`); loadHistory(); }
+      }).catch(() => undefined);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [job, t, num]);
 
   async function run(file: File) {
     setBusy(true);
     try {
-      const r = await importBatch(file);
-      setResult(r);
-      toast.success(`${t("adm.importDone")} — ${t("adm.imported")} ${num(r.imported)}, ${t("adm.updated")} ${num(r.updated)}`);
+      const j = await importBatch(file);
+      setJob(j);
+      if (j.status === "done") toast.success(`${t("adm.importDone")} — ${t("adm.imported")} ${num(j.imported ?? 0)}, ${t("adm.updated")} ${num(j.updated ?? 0)}`);
+      else toast.info(t("adm.importQueued"));
+      loadHistory();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("adm.importFailed"));
     } finally {
       setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
+  const waiting = job && (job.status === "queued" || job.status === "running");
   return (
-    <div className="rounded-2xl border bg-card p-6 shadow-soft">
-      <h2 className="text-sm font-semibold">{t("adm.importTitle")}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t("adm.importHint")}
-      </p>
-      <input ref={fileRef} type="file" accept=".zip" className="hidden"
-        onChange={(e) => e.target.files?.[0] && run(e.target.files[0])} />
-      <Button className="mt-4 h-10" disabled={busy} onClick={() => fileRef.current?.click()}>
-        <Upload className="size-4" />{busy ? t("adm.importing") : t("adm.choose")}
-      </Button>
+    <div className="space-y-4">
+      <div className="rounded-2xl border bg-card p-6 shadow-soft">
+        <h2 className="text-sm font-semibold">{t("adm.importTitle")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("adm.importHint")}</p>
+        <pre className="mt-3 rounded-lg bg-muted p-3 text-xs leading-relaxed" dir="ltr">{`livraison.zip
+├── records.json          ${t("adm.importRecords")}
+└── documents/…/*.docx    ${t("adm.importFiles")}`}</pre>
+        <input ref={fileRef} type="file" accept=".zip" className="hidden"
+          onChange={(e) => e.target.files?.[0] && run(e.target.files[0])} />
+        <Button className="mt-4 h-10" disabled={busy || !!waiting} onClick={() => fileRef.current?.click()}>
+          <Upload className="size-4" />{busy ? t("adm.uploading") : t("adm.choose")}
+        </Button>
 
-      {result && (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Stat label={t("adm.imported")} value={result.imported} tone="teal" />
-          <Stat label={t("adm.updated")} value={result.updated} tone="muted" />
-          <Stat label={t("adm.rejected")} value={result.rejected.length} tone="warn" />
-          <Stat label={t("adm.quarantined")} value={result.quarantined.length} tone="warn" />
-          {result.quarantined.length > 0 && (
-            <div className="sm:col-span-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs">
-              <p className="font-medium text-destructive">{t("adm.quarantinedList")}</p>
-              <ul className="mt-1 space-y-0.5">
-                {result.quarantined.map((q) => (
-                  <li key={q.doc_id}><b>{q.doc_id}</b>: {q.findings.join(", ")}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+        {waiting && (
+          <div className="mt-5 rounded-xl border bg-background p-4 text-sm">
+            <p className="font-medium">{job.status === "queued" ? t("adm.importQueued") : t("adm.importing")}</p>
+            {job.to_read ? (
+              <>
+                <div className="mt-2 h-2 rounded bg-muted"><div className="h-2 rounded bg-teal" style={{ width: `${Math.round(100 * (job.read ?? 0) / job.to_read)}%` }} /></div>
+                <p className="mt-1 text-xs text-muted-foreground tabular-nums">{num(job.read ?? 0)} / {num(job.to_read)}</p>
+              </>
+            ) : <p className="mt-1 text-xs text-muted-foreground">{num(job.total_records ?? 0)} {t("adm.importRulings")}</p>}
+          </div>
+        )}
+
+        {job?.status === "done" && (
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <Stat label={t("adm.imported")} value={job.imported ?? 0} tone="teal" />
+            <Stat label={t("adm.updated")} value={job.updated ?? 0} tone="muted" />
+            <Stat label={t("adm.rejected")} value={(job.no_file ?? 0) + (job.unreadable ?? 0)} tone="warn" />
+            <Stat label={t("adm.quarantined")} value={(job.gate_quarantined ?? 0) + (job.held_by_pipeline ?? 0)} tone="warn" />
+            <p className="sm:col-span-4 text-xs text-muted-foreground">
+              {t("adm.importRead")}: {num(job.with_subject ?? 0)} {t("adm.withSubject")} · {num(job.with_outcome ?? 0)} {t("adm.withOutcome")}
+              {job.kept_edited ? ` · ${num(job.kept_edited)} ${t("adm.keptEdited")}` : ""}
+            </p>
+            {(job.quarantined?.length || job.rejected?.length) ? (
+              <div className="sm:col-span-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                <p className="font-medium text-destructive">{t("adm.quarantinedList")}</p>
+                <ul className="mt-1 max-h-48 space-y-0.5 overflow-auto">
+                  {job.quarantined?.map((q) => <li key={q.doc_id}><b>{q.doc_id}</b>: {q.findings.join(", ")}</li>)}
+                  {job.rejected?.map((q) => <li key={q.doc_id}><b>{q.doc_id}</b>: {q.reason}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+        {job?.status === "failed" && <p className="mt-4 text-sm text-destructive">{t("adm.importFailed")}: {job.error}</p>}
+      </div>
+
+      {history.length > 0 && (
+        <div className="rounded-2xl border bg-card p-6 shadow-soft">
+          <h2 className="text-sm font-semibold">{t("adm.importHistory")}</h2>
+          <ul className="mt-3 divide-y text-sm">
+            {history.map((h) => (
+              <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate" dir="ltr">{h.file_name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {h.created_at.slice(0, 16).replace("T", " ")} · {h.created_by}
+                  {h.status === "done" ? ` · ${num(h.imported ?? 0)} + ${num(h.updated ?? 0)}` : ""}
+                </span>
+                <Pill tone={h.status === "done" ? "success" : h.status === "failed" ? "danger" : "warning"}>{t(`adm.job.${h.status}` as "adm.job.done")}</Pill>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

@@ -9,7 +9,8 @@ from __future__ import annotations
 import datetime as dt
 import os
 from pathlib import Path
-from typing import List, Optional
+from contextlib import contextmanager
+from typing import Iterator, List, Optional
 
 from sqlalchemy import (
     DateTime, LargeBinary, UniqueConstraint, case, literal_column, ForeignKey, Integer, String, Text,
@@ -490,6 +491,32 @@ def init_db() -> None:
 
 def session() -> Session:
     return Session(_engine)
+
+
+@contextmanager
+def exclusive(name: str, wait: bool = False) -> Iterator[bool]:
+    """One holder at a time for `name`, across every process and container that shares
+    this database. Yields True when held. With wait=False a busy lock yields False at
+    once (another worker is doing the job); with wait=True it waits its turn.
+
+    Postgres: an advisory lock held for the block on its own connection. SQLite runs
+    one process in development, so there it is always granted."""
+    if _engine.dialect.name != "postgresql":
+        yield True
+        return
+    with _engine.connect() as c:
+        key = c.execute(text("SELECT hashtext(:n)"), {"n": name}).scalar()
+        if wait:
+            c.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})
+            got = True
+        else:
+            got = bool(c.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key}).scalar())
+        try:
+            yield got
+        finally:
+            if got:
+                c.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
+            c.commit()
 
 
 # ---------------- users ----------------

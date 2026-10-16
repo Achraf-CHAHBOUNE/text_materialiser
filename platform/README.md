@@ -20,10 +20,13 @@ files — through an **import gate** that re-checks for PII and rejects anything
 ## Layout
 
 ```
-backend/     FastAPI service (auth, DB, object storage)
+backend/     FastAPI service (auth, DB, object storage); ops/ moves and prepares data
 frontend/    React + TanStack app (admin + client UI)
-docs/        design notes and prompts
-docker-compose.yml   backend + frontend + MinIO + Postgres
+deploy/      Caddy and Garage configuration
+docs/        operations and business notes
+docker-compose.yml          the whole stack: Postgres, Garage, API, worker, site, Caddy
+docker-compose.server.yml   what changes on a server (80/443, resource caps)
+docker-compose.vps.yml      what the current VPS runs (kept as is until it is moved)
 ```
 
 ## Browse (the client space)
@@ -40,17 +43,37 @@ following the layout the client asked for:
 **المدينة** is the city of the lower court the appeal came from: the Court of
 Cassation sits only in Rabat, so its own city would say nothing.
 
-## Load a pipeline results folder
+## Adding new rulings
 
-```bash
-cd backend
-python import_results.py ../../results          # import and publish
-python import_results.py ../../results --no-publish   # import for review instead
+New rulings come from the anonymization pipeline as a **delivery**: `records.json`
+and the anonymized Word files (the pipeline's `results/` folder). There is one import
+(`backend/importer.py`) and three ways to reach it:
+
+| who | how | when |
+|---|---|---|
+| an admin | *Administration › Import*: choose a **.zip** of the delivery | a new batch, any size |
+| the server operator | `docker compose exec backend python -m importer /path/to/results` (or a .zip) | a large delivery already on the server |
+| the operator, with summaries | `python scripts/ingest.py ../../results` | the import, then a model writes a subject and a summary for the rulings that print none |
+
+```
+livraison.zip
+├── records.json          what the pipeline knows about each ruling
+└── documents/…/*.docx    the anonymized files (any folders; matched by file name)
 ```
 
-Reads the folder directly (no browser upload), applying the same rules as the HTTP
-import: files the pipeline held back are refused, every file is re-scanned by the PII
-gate, and re-importing a ruling updates it rather than duplicating it.
+Up to 200 rulings (`IMPORT_INLINE_MAX`) are imported during the upload and the answer
+comes back at once. A larger .zip is kept in the object store and imported by the
+worker; the page shows its progress, and *Imports récents* keeps the history.
+
+Whichever way, the same rules hold:
+
+- a ruling the pipeline held back is never imported;
+- every file is re-scanned by the PII gate, whatever the pipeline said, and refused
+  if it still looks personal (the report names the kind, never the value);
+- the subject, keyword chain, the court's rule and the outcome are read off the file;
+- importing a ruling again updates it, never duplicates it, and never blanks a field
+  the file does not carry (a subject a model wrote survives);
+- a ruling corrected on the site is left exactly as corrected, its Word file included.
 
 ## Correcting a ruling
 
@@ -129,13 +152,13 @@ than shown as if it still matched.
 ## Where the files live
 
 The anonymized `.docx` files sit either in a folder or in object storage. The backend
-speaks one protocol (S3) to AWS S3, Google Cloud Storage and MinIO alike, so moving
+speaks one protocol (S3) to Garage, AWS S3 and Google Cloud Storage alike, so moving
 between them is a change of settings, never of code.
 
 | | set | used for |
 | --- | --- | --- |
 | a folder | nothing (default `FILESTORE_DIR=data/files`) | development, and a single server |
-| MinIO | `S3_ENDPOINT=minio:9000`, `S3_SECURE=false`, `S3_CREATE_BUCKET=true` | the docker-compose stack |
+| Garage | set by docker-compose (`garage:3900`, region `garage`); keys in `.env` | the docker-compose stack |
 | AWS S3 | `S3_ENDPOINT=s3.amazonaws.com`, `S3_REGION`, keys | more than one server |
 | Google Cloud Storage | `S3_ENDPOINT=storage.googleapis.com`, `S3_REGION`, **HMAC** keys | same, on Google |
 
@@ -150,38 +173,25 @@ skips that check for a key that may read and write objects but not look buckets 
 
 The storage keys have no default: anyone holding them can read every ruling, so
 docker-compose refuses to start until they are set in `platform/.env`. The older
-`MINIO_*` names still work everywhere.
+`MINIO_*` setting names still work everywhere.
 
-## Show it to someone
+## Run it
 
-The delivery is 667 MB; a demo does not need it. Build a small pack and run the site
-from it on any machine with Docker:
+Everything runs in Docker: Postgres, Garage (the object store for the Word files), the
+API, the worker, the site, and Caddy in front.
 
 ```bash
 cd platform
-python scripts/make_demo.py                      # -> demo-pack/ (60 rulings, ~2.5 MB)
-python scripts/make_demo.py --count 30 --zip     # -> demo-pack.zip, small enough to send
-docker compose -f docker-compose.demo.yml up --build
+cp .env.example .env              # fill in the lines marked REQUIRED for Docker
+docker compose up -d --build      # http://localhost:8080
 ```
 
-Then open <http://127.0.0.1:8080> and sign in as `admin@demo.local` / `demo-admin`
-(corrects rulings) or `client@demo.local` / `demo-client` (browses, searches, reports a
-problem). `docker compose -f docker-compose.demo.yml down -v` removes everything.
+On a server, add `-f docker-compose.server.yml`: ports 80/443 with a certificate for
+`SITE_ADDRESS`, and every service capped. More readers: `--scale backend=3`; Caddy
+spreads the requests and no backend copy keeps anything of its own.
 
-The pack is a spread, not the first sixty: every chamber, a range of years and cities,
-and only rulings carrying a number and a date. Its contents are anonymized and passed
-the pipeline's leak check, like everything in `results/` — but they are still the
-client's documents, so the pack is git-ignored. Send it directly.
-
-The site and the API share one address (`:8080`, with the API under `/api`), so a
-tunnel or a host only has to expose one port and no API URL is baked into the build.
-
-The demo uses fixed passwords, a file-backed database and a folder for the documents.
-For a real deployment use `docker-compose.yml`, which wants Postgres, object storage
-and keys of your own.
-
-To put the demo online for a few days without deciding anything — a tunnel from your
-own machine, or a free host — see [docs/HOSTING-DEMO.md](docs/HOSTING-DEMO.md).
+To move a platform that ran on SQLite and a folder into this stack, see *Moving in*
+in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Run (local, without docker)
 
@@ -232,6 +242,6 @@ Tested (`backend/tests/`, in CI): permissions, the anonymized-only boundary, the
 gate, publication visibility, Arabic search, immediate suspension, audit trail.
 
 ### Remaining / scale notes
-Search uses a normalized `LIKE` column (fine to ~10× the corpus); swap for Postgres FTS /
-`pg_trgm` at larger scale. Backup/restore procedure and a live MinIO+Postgres compose
-smoke-test are the next infra tasks.
+Search uses Postgres word search (tsvector) and trigram indexes. MinIO was replaced by
+Garage: MinIO stopped publishing free images in October 2025 and its repository was
+archived in April 2026.

@@ -1,16 +1,32 @@
 # One address for the site and its API, with a certificate fetched and renewed
 # automatically. SITE_ADDRESS is the hostname (or :80 while there is no name yet).
+#
+# The upstreams are looked up in Docker's DNS every few seconds, so
+# `docker compose up --scale backend=3` is picked up without touching this file;
+# a copy that fails is skipped for a while and its requests retried on another.
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
-	handle /api/* {
-		reverse_proxy backend:8000
-	}
-	handle /health {
-		reverse_proxy backend:8000
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy {
+			dynamic a backend 8000 {
+				refresh 5s
+			}
+			lb_policy least_conn
+			lb_try_duration 5s
+			fail_duration 30s
+		}
 	}
 	handle {
-		reverse_proxy frontend:3000
+		reverse_proxy {
+			dynamic a frontend 3000 {
+				refresh 5s
+			}
+			lb_policy least_conn
+			lb_try_duration 5s
+			fail_duration 30s
+		}
 	}
 
 	log {

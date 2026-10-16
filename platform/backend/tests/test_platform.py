@@ -309,10 +309,18 @@ def test_search_follows_a_reimported_ruling(db_fts_note="the word index is kept 
     assert any(r["doc_id"] == "resync1" for r in now["items"]), "new text does not match"
 
 
+def _forget_login_failures():
+    import limits
+    from sqlalchemy import delete
+    with server.db.session() as s:
+        s.execute(delete(limits.RateEvent).where(limits.RateEvent.bucket == "login"))
+        s.commit()
+
+
 def test_guessing_a_password_is_cut_off_after_a_few_tries(monkeypatch):
     """A site holding court rulings must not let anyone guess passwords all day."""
     monkeypatch.setattr(server, "LOGIN_MAX_TRIES", 3)
-    server._failures.clear()
+    _forget_login_failures()
     codes = [client.post("/api/auth/login",
                          json={"email": "admin@x.com", "password": "wrong"}).status_code
              for _ in range(5)]
@@ -323,7 +331,7 @@ def test_guessing_a_password_is_cut_off_after_a_few_tries(monkeypatch):
     assert blocked.status_code == 429 and "minute" in blocked.json()["detail"]
 
     # another account from the same place is unaffected
-    server._failures.clear()
+    _forget_login_failures()
     ok = client.post("/api/auth/login", json={"email": "admin@x.com", "password": "admin-pass"})
     assert ok.status_code == 200
     # and a success clears the count: wrong, wrong, right, then wrong again is not a lockout
@@ -331,4 +339,16 @@ def test_guessing_a_password_is_cut_off_after_a_few_tries(monkeypatch):
         client.post("/api/auth/login", json={"email": "admin@x.com", "password": "wrong"})
     assert client.post("/api/auth/login", json={"email": "admin@x.com", "password": "admin-pass"}).status_code == 200
     assert client.post("/api/auth/login", json={"email": "admin@x.com", "password": "wrong"}).status_code == 401
-    server._failures.clear()
+    _forget_login_failures()
+
+
+def test_limits_are_shared_by_every_copy_of_the_api(monkeypatch):
+    """The count lives in the database: another API process reading it sees the same."""
+    import limits
+    _forget_login_failures()
+    for _ in range(2):
+        client.post("/api/auth/login", json={"email": "admin@x.com", "password": "wrong"})
+    assert len(limits.recent("login", "admin@x.com|testclient", 900)) == 2
+    with server.db.exclusive("test:lock") as mine:
+        assert mine                                  # granted (always, on SQLite)
+    _forget_login_failures()

@@ -89,20 +89,21 @@ class Download(db.Base):
 
 # ---------------- pace and quota ----------------
 VIEWS_PER_HOUR = 300
-_views: dict = {}
 
 
 def note_view(user: dict) -> None:
-    """Refuse a customer's account reading faster than a person reads."""
+    """Refuse a customer's account reading faster than a person reads. Counted from the
+    views already recorded in client_activity, so every copy of the API agrees."""
     if user["role"] in STAFF:
         return
-    now = time.time()
-    hits = [t for t in _views.get(user["email"], []) if now - t < 3600]
-    if len(hits) >= VIEWS_PER_HOUR:
-        db.add_audit(user["email"], "throttled", "user", user["email"], new=f"{len(hits)} views/h")
+    since = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    with db.session() as s:
+        n = s.scalar(select(func.count()).select_from(db.ClientActivity).where(
+            db.ClientActivity.actor == user["email"], db.ClientActivity.action == "view",
+            db.ClientActivity.ts >= since)) or 0
+    if n >= VIEWS_PER_HOUR:
+        db.add_audit(user["email"], "throttled", "user", user["email"], new=f"{n} views/h")
         raise HTTPException(status_code=429, detail={"pace": VIEWS_PER_HOUR})
-    hits.append(now)
-    _views[user["email"]] = hits
 
 
 def downloads_today(email: str) -> int:

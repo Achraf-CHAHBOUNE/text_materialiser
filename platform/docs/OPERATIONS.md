@@ -13,16 +13,36 @@ every file for personal-data patterns before it is stored.
 
 ```bash
 cd platform
-cp .env.example .env          # set AUTH_SECRET, SEED_EMAIL, SEED_PASSWORD, DB + S3 keys
-docker compose up --build -d
-# frontend  http://localhost:8080
-# backend   http://localhost:8000/health
-# MinIO console http://localhost:9001
+cp .env.example .env          # fill in every line marked REQUIRED for Docker
+docker compose up --build -d  # the site: http://localhost:8080
 ```
 
-On first boot the backend seeds the admin from `SEED_EMAIL`/`SEED_PASSWORD` (and an
-optional demo client from `SEED_CLIENT_EMAIL`/`SEED_CLIENT_PASSWORD`). Change
-`AUTH_SECRET` before production — it signs every session token.
+Seven services start, in order: `postgres` and `garage` (the data), `storage-init`
+(gives Garage its node, key and bucket, then exits), `backend` and `worker`, `frontend`,
+and `proxy` (Caddy, the only one reachable from outside). `docker compose ps` shows
+each one's health.
+
+On first boot the backend seeds the admin from `SEED_EMAIL`/`SEED_PASSWORD`. Every
+secret in `.env` (`AUTH_SECRET`, `POSTGRES_PASSWORD`, `GARAGE_*`, `S3_*`) is required
+and has no default; the stack refuses to start without them.
+
+On a server: `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build`
+with `SITE_ADDRESS` set to the hostname.
+
+### Moving in
+
+A platform that ran on SQLite and a folder (`run-local.sh`, `data/platform/`) moves into
+the stack with one command, run once the stack is up. The source is only read; a move
+that stops half-way is simply run again.
+
+```bash
+docker compose run --rm -v "$PWD/../data/platform:/source:ro" backend     python -m ops.migrate --sqlite /source/app.db --files /source/files --replace
+```
+
+`--replace` empties the new database first (the backend has already seeded it with
+the plans and the admin). It ends by checking the row count of every table and the
+name and size of every file, and comparing 200 files byte for byte; it fails loudly if
+anything differs.
 
 ## 2. Daily workflow (admin)
 

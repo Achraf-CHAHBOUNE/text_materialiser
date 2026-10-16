@@ -12,6 +12,7 @@ Run (local):   uvicorn server:app --port 8000
 """
 from __future__ import annotations
 
+import datetime as dt
 import io
 import json
 import mimetypes
@@ -19,12 +20,14 @@ import os
 import re
 import time
 import zipfile
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 
 import accounts
 import auth as authmod
@@ -34,10 +37,11 @@ import crm
 import db
 import insights
 import library
+import limits
 import support
 import docedit
+import importer
 import piigate
-import textextract
 import textnorm
 import translate
 from deps import STAFF, current_user, flex_user, require_admin, require_editor, require_staff
@@ -88,11 +92,10 @@ class LoginBody(BaseModel):
 # as fast as the network allowed. A site holding court rulings cannot leave that open.
 # After LOGIN_MAX_TRIES wrong passwords, that email and that address are turned away
 # for LOGIN_LOCKOUT_SECONDS whether or not the next password is right, and a correct
-# password clears the count. Held in memory: one server, and a restart is a fresh
-# start, which is the safe direction (it locks nobody out).
+# password clears the count. Kept in the database (limits.py), so every copy of the
+# API sees the same count and a restart does not hand out fresh tries.
 LOGIN_MAX_TRIES = int(os.getenv("LOGIN_MAX_TRIES", "8"))
 LOGIN_LOCKOUT_SECONDS = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "900"))
-_failures: dict = {}
 
 
 def _login_key(email: str, request: Request) -> tuple:
@@ -103,21 +106,16 @@ def _login_key(email: str, request: Request) -> tuple:
 
 def _locked_for(key: tuple) -> int:
     """Seconds still to wait, 0 if the caller may try."""
-    tries, until = _failures.get(key, (0, 0.0))
-    left = int(until - time.time())
-    return left if tries >= LOGIN_MAX_TRIES and left > 0 else 0
+    fails = limits.recent("login", f"{key[0]}|{key[1]}", LOGIN_LOCKOUT_SECONDS)
+    if len(fails) < LOGIN_MAX_TRIES:
+        return 0
+    # locked until the lockout has run from the failure that reached the limit
+    reached = fails[-LOGIN_MAX_TRIES]
+    return max(0, int((reached - dt.datetime.utcnow()).total_seconds()) + LOGIN_LOCKOUT_SECONDS)
 
 
 def _note_failure(key: tuple) -> None:
-    tries, _ = _failures.get(key, (0, 0.0))
-    if _locked_for(key) == 0 and tries >= LOGIN_MAX_TRIES:
-        tries = 0                                   # the lockout expired: start over
-    _failures[key] = (tries + 1, time.time() + LOGIN_LOCKOUT_SECONDS)
-    if len(_failures) > 10000:                      # nobody floods us with addresses
-        cutoff = time.time()
-        for k, (_, until) in list(_failures.items()):
-            if until < cutoff:
-                _failures.pop(k, None)
+    limits.add("login", f"{key[0]}|{key[1]}")
 
 
 @app.post("/api/auth/login")
@@ -144,7 +142,7 @@ def login(body: LoginBody, request: Request) -> dict:
             _note_failure(key)
             db.add_audit(body.email, "login_failed", "user", body.email, new="wrong code")
             raise HTTPException(status_code=401, detail={"mfa": True, "wrong": True})
-    _failures.pop(key, None)
+    limits.clear("login", f"{key[0]}|{key[1]}")
     db.touch_login(user["email"])
     sid = accounts.open_session(user, key[1], request.headers.get("user-agent", ""))
     db.log_activity(user["email"], "login", "")
@@ -158,91 +156,63 @@ def health() -> dict:
     return {"status": "ok", "storage": type(STORE).__name__}
 
 
-# ---------------- text extraction ----------------
-# Lives in textextract.py so an import worker can use it in its own process
-# without loading this whole application.
-_extract_text = textextract.extract
-
-
 # ---------------- admin: integration / import ----------------
+# A delivery from the pipeline arrives as a .zip of records.json and the Word files.
+# importer.py does the work, the same way the command line does: a small batch is
+# imported at once and the answer comes back; a large one is kept in the store and
+# imported by the worker, and the page follows it through /api/admin/import/jobs.
+IMPORT_INLINE_MAX = int(os.getenv("IMPORT_INLINE_MAX", "200"))
+
+
 @app.post("/api/admin/import")
-async def import_batch(file: UploadFile = File(...), user: dict = Depends(require_editor)) -> dict:
-    """Import a pipeline batch: a .zip of records.json + anonymized files.
-
-    Import gate (§I-2): a record with no matching file is rejected; a file that still
-    trips the PII detector is quarantined. Re-importing the same doc_id UPDATES (§I-8).
-    """
-    raw = await file.read()
+def import_batch(file: UploadFile = File(...), user: dict = Depends(require_editor)) -> dict:
+    import shutil
+    import tempfile
+    import uuid
+    fd, tmp = tempfile.mkstemp(suffix=".zip")
     try:
-        zf = zipfile.ZipFile(io.BytesIO(raw))
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="Upload must be a .zip")
+        with os.fdopen(fd, "wb") as out:
+            shutil.copyfileobj(file.file, out, length=1024 * 1024)
+        try:
+            n = len(importer.open_source(Path(tmp)).records())
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Not a delivery: {e}")
+        name = (file.filename or "delivery.zip")[:200]
+        with db.session() as s:
+            job = importer.ImportJob(file_name=name, size=os.path.getsize(tmp), created_by=user["email"])
+            s.add(job)
+            s.commit()
+            job_id = job.id
+        if n <= IMPORT_INLINE_MAX:
+            importer._save(job_id, status="running", started_at=dt.datetime.utcnow())
+            result = importer.run(Path(tmp), publish=AUTO_PUBLISH, actor=user["email"], store=STORE, workers=1)
+            importer._save(job_id, status="done", finished_at=dt.datetime.utcnow(),
+                           result=json.dumps(result, ensure_ascii=False))
+        else:
+            key = f"import-{uuid.uuid4().hex}.zip"
+            STORE.put_file(key, tmp)
+            importer._save(job_id, file_key=key,
+                           result=json.dumps({"total_records": n}, ensure_ascii=False))
+    finally:
+        os.unlink(tmp)
+    with db.session() as s:
+        return importer.job_dict(s.get(importer.ImportJob, job_id))
 
-    names = zf.namelist()
-    rec_name = next((n for n in names if n.rsplit("/", 1)[-1] == "records.json"), "")
-    if not rec_name:
-        raise HTTPException(status_code=400, detail="records.json not found in the archive")
-    records = json.loads(zf.read(rec_name).decode("utf-8"))
-    by_base = {n.rsplit("/", 1)[-1]: n for n in names}
 
-    imported = updated = 0
-    rejected, quarantined, kept_edited = [], [], []
-    for rec in records:
-        doc_id = rec.get("doc_id")
-        # The pipeline's leak gate is the only check that knows which real names
-        # survived; a file it held back carries one in plain text, which the pattern
-        # scan below cannot recognise. Never import it, whatever the zip contains.
-        if rec.get("quarantined") or rec.get("status") == "quarantined":
-            quarantined.append({"doc_id": doc_id, "findings": ["held by the pipeline"]})
-            continue
-        fname = rec.get("anonymized_file") or (doc_id + ".docx")
-        if fname not in by_base:
-            rejected.append({"doc_id": doc_id, "reason": "no matching file in archive"})
-            continue
-        data = zf.read(by_base[fname])
-        text = _extract_text(fname, data)
-        findings = piigate.scan(text)
-        if findings:                                   # gate: refuse anything that looks like PII
-            quarantined.append({"doc_id": doc_id,
-                                "findings": [f"{f.type}:{f.value}" for f in findings[:5]]})
-            continue
+@app.get("/api/admin/import/jobs")
+def import_jobs(_: dict = Depends(require_editor)) -> list:
+    with db.session() as s:
+        rows = s.scalars(select(importer.ImportJob).order_by(importer.ImportJob.id.desc()).limit(20))
+        return [importer.job_dict(j) for j in rows]
 
-        existed = db.get_decision(doc_id) is not None
-        fields = rec.get("fields", {})
-        def fv(label): return (fields.get(label) or {}).get("value", "")
-        cat = rec.get("category")
-        cat = cat.get("value", "") if isinstance(cat, dict) else (cat or "")
-        kept = not db.upsert_decision({
-            "doc_id": doc_id, "source_file": rec.get("source_file", ""),
-            "fmt": rec.get("format", ""), "read_method": rec.get("read_method", ""),
-            "category": cat or "غير محدد", "level": rec.get("level", ""),
-            "court": rec.get("court", ""),
-            "decision_no": fv("رقم القرار"), "file_no": fv("رقم الملف"),
-            "decision_date": fv("تاريخ القرار"),
-            "city": rec.get("city") or fv("المدينة"),
-            "year": rec.get("year") or fv("تاريخ القرار")[-4:],
-            "case_id": rec.get("case_id", ""),
-            "outcome": rec.get("outcome", ""),
-            "pii_removed": rec.get("pii", {}).get("removed_count", 0),
-            "review": rec.get("review", "ok"),
-        }, body_text=text, file_name=fname)
-        if kept:                     # edited by hand: its text and file stay as edited
-            kept_edited.append(doc_id)
-            continue
-        db.set_links(doc_id, rec.get("links", []))
-        STORE.put(fname, data)
-        if AUTO_PUBLISH:                       # publish directly — no manual pending step
-            db.set_decision_state(doc_id, "published", user["email"])
-        imported += 0 if existed else 1
-        updated += 1 if existed else 0
 
-    db.add_audit(user["email"], "import", "batch", rec_name,
-                 new=f"imported={imported} updated={updated} "
-                     f"rejected={len(rejected)} quarantined={len(quarantined)} "
-                     f"kept_edited={len(kept_edited)}")
-    return {"imported": imported, "updated": updated,
-            "rejected": rejected, "quarantined": quarantined,
-            "kept_edited": kept_edited, "total_records": len(records)}
+@app.get("/api/admin/import/jobs/{job_id}")
+def import_job(job_id: int, _: dict = Depends(require_editor)) -> dict:
+    with db.session() as s:
+        j = s.get(importer.ImportJob, job_id)
+        if not j:
+            raise HTTPException(status_code=404, detail="Not found")
+        return importer.job_dict(j)
 
 
 @app.get("/api/admin/decisions")
@@ -734,12 +704,18 @@ def client_translate(doc_id: str, lang: str = "fr", user: dict = Depends(current
     got = db.get_translation(doc_id, lang)
     if got and not got["stale"]:
         return {"ready": True, **got}
-    try:
-        text = translate.translate(d.get("body_text") or "")
-    except translate.TranslationError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    model = os.getenv("TRANSLATE_MODEL", "gemini-2.5-flash-lite")
-    db.save_translation(doc_id, lang, text, model, d.get("version", 0))
+    # Two readers asking at once: the second waits for the first and gets its result,
+    # so a ruling is paid for once whichever copy of the API each one reached.
+    with db.exclusive(f"translate:{doc_id}:{lang}", wait=True):
+        got = db.get_translation(doc_id, lang)
+        if got and not got["stale"]:
+            return {"ready": True, **got}
+        try:
+            text = translate.translate(d.get("body_text") or "")
+        except translate.TranslationError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        model = os.getenv("TRANSLATE_MODEL", "gemini-2.5-flash-lite")
+        db.save_translation(doc_id, lang, text, model, d.get("version", 0))
     db.log_activity(user["email"], "translate", doc_id)
     return {"ready": True, **(db.get_translation(doc_id, lang) or {})}
 

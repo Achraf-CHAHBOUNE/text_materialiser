@@ -176,14 +176,24 @@ export const decisionFileUrl = (id: string) =>
   `${BASE}/api/decisions/${encodeURIComponent(id)}/file?${tokenQ()}`;
 
 // ---------- admin ----------
+/** An uploaded delivery: imported during the upload when small, by the worker when large. */
+export type ImportJob = {
+  id: number; file_name: string; size: number; status: "queued" | "running" | "done" | "failed";
+  error: string; created_by: string; created_at: string; finished_at: string;
+  total_records?: number; read?: number; to_read?: number;
+  imported?: number; updated?: number; kept_edited?: number; held_by_pipeline?: number;
+  no_file?: number; gate_quarantined?: number; unreadable?: number;
+  with_subject?: number; with_rule?: number; with_outcome?: number;
+  rejected?: { doc_id: string; reason: string }[];
+  quarantined?: { doc_id: string; findings: string[] }[];
+};
 export async function importBatch(file: File) {
   const fd = new FormData();
   fd.append("file", file);
-  return j<{ imported: number; updated: number; total_records: number;
-    rejected: { doc_id: string; reason: string }[];
-    quarantined: { doc_id: string; findings: string[] }[] }>(
-    "/api/admin/import", { method: "POST", body: fd });
+  return j<ImportJob>("/api/admin/import", { method: "POST", body: fd });
 }
+export const importJobs = () => j<ImportJob[]>("/api/admin/import/jobs");
+export const importJob = (id: number) => j<ImportJob>(`/api/admin/import/jobs/${id}`);
 
 export const adminStats = () =>
   j<{ decisions: number; published: number; pending: number; clients: number }>("/api/admin/stats");

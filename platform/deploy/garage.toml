@@ -1,0 +1,29 @@
+# Garage: the S3-compatible store for the anonymized Word files.
+#
+# One node, one copy. The secrets are not here: Garage reads GARAGE_RPC_SECRET and
+# GARAGE_ADMIN_TOKEN from the environment (docker-compose passes them from .env).
+# The node, the access key and the bucket are set up by backend/ops/storage_init.py,
+# which the `storage-init` service runs once at every start; it changes nothing that
+# is already in place.
+#
+# To grow to several machines later: raise replication_factor to 3, start Garage on
+# the new machines with the same rpc_secret, and give each a role in the layout.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+metadata_auto_snapshot_interval = "6h"
+
+replication_factor = 1
+compression_level = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"

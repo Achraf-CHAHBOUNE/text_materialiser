@@ -285,7 +285,7 @@ def test_a_reimport_never_undoes_a_hand_edit():
     edited_file = _file("edit_reimport")
 
     out = _import("edit_reimport", _ruling_docx())       # the pipeline's version again
-    assert out["kept_edited"] == ["edit_reimport"]
+    assert out["kept_edited"] == 1
     assert NAME not in _live("edit_reimport")["body_text"]
     assert _file("edit_reimport") == edited_file
 

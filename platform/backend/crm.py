@@ -14,7 +14,6 @@ The health of a client is read from what its people actually do on the platform
 from __future__ import annotations
 
 import datetime as dt
-import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 import accounts
 import billing
 import db
+import limits
 import mailer
 from deps import require_sales
 
@@ -88,7 +88,6 @@ def health(org_ids: list) -> dict:
 router = APIRouter()
 
 # -- the public contact form: no account, so a rate limit and a honeypot guard it --
-_demo_hits: dict = {}
 DEMO_PER_HOUR = 5
 
 
@@ -107,11 +106,9 @@ class DemoBody(BaseModel):
 def demo_request(body: DemoBody, request: Request) -> dict:
     ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or \
         (request.client.host if request.client else "?")
-    now = time.time()
-    hits = [t for t in _demo_hits.get(ip, []) if now - t < 3600]
-    if len(hits) >= DEMO_PER_HOUR:
+    if len(limits.recent("demo", ip, 3600)) >= DEMO_PER_HOUR:
         raise HTTPException(status_code=429, detail="Too many requests; try again later")
-    _demo_hits[ip] = hits + [now]
+    limits.add("demo", ip)
     if body.website:                       # a robot: say thank you and keep nothing
         return {"ok": True}
     if "@" not in body.email or not body.full_name.strip():
