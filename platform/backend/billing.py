@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -124,6 +125,7 @@ def seed_plans() -> None:
         for p in DEFAULT_PLANS:
             s.add(Plan(**p))
         s.commit()
+    forget_plans()
 
 
 def plan_dict(p: Plan) -> dict:
@@ -132,10 +134,26 @@ def plan_dict(p: Plan) -> dict:
                                        "vat_rate", "public", "active", "sort")}
 
 
+# Plans are read for every subscription and contract shown, and change a few times a
+# year: kept 30 seconds, dropped at once when an admin saves one (other API processes
+# see the change within the 30 seconds).
+_plans: dict = {}
+_plans_at = 0.0
+
+
 def get_plan(code: str) -> Optional[dict]:
-    with db.session() as s:
-        p = s.get(Plan, code)
-        return plan_dict(p) if p else None
+    global _plans, _plans_at
+    if time.monotonic() - _plans_at > 30:
+        with db.session() as s:
+            _plans = {p.code: plan_dict(p) for p in s.scalars(select(Plan))}
+        _plans_at = time.monotonic()
+    p = _plans.get(code)
+    return dict(p) if p else None
+
+
+def forget_plans() -> None:
+    global _plans_at
+    _plans_at = 0.0
 
 
 def sub_dict(x: Subscription) -> dict:
@@ -176,9 +194,26 @@ def current_subscription(org_id: Optional[int]) -> Optional[dict]:
         return sub_dict(last) if last else None
 
 
-def access_state(org_id: Optional[int]) -> str:
-    """ok | none (never subscribed) | expired | suspended."""
-    sub = current_subscription(org_id)
+def subscriptions_for(org_ids) -> dict:
+    """{org_id: current_subscription(org_id)} for many organizations, in one query --
+    for the lists that would otherwise ask once per row."""
+    ids = {o for o in org_ids if o}
+    if not ids:
+        return {}
+    today = dt.date.today()
+    with db.session() as s:
+        rows = list(s.scalars(select(Subscription).where(Subscription.org_id.in_(ids))))
+    best: dict = {}
+    for x in rows:
+        live = x.status in ("trial", "active") and x.starts_on <= today <= x.ends_on
+        key = (live, x.ends_on, x.id)          # the running one first, else the latest
+        if x.org_id not in best or key > best[x.org_id][0]:
+            best[x.org_id] = (key, x)
+    return {o: sub_dict(x) for o, (_, x) in best.items()}
+
+
+def access_of(sub: Optional[dict]) -> str:
+    """ok | none (never subscribed) | expired | suspended, from a subscription dict."""
     if not sub:
         return "none"
     if sub["status"] in ("trial", "active") and sub["days_left"] >= 0 and \
@@ -187,17 +222,26 @@ def access_state(org_id: Optional[int]) -> str:
     return "suspended" if sub["status"] == "suspended" else "expired"
 
 
+def seats_of(sub: Optional[dict]) -> int:
+    return sub["seats"] if sub and access_of(sub) == "ok" else 0
+
+
+def quota_of(sub: Optional[dict]) -> int:
+    if not sub:
+        return 0
+    return int((get_plan(sub["plan_code"]) or {}).get("daily_downloads", 0))
+
+
+def access_state(org_id: Optional[int]) -> str:
+    return access_of(current_subscription(org_id))
+
+
 def seats_for(org_id: Optional[int]) -> int:
-    sub = current_subscription(org_id)
-    return sub["seats"] if sub and access_state(org_id) == "ok" else 0
+    return seats_of(current_subscription(org_id))
 
 
 def daily_downloads(org_id: Optional[int]) -> int:
-    sub = current_subscription(org_id)
-    if not sub:
-        return 0
-    plan = get_plan(sub["plan_code"]) or {}
-    return int(plan.get("daily_downloads", 0))
+    return quota_of(current_subscription(org_id))
 
 
 def start_subscription(org_id: int, plan_code: str, *, status: str = "active",
@@ -373,6 +417,7 @@ def save_plan(code: str, body: PlanBody, user: dict = Depends(require_admin)) ->
         s.add(p)
         s.commit()
         out = plan_dict(p)
+    forget_plans()
     db.add_audit(user["email"], "plan", "plan", code, new=f"{out['price']} / {out['period']}")
     return out
 

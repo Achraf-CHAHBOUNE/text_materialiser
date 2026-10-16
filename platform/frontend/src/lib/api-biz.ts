@@ -60,7 +60,7 @@ export type Lead = {
   city: string; message: string; language: Lang; status: "new" | "contacted" | "converted" | "rejected";
   org_id: number | null; created_at: string;
 };
-export type Health = "active" | "quiet" | "at_risk";
+export type Health = "active" | "new" | "quiet" | "at_risk";
 export type TransferRow = {
   id: number; org_id: number; contract_id: number | null; amount: number; paid_on: string; bank: string;
   bank_ref: string; has_proof: boolean; proof_name: string; invoice_id: number | null; recorded_by: string;
@@ -159,6 +159,7 @@ export type NewClient = {
   contract: { plan_code: string; seats?: number | undefined; starts_on: string; ends_on: string; amount_ht: number; vat_rate: number; notes: string };
   transfer?: { amount: number; paid_on: string; bank: string; bank_ref: string } | undefined;
   accounts: { email: string; role: Role }[];
+  lead_id?: number | undefined;
 };
 export const createClient = (b: NewClient) =>
   post<{ org_id: number; contract: { id: number; number: string }; transfer: TransferRow | null; invited: string[]; active: boolean }>("/api/crm/clients", b);
@@ -278,7 +279,7 @@ export type AlertItem = {
   level: "high" | "medium" | "low"; email?: string; org_id?: number; org?: string; count: number; at: string; detail: string;
 };
 export type Overview = {
-  readers: number; active_today: number; active_7d: number; active_30d: number; new_readers_30d: number;
+  readers: number; clients_open: number; active_today: number; active_7d: number; active_30d: number; new_readers_30d: number;
   received_month: number; received_year: number; owed: number; contracts_active: number; contracts_ending: number;
   awaiting_payment: number; alerts_high: number; alerts: number; new_requests: number; usage: Usage;
 };
@@ -286,6 +287,7 @@ export type FoundDownload = { ref: string; email: string; org_id: number | null;
   decision_no?: string; chamber?: string; date?: string };
 export const crmAlerts = () => j<AlertItem[]>("/api/crm/alerts");
 export const overview = () => j<Overview>("/api/crm/overview");
+export const moneyTotals = () => j<{ received_month: number; received_year: number; owed: number }>("/api/crm/money");
 export const findDownload = (ref: string) => j<FoundDownload>(`/api/crm/downloads/${encodeURIComponent(ref.trim())}`);
 export const addNote = (email: string, body: string) =>
   post<{ id: number }>(`/api/crm/users/${encodeURIComponent(email)}/notes`, { body });

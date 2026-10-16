@@ -63,7 +63,7 @@ LEAD_F = ("id", "source", "full_name", "email", "phone", "company", "city", "mes
 
 # ---------------- health ----------------
 def health(org_ids: list) -> dict:
-    """{org_id: (actions in 30 days, 'active'|'quiet'|'at_risk')} from what its people did."""
+    """{org_id: (actions in 30 days, 'active'|'new'|'quiet'|'at_risk')} from what its people did."""
     if not org_ids:
         return {}
     since = dt.datetime.utcnow() - dt.timedelta(days=30)
@@ -79,8 +79,8 @@ def health(org_ids: list) -> dict:
     out = {}
     for o in org_ids:
         n = counts.get(o, 0)
-        # silence from a client of a few days is not yet a warning sign
-        out[o] = (n, "active" if n >= 20 else "quiet" if n > 0 or o in young else "at_risk")
+        # a client of less than 30 days is new, not yet quiet or at risk
+        out[o] = (n, "active" if n >= 20 else "new" if o in young else "quiet" if n > 0 else "at_risk")
     return out
 
 
@@ -183,13 +183,17 @@ def orgs(q: str = "", _: dict = Depends(require_sales)) -> list:
             like = f"%{q.strip()}%"
             query = query.where(or_(O.name.ilike(like), O.city.ilike(like), O.email.ilike(like), O.ice.ilike(like)))
         rows = [accounts.org_dict(o) for o in s.scalars(query.order_by(O.name).limit(2000))]
-    h = health([o["id"] for o in rows])
+    ids = [o["id"] for o in rows]
+    h = health(ids)
     money = contracts.money_by_org()
-    current = contracts.current_contracts([o["id"] for o in rows])
+    current = contracts.current_contracts(ids)
+    subs = billing.subscriptions_for(ids)
+    used = accounts.seats_used_many(ids)
     for o in rows:
+        sub = subs.get(o["id"])
         o["contract"] = current.get(o["id"])
-        o["access"] = billing.access_state(o["id"])
-        o["seats"] = {"total": billing.seats_for(o["id"]), "used": accounts.seats_used(o["id"])}
+        o["access"] = billing.access_of(sub)
+        o["seats"] = {"total": billing.seats_of(sub), "used": used.get(o["id"], 0)}
         o["paid"], o["owed"] = money.get(o["id"], (0, 0))
         o["activity_30d"], o["health"] = h.get(o["id"], (0, "at_risk"))
     return rows

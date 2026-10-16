@@ -348,3 +348,37 @@ def test_the_admin_overview_adds_up(customer):
     d = client.get("/api/crm/overview", headers=admin()).json()
     assert d["received_month"] >= 1440000 and d["readers"] >= 1
     assert d["contracts_active"] >= 1
+
+
+def test_a_request_is_converted_only_when_its_client_is_created():
+    client.post("/api/public/demo", json={"full_name": "Maître Y", "email": "y@cab.ma", "language": "fr"})
+    lead = next(l for l in client.get("/api/crm/leads", headers=admin()).json() if l["email"] == "y@cab.ma")
+    assert lead["status"] == "new"
+    out = client.post("/api/crm/clients", headers=admin(), json={
+        "org": {"name": "Cabinet Y"}, "contract": {"plan_code": "individual", "amount_ht": 100000},
+        "lead_id": lead["id"]}).json()
+    lead = next(l for l in client.get("/api/crm/leads", headers=admin()).json() if l["email"] == "y@cab.ma")
+    assert lead["status"] == "converted" and lead["org_id"] == out["org_id"]
+
+
+def test_the_lists_say_what_one_client_page_says(customer):
+    """The batched lists and the one-client page read access, seats and money alike."""
+    rows = {o["id"]: o for o in client.get("/api/crm/orgs", headers=admin()).json()}
+    for org_id, row in rows.items():
+        one = client.get(f"/api/crm/orgs/{org_id}", headers=admin()).json()
+        assert (row["access"], row["seats"], row["paid"], row["owed"]) == \
+               (one["access"], one["seats"], one["paid"], one["owed"])
+    # a client made today is new, not yet quiet or at risk
+    assert rows[customer["org_id"]]["health"] in ("new", "active")
+
+
+def test_owed_money_reads_the_same_on_every_page(customer):
+    d = client.get("/api/crm/overview", headers=admin()).json()
+    m = client.get("/api/crm/money", headers=admin()).json()
+    assert (m["owed"], m["received_month"]) == (d["owed"], d["received_month"])
+    orgs = client.get("/api/crm/orgs", headers=admin()).json()
+    assert d["owed"] == sum(o["owed"] for o in orgs)
+    # every centime owed is in an alert: awaiting a transfer, or a balance
+    al = client.get("/api/crm/alerts", headers=admin()).json()
+    flagged = sum(a["count"] for a in al if a["kind"] in ("awaiting_payment", "balance"))
+    assert flagged == d["owed"]

@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { adminPlans, createClient, uploadContractFile, uploadProof, type Role } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
-type Search = { name?: string; email?: string; phone?: string; city?: string };
+type Search = { name?: string; email?: string; phone?: string; city?: string; lead?: number };
 
 export const Route = createFileRoute("/crm/new")({
   head: () => ({ meta: [{ title: "Nouveau client · CRM" }] }),
@@ -22,6 +22,7 @@ export const Route = createFileRoute("/crm/new")({
     ...(typeof s["email"] === "string" ? { email: s["email"] as string } : {}),
     ...(typeof s["phone"] === "string" ? { phone: s["phone"] as string } : {}),
     ...(typeof s["city"] === "string" ? { city: s["city"] as string } : {}),
+    ...(Number(s["lead"]) > 0 ? { lead: Number(s["lead"]) } : {}),
   }),
   component: NewClientPage,
 });
@@ -58,6 +59,7 @@ function NewClientPage() {
           vat_rate: Math.round(Number(con.vat || 0) * 100), notes: con.notes },
         transfer: paid ? { amount: cents(tr.amount), paid_on: tr.paid_on, bank: tr.bank, bank_ref: tr.bank_ref } : undefined,
         accounts: people.filter((p) => p.email.trim()),
+        lead_id: pre.lead,             // the request is marked converted only if the client is made
       });
       if (contractFile) await uploadContractFile(out.contract.id, contractFile);
       if (proofFile && out.transfer) await uploadProof(out.transfer.id, proofFile);

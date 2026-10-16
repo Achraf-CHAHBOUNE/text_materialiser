@@ -22,7 +22,11 @@ export function ContractCard({ c, onChange }: { c: ContractRow; onChange: () => 
   const qc = useQueryClient();
   const [paying, setPaying] = useState(false);
   const [f, setF] = useState({ amount: "", paid_on: new Date().toISOString().slice(0, 10), bank: "", bank_ref: "" });
-  const refresh = () => { onChange(); void qc.invalidateQueries({ queryKey: ["contracts"] }); };
+  // money moved: every figure that counts it is read again
+  const refresh = () => {
+    onChange();
+    for (const k of ["contracts", "transfers", "money", "overview", "crm-alerts", "orgs", "readers"]) void qc.invalidateQueries({ queryKey: [k] });
+  };
   const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : t("adm.failed"));
   const pay = useMutation({
     mutationFn: () => addTransfer(c.id!, { ...f, amount: Math.round(parseFloat(f.amount.replace(",", ".") || "0") * 100) }),

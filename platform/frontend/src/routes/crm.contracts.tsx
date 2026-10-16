@@ -1,18 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge, Card, day, Empty, money, Select, Stat, Table, Td } from "@/components/biz";
 import { CrmNav } from "@/components/CrmNav";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { contracts, transfers } from "@/lib/api-biz";
+import { contracts, moneyTotals, transfers, type ContractRow } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/crm/contracts")({
   head: () => ({ meta: [{ title: "Contrats et paiements · CRM" }] }),
   component: ContractsPage,
 });
+
+/** The same filters the server knows, read on the list already loaded. */
+function keep(c: ContractRow, f: string) {
+  if (!f) return true;
+  if (f === "ending") return c.status === "active" && c.days_left <= 30;
+  if (f === "owing") return c.balance > 0 && c.status !== "cancelled";
+  return c.status === f;
+}
 
 const TONE = { awaiting_payment: "warn", upcoming: "info", active: "good", ended: "muted", cancelled: "muted", unassigned: "muted" } as const;
 
@@ -21,18 +29,19 @@ const TONE = { awaiting_payment: "warn", upcoming: "info", active: "good", ended
 function ContractsPage() {
   const { t, lang, num } = useI18n();
   const [filter, setFilter] = useState("");
-  const list = useQuery({ queryKey: ["contracts", filter], queryFn: () => contracts(filter) });
-  const money_ = useQuery({ queryKey: ["transfers"], queryFn: transfers });
-  const all = useQuery({ queryKey: ["contracts", ""], queryFn: () => contracts("") });
-  const month = new Date().toISOString().slice(0, 7);
-  const tx = money_.data ?? [];
-  const every = all.data ?? [];
+  // every contract once; the filters are read here, the totals come from the server
+  const all = useQuery({ queryKey: ["contracts"], queryFn: () => contracts() });
+  const tx = useQuery({ queryKey: ["transfers"], queryFn: transfers }).data ?? [];
+  const totals = useQuery({ queryKey: ["money"], queryFn: moneyTotals }).data;
+  const every = useMemo(() => all.data ?? [], [all.data]);
+  const rows = useMemo(() => every.filter((c) => keep(c, filter)), [every, filter]);
   return (
     <AppShell title={t("con.title")} description={t("con.subtitle")}>
       <CrmNav />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t("dash.receivedMonth")} value={money(tx.filter((x) => x.paid_on.startsWith(month)).reduce((a, x) => a + x.amount, 0), lang)} tone="good" />
-        <Stat label={t("dash.owed")} value={money(every.filter((c) => c.status !== "cancelled").reduce((a, c) => a + c.balance, 0), lang)} tone="bad" />
+        <Stat label={t("dash.receivedMonth")} value={totals ? money(totals.received_month, lang) : "—"} tone="good"
+              hint={totals ? `${t("dash.year")} ${money(totals.received_year, lang)}` : undefined} />
+        <Stat label={t("dash.owed")} value={totals ? money(totals.owed, lang) : "—"} tone={totals?.owed ? "bad" : "default"} />
         <Stat label={t("con.st.awaiting_payment")} value={num(every.filter((c) => c.status === "awaiting_payment").length)} tone="warn" />
         <Stat label={t("con.showEnding")} value={num(every.filter((c) => c.status === "active" && c.days_left <= 30).length)} />
       </div>
@@ -46,9 +55,9 @@ function ContractsPage() {
             { value: "", label: t("trk.showAll") }, { value: "awaiting_payment", label: t("con.st.awaiting_payment") },
             { value: "active", label: t("con.st.active") }, { value: "ending", label: t("con.showEnding") },
             { value: "owing", label: t("trk.showOwing") }, { value: "ended", label: t("con.st.ended") }]} />}>
-            {list.data && list.data.length === 0 ? <Empty>{t("con.none")}</Empty> : (
+            {all.data && rows.length === 0 ? <Empty>{t("con.none")}</Empty> : (
               <Table head={[t("bill.number"), t("crm.client"), t("con.period"), t("con.accounts"), t("con.price"), t("con.received"), t("adm.colStatus")]} minWidth="60rem">
-                {(list.data ?? []).map((c) => (
+                {rows.map((c) => (
                   <tr key={c.id}>
                     <Td><span className="font-mono text-xs" dir="ltr">{c.number}</span>{c.has_file ? "" : <p className="text-xs text-amber-700 dark:text-amber-300">{t("con.noFile")}</p>}</Td>
                     <Td><Link to="/crm/orgs/$orgId" params={{ orgId: String(c.org_id) }} className="hover:text-teal">{c.org_name}</Link></Td>

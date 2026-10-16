@@ -205,6 +205,21 @@ def seats_used(org_id: int) -> int:
     return users + len(pending_invitations(org_id))
 
 
+def seats_used_many(org_ids) -> dict:
+    """{org_id: seats_used(org_id)} for many organizations, in two queries."""
+    ids = list({o for o in org_ids if o})
+    if not ids:
+        return {}
+    now = dt.datetime.utcnow()
+    with db.session() as s:
+        users = dict(s.execute(select(db.User.org_id, func.count()).where(
+            db.User.org_id.in_(ids), db.User.status == "active").group_by(db.User.org_id)).all())
+        invited = dict(s.execute(select(Invitation.org_id, func.count()).where(
+            Invitation.org_id.in_(ids), Invitation.accepted_at.is_(None),
+            Invitation.cancelled_at.is_(None), Invitation.expires_at > now).group_by(Invitation.org_id)).all())
+    return {o: int(users.get(o, 0)) + int(invited.get(o, 0)) for o in ids}
+
+
 def invite(org_id: int, email: str, role: str, inviter: dict, lang: str = "") -> dict:
     """Invite someone into an organization, within its seats. Emails the link."""
     import billing

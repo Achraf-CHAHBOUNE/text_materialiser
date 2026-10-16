@@ -25,7 +25,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import DateTime, Integer, String, Text, func, select, text
+from sqlalchemy import DateTime, Integer, String, Text, case, func, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 import accounts
@@ -116,17 +116,18 @@ def users(q: str = "", _: dict = Depends(require_sales)) -> list:
         orgs = {o.id: o.name for o in s.scalars(select(accounts.Organization))}
     money = _money_by_org()
     reading = _reading(None, (dt.datetime.utcnow() - dt.timedelta(days=30)).date())
+    subs = billing.subscriptions_for(u.org_id for u in people)
     out = []
     for u in people:
         c = counts.get(u.email, {})
         secs, fr = reading.get(u.email, (0, 0))
-        sub = billing.current_subscription(u.org_id)
+        sub = subs.get(u.org_id)
         paid, owed = money.get(u.org_id, (0, 0))
         seen = last.get(u.email)
         out.append({
             "email": u.email, "full_name": u.full_name or "", "role": u.role, "status": u.status,
             "org_id": u.org_id, "org_name": orgs.get(u.org_id, ""),
-            "plan": sub["plan_code"] if sub else "", "access": billing.access_state(u.org_id),
+            "plan": sub["plan_code"] if sub else "", "access": billing.access_of(sub),
             "ends_on": sub["ends_on"] if sub else "",
             "last_login": u.last_login.isoformat() if u.last_login else "",
             "last_seen": seen.isoformat() if seen else "",
@@ -274,6 +275,10 @@ def find_download(ref: str, _: dict = Depends(require_sales)) -> dict:
 
 @router.get("/api/crm/alerts")
 def alerts(_: dict = Depends(require_sales)) -> list:
+    return _alerts()
+
+
+def _alerts(all_c: Optional[list] = None, money: Optional[dict] = None) -> list:
     """What deserves a look: an account used like a shared one, a reader at the download
     limit day after day, reading too fast to be a person, a paying reader gone quiet,
     contracts unpaid or ending. Newest and most serious first."""
@@ -299,6 +304,7 @@ def alerts(_: dict = Depends(require_sales)) -> list:
         last = dict(s.execute(select(db.ClientActivity.actor, func.max(db.ClientActivity.ts))
                               .group_by(db.ClientActivity.actor)).all())
     by_email = {u.email: u for u in readers.values()}
+    subs = billing.subscriptions_for(u.org_id for u in readers.values())
     for (uid, day_), seen in ips.items():
         if len(seen) >= 3:
             u = readers[uid]
@@ -311,7 +317,7 @@ def alerts(_: dict = Depends(require_sales)) -> list:
     hits: dict = {}
     for email, day_, n in dl_days:
         u = by_email.get(email)
-        if u and n >= max(1, billing.daily_downloads(u.org_id)):
+        if u and n >= max(1, billing.quota_of(subs.get(u.org_id))):
             hits.setdefault(email, []).append(str(day_))
     for email, days_ in hits.items():
         out.append({"kind": "quota_hit", "level": "high" if len(days_) >= 3 else "medium", "email": email,
@@ -319,24 +325,41 @@ def alerts(_: dict = Depends(require_sales)) -> list:
     for email, n, at in throttled:
         out.append({"kind": "too_fast", "level": "high", "email": email, "count": int(n),
                     "at": at.isoformat() if at else "", "detail": ""})
+    now = dt.datetime.utcnow()
     for u in readers.values():
-        if billing.access_state(u.org_id) != "ok":
+        if billing.access_of(subs.get(u.org_id)) != "ok":
             continue
         seen = last.get(u.email)
-        quiet = (dt.datetime.utcnow() - seen).days if seen else None
-        if quiet is None or quiet >= 15:
+        quiet = (now - (seen or u.created_at or now)).days     # silent since last read, or since the account was made
+        if quiet >= 15:
             out.append({"kind": "inactive", "level": "low", "email": u.email, "count": quiet or 0,
                         "at": seen.isoformat() if seen else "", "detail": ""})
-    for c in contracts.all_contracts(status="", _={}):
+    if all_c is None:
+        all_c = contracts.all_contracts(status="", _={})
+    waiting: dict = {}
+    for c in all_c:
         if c["status"] == "awaiting_payment":
+            waiting[c["org_id"]] = waiting.get(c["org_id"], 0) + c["balance"]
             out.append({"kind": "awaiting_payment", "level": "medium", "org_id": c["org_id"], "org": c["org_name"],
                         "count": c["amount_ttc"], "at": c["created_at"], "detail": c["number"]})
         elif c["status"] == "active" and c["days_left"] <= 30:
             out.append({"kind": "ending", "level": "medium" if c["days_left"] > 7 else "high", "org_id": c["org_id"],
                         "org": c["org_name"], "count": c["days_left"], "at": c["ends_on"], "detail": c["number"]})
-        if c["balance"] > 0 and c["status"] in ("active", "ended", "upcoming"):
-            out.append({"kind": "balance", "level": "medium", "org_id": c["org_id"], "org": c["org_name"],
-                        "count": c["balance"], "at": c["ends_on"], "detail": c["number"]})
+    # money still owed, the same figure the dashboard and the client page show -- older
+    # unpaid invoices included -- minus the contracts already flagged as awaiting payment
+    names = {c["org_id"]: c["org_name"] for c in all_c}
+    if money is None:
+        money = _money_by_org()
+    late = [o for o, (_, owed) in money.items() if owed - waiting.get(o, 0) > 0]
+    if late:
+        with db.session() as s:
+            names.update(dict(s.execute(select(accounts.Organization.id, accounts.Organization.name)
+                                        .where(accounts.Organization.id.in_(late))).all()))
+    for o in late:
+        rest = money[o][1] - waiting.get(o, 0)
+        if rest:
+            out.append({"kind": "balance", "level": "medium", "org_id": o, "org": names.get(o, ""),
+                        "count": rest, "at": "", "detail": ""})
     rank = {"high": 0, "medium": 1, "low": 2}
     out.sort(key=lambda a: a["at"] or "", reverse=True)          # newest first...
     return sorted(out, key=lambda a: rank[a["level"]])            # ...within each level
@@ -352,24 +375,25 @@ def overview(_: dict = Depends(require_sales)) -> dict:
     A = db.ClientActivity
     readers = select(db.User.email).where(db.User.role.in_(CLIENTS))
 
-    def active(days: int) -> int:
-        with db.session() as s:
-            return s.scalar(select(func.count(func.distinct(A.actor))).where(A.ts >= _since(days), A.actor.in_(readers))) or 0
-
     with db.session() as s:
+        # readers active today, this week, this month: one pass over the month
+        d1, d7, d30 = s.execute(select(*(func.count(func.distinct(case((A.ts >= _since(n), A.actor))))
+                                          for n in (1, 7, 30)))
+                                .where(A.ts >= _since(30), A.actor.in_(readers))).one()
         n_readers = s.scalar(select(func.count()).select_from(db.User).where(db.User.role.in_(CLIENTS))) or 0
         new_readers = s.scalar(select(func.count()).select_from(db.User).where(
             db.User.role.in_(CLIENTS), db.User.created_at >= _since(30))) or 0
-        received = s.scalar(select(func.sum(contracts.Transfer.amount)).where(contracts.Transfer.paid_on >= month)) or 0
-        received_year = s.scalar(select(func.sum(contracts.Transfer.amount)).where(
-            contracts.Transfer.paid_on >= today.replace(month=1, day=1))) or 0
         leads_new = s.scalar(select(func.count()).select_from(crm.Lead).where(
             crm.Lead.status == "new", crm.Lead.deleted_at.is_(None))) or 0
+        org_ids = list(s.scalars(select(accounts.Organization.id).where(accounts.Organization.deleted_at.is_(None))))
+    received, received_year = contracts.received_since(month), contracts.received_since(today.replace(month=1, day=1))
     money = _money_by_org()
     all_c = contracts.all_contracts(status="", _={})
-    al = alerts(_={})
+    al = _alerts(all_c, money)
+    open_ = sum(1 for sub in billing.subscriptions_for(org_ids).values() if billing.access_of(sub) == "ok")
     return {
-        "readers": n_readers, "active_today": active(1), "active_7d": active(7), "active_30d": active(30),
+        "readers": n_readers, "active_today": int(d1 or 0), "active_7d": int(d7 or 0), "active_30d": int(d30 or 0),
+        "clients_open": open_,
         "new_readers_30d": new_readers, "received_month": int(received), "received_year": int(received_year),
         "owed": sum(o for _, o in money.values()),
         "contracts_active": sum(1 for c in all_c if c["status"] == "active"),
@@ -379,6 +403,16 @@ def overview(_: dict = Depends(require_sales)) -> dict:
         "new_requests": leads_new,
         "usage": usage(days=30, _={}),
     }
+
+
+@router.get("/api/crm/money")
+def money_totals(_: dict = Depends(require_sales)) -> dict:
+    """Received this month and this year, and still owed: the dashboard's figures, alone."""
+    import contracts
+    today = dt.date.today()
+    return {"received_month": contracts.received_since(today.replace(day=1)),
+            "received_year": contracts.received_since(today.replace(month=1, day=1)),
+            "owed": sum(o for _, o in _money_by_org().values())}
 
 
 @router.post("/api/crm/users/{email}/logout")

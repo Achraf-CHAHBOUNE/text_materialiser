@@ -32,7 +32,7 @@ function Alerts() {
       case "inactive": return a.at ? `${t("al.inactive")} ${num(a.count)} ${t("al.days")}` : t("al.neverRead");
       case "awaiting_payment": return `${t("al.awaiting")} ${a.detail} — ${money(a.count, lang)}`;
       case "ending": return `${t("al.ending")} ${num(a.count)} ${t("al.days")} (${a.detail})`;
-      case "balance": return `${t("al.balance")} ${money(a.count, lang)} (${a.detail})`;
+      case "balance": return `${t("al.balance")} ${money(a.count, lang)}`;
     }
   };
   return (

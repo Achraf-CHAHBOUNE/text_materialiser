@@ -113,11 +113,19 @@ def _contract_dict(c: Contract, transfers: List[Transfer], org_name: str = "") -
             "transfers": [_transfer_dict(t) for t in sorted(transfers, key=lambda t: t.paid_on)]}
 
 
+def _by_contract(transfers: List[Transfer]) -> dict:
+    out: dict = {}
+    for t in transfers:
+        out.setdefault(t.contract_id, []).append(t)
+    return out
+
+
 def contracts_for(org_id: int) -> List[dict]:
     with db.session() as s:
         rows = list(s.scalars(select(Contract).where(Contract.org_id == org_id).order_by(Contract.starts_on.desc())))
         ts = list(s.scalars(select(Transfer).where(Transfer.org_id == org_id)))
-    out = [_contract_dict(c, [t for t in ts if t.contract_id == c.id]) for c in rows]
+    by_c = _by_contract(ts)
+    out = [_contract_dict(c, by_c.get(c.id, [])) for c in rows]
     loose = [t for t in ts if t.contract_id is None]
     if loose:      # money received but not tied to a contract: still shown, never lost
         out.append({"id": None, "number": "", "status": "unassigned", "transfers": [_transfer_dict(t) for t in loose],
@@ -140,7 +148,8 @@ def current_contracts(org_ids: List[int]) -> dict:
         key = (live, c.ends_on)
         if best is None or key > best[0]:
             out[c.org_id] = (key, c)
-    return {o: _contract_dict(c, [t for t in ts if t.contract_id == c.id]) for o, (_, c) in out.items()}
+    by_c = _by_contract(ts)
+    return {o: _contract_dict(c, by_c.get(c.id, [])) for o, (_, c) in out.items()}
 
 
 def money_by_org() -> dict:
@@ -167,6 +176,17 @@ def money_by_org() -> dict:
         if i["status"] in ("sent", "overdue"):
             owed[i["org_id"]] = owed.get(i["org_id"], 0) + i["balance"]
     return {o: (int(paid.get(o, 0)), int(owed.get(o, 0))) for o in set(paid) | set(owed)}
+
+
+def received_since(day: dt.date) -> int:
+    """Centimes received from `day` on: transfers, and payments on invoices made before
+    contracts existed -- counted the way money_by_org counts them, so the figures agree."""
+    with db.session() as s:
+        transfers = s.scalar(select(func.sum(Transfer.amount)).where(Transfer.paid_on >= day)) or 0
+        from_transfers = select(Transfer.invoice_id).where(Transfer.invoice_id.is_not(None))
+        older = s.scalar(select(func.sum(billing.Payment.amount)).where(
+            billing.Payment.paid_on >= day, billing.Payment.invoice_id.not_in(from_transfers))) or 0
+    return int(transfers) + int(older)
 
 
 # ---------------- writing ----------------
@@ -324,6 +344,7 @@ class NewClient(BaseModel):
     contract: ContractIn
     transfer: Optional[TransferIn] = None
     accounts: List[AccountIn] = []
+    lead_id: Optional[int] = None     # the public request this client came from, if any
 
 
 @router.post("/api/crm/clients")
@@ -355,8 +376,16 @@ def new_client(body: NewClient, user: dict = Depends(require_sales)) -> dict:
         if a.email.strip():
             invited.append(accounts.invite(org["id"], a.email, a.role if a.role in ("client", "client_admin") else "client",
                                            user, body.org.language)["email"])
+    if body.lead_id:                   # the request is converted only once the client exists
+        import crm
+        with db.session() as s:
+            lead = s.get(crm.Lead, body.lead_id)
+            if lead and not lead.deleted_at:
+                lead.status, lead.org_id = "converted", org["id"]
+                s.commit()
+    # a contract starting later is paid but not open yet: say what is true today
     return {"org_id": org["id"], "contract": contract, "transfer": transfer, "invited": invited,
-            "active": transfer is not None}
+            "active": billing.access_state(org["id"]) == "ok"}
 
 
 @router.get("/api/crm/contracts")
@@ -366,7 +395,8 @@ def all_contracts(status: str = "", _: dict = Depends(require_sales)) -> list:
                               .join(accounts.Organization, accounts.Organization.id == Contract.org_id)
                               .order_by(Contract.ends_on.desc())).all())
         ts = list(s.scalars(select(Transfer)))
-    out = [_contract_dict(c, [t for t in ts if t.contract_id == c.id], name) for c, name in rows]
+    by_c = _by_contract(ts)
+    out = [_contract_dict(c, by_c.get(c.id, []), name) for c, name in rows]
     if status == "ending":
         return [c for c in out if c["status"] == "active" and c["days_left"] <= 30]
     if status == "owing":

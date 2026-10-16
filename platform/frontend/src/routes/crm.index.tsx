@@ -21,7 +21,7 @@ function Dashboard() {
   const qc = useQueryClient();
   const o = useQuery({ queryKey: ["overview"], queryFn: overview });
   const inbox = useQuery({ queryKey: ["leads", "new"], queryFn: () => leads("new") });
-  const done = useMutation({ mutationFn: (x: { id: number; status: "contacted" | "rejected" | "converted" }) => updateLead(x.id, x.status),
+  const done = useMutation({ mutationFn: (x: { id: number; status: "contacted" | "rejected" }) => updateLead(x.id, x.status),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["leads"] }); void qc.invalidateQueries({ queryKey: ["overview"] }); } });
   const v = o.data;
   return (
@@ -33,9 +33,9 @@ function Dashboard() {
         <Stat label={t("dash.receivedMonth")} value={v ? money(v.received_month, lang) : "—"} tone="good"
               hint={v ? `${t("dash.year")} ${money(v.received_year, lang)}` : undefined} />
         <Stat label={t("dash.owed")} value={v ? money(v.owed, lang) : "—"} tone={v?.owed ? "bad" : "default"}
-              hint={v?.awaiting_payment ? <Link to="/crm/contracts" search={{}} className="text-amber-700 underline dark:text-amber-300">{num(v.awaiting_payment)} {t("dash.awaiting")}</Link> : undefined} />
-        <Stat label={t("dash.contracts")} value={v ? num(v.contracts_active) : "—"} tone={v?.contracts_ending ? "warn" : "default"}
-              hint={v?.contracts_ending ? `${num(v.contracts_ending)} ${t("dash.ending")}` : undefined} />
+              hint={v?.awaiting_payment ? <Link to="/crm/contracts" className="text-amber-700 underline dark:text-amber-300">{num(v.awaiting_payment)} {t("dash.awaiting")}</Link> : undefined} />
+        <Stat label={t("dash.clientsOpen")} value={v ? num(v.clients_open) : "—"} tone={v?.contracts_ending ? "warn" : "default"}
+              hint={v ? (v.contracts_ending ? `${num(v.contracts_ending)} ${t("dash.ending")}` : `${num(v.contracts_active)} ${t("dash.contractsRunning")}`) : undefined} />
       </div>
       {v && v.alerts > 0 && (
         <Link to="/crm/alerts" className={`mt-4 block rounded-xl border px-4 py-3 text-sm ${v.alerts_high ? "border-destructive/40 bg-destructive/10 text-destructive" : "bg-card"}`}>
@@ -64,8 +64,8 @@ function Dashboard() {
                   {l.message && <p className="mt-1 text-xs">{l.message}</p>}
                   <div className="mt-1 flex flex-wrap gap-1">
                     <Button asChild size="sm" className="h-7 text-xs">
-                      <Link to="/crm/new" search={{ name: l.company || l.full_name, email: l.email, phone: l.phone, city: l.city }}
-                            onClick={() => done.mutate({ id: l.id, status: "converted" })}>{t("dash.makeClient")}</Link>
+                      <Link to="/crm/new" search={{ name: l.company || l.full_name, email: l.email, phone: l.phone, city: l.city, lead: l.id }}>
+                        {t("dash.makeClient")}</Link>
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => done.mutate({ id: l.id, status: "contacted" })}>{t("dash.contacted")}</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => done.mutate({ id: l.id, status: "rejected" })}>{t("dash.ignore")}</Button>

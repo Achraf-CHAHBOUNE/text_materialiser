@@ -108,7 +108,7 @@ contract -- then they open by themselves.
 
 A request from the public page (`/pricing`, rate-limited, with a hidden field that
 catches robots) lands in the dashboard's inbox; *Créer le client* opens this page
-already filled in.
+already filled in, and the request is marked converted only once the client is saved.
 
 ### Contrats et paiements
 
@@ -144,8 +144,13 @@ seconds while the page is visible, staff ignored).
 found circulating -- the page names who downloaded it, when, and which ruling.
 
 **Health** is read from what the client's people do: *active* (20+ actions in 30
-days), *quiet*, or *at risk* (nobody opened anything in 30 days, client older than 30
-days).
+days), *new* (a client of less than 30 days), *quiet*, or *at risk* (nobody opened
+anything in 30 days).
+
+**One figure for money.** What is received and what is owed are counted once, the same
+way on every page: transfers, plus the payments and unpaid balances of invoices made
+before contracts existed. Every centime owed appears in an alert -- a contract awaiting
+its transfer, or a balance.
 
 Everything exports to CSV for Excel, for one reader or for all. Nothing is deleted:
 records are marked, so history and figures stay true.
