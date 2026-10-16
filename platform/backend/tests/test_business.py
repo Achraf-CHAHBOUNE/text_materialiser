@@ -90,15 +90,16 @@ def _ruling(doc_id, created=None):
 
 @pytest.fixture(scope="module")
 def customer():
-    """A lead from the website, converted, its account holder through the invitation."""
-    r = client.post("/api/public/demo", json={"full_name": "Maître Test", "email": "boss@firm.ma",
-                                              "company": "Cabinet Test", "language": "fr"})
-    assert r.status_code == 200
-    lead_id = r.json()["id"]
-    assert _last_mail("boss@firm.ma", "demo_received")[0].startswith("Nous avons")
+    """A client the way they come in Morocco: the transfer, the contract, then the
+    account -- created by the admin in one step; the holder through the invitation."""
     sales = _staff("sales@x.com", "sales")
-    out = client.post(f"/api/crm/leads/{lead_id}/convert", headers=sales, json={}).json()
-    org_id = out["org"]["id"]
+    out = client.post("/api/crm/clients", headers=admin(), json={
+        "org": {"name": "Cabinet Test", "kind": "firm", "email": "contact@firm.ma", "language": "fr"},
+        "contract": {"plan_code": "firm", "seats": 2, "amount_ht": 1200000},
+        "transfer": {"amount": 1440000, "bank_ref": "VIR-0001"},
+        "accounts": [{"email": "boss@firm.ma", "role": "client_admin"}]}).json()
+    assert out["active"] is True
+    org_id = out["org_id"]
     body = _last_mail("boss@firm.ma", "invitation")[1]
     assert "/fr/invite/" in body
     token = _token_from(body)
@@ -109,7 +110,11 @@ def customer():
     return {"org_id": org_id, "sales": sales, "boss": _login("boss@firm.ma")}
 
 
-def test_the_public_form_is_guarded():
+def test_the_public_form_lands_in_the_inbox_and_is_guarded():
+    r = client.post("/api/public/demo", json={"full_name": "Maître X", "email": "x@cab.ma", "language": "fr"})
+    assert r.status_code == 200
+    assert _last_mail("x@cab.ma", "demo_received")[0].startswith("Nous avons")
+    assert any(l["email"] == "x@cab.ma" for l in client.get("/api/crm/leads", headers=admin()).json())
     bot = client.post("/api/public/demo", json={"full_name": "x", "email": "bot@x.ma", "website": "spam"})
     assert bot.status_code == 200
     with db.session() as s:
@@ -117,12 +122,50 @@ def test_the_public_form_is_guarded():
         assert s.scalar(select(crm.Lead).where(crm.Lead.email == "bot@x.ma")) is None
 
 
-def test_a_converted_lead_is_a_customer_on_trial(customer):
+def test_a_paid_contract_opens_the_accounts(customer):
     acc = client.get("/api/account", headers=customer["boss"]).json()
     assert acc["user"]["role"] == "client_admin" and acc["org"]["name"] == "Cabinet Test"
-    assert acc["subscription"]["status"] == "trial" and acc["access"] == "ok"
+    assert acc["subscription"]["status"] == "active" and acc["access"] == "ok"
     assert acc["seats"] == {"total": 2, "used": 1}
     assert client.get("/api/browse/courts", headers=customer["boss"]).status_code == 200
+
+
+def test_no_transfer_no_access_until_it_comes(customer):
+    out = client.post("/api/crm/clients", headers=admin(), json={
+        "org": {"name": "Pas encore payé"}, "contract": {"plan_code": "individual", "amount_ht": 500000},
+        "accounts": [{"email": "unpaid@cab.ma"}]}).json()
+    assert out["active"] is False
+    token = _token_from(_last_mail("unpaid@cab.ma", "invitation")[1])
+    client.post(f"/api/invitations/{token}", json={"password": PW})
+    h = _login("unpaid@cab.ma")
+    assert client.get("/api/browse/courts", headers=h).status_code == 402      # account made, closed
+    c = client.get(f"/api/crm/orgs/{out['org_id']}", headers=admin()).json()["contracts"][0]
+    assert c["status"] == "awaiting_payment" and c["balance"] == 600000          # VAT 20% included
+    client.post(f"/api/crm/contracts/{c['id']}/transfers", headers=admin(), json={"amount": 600000, "bank_ref": "VIR-2"})
+    assert client.get("/api/browse/courts", headers=h).status_code == 200      # open the moment it is paid
+    c = client.get(f"/api/crm/orgs/{out['org_id']}", headers=admin()).json()["contracts"][0]
+    assert c["status"] == "active" and c["balance"] == 0
+
+
+def test_more_accounts_than_the_contract_is_refused_before_anything_is_made():
+    r = client.post("/api/crm/clients", headers=admin(), json={
+        "org": {"name": "Trop de comptes"}, "contract": {"plan_code": "individual", "seats": 1},
+        "accounts": [{"email": "a1@trop.ma"}, {"email": "a2@trop.ma"}]})
+    assert r.status_code == 400
+    assert not any(o["name"] == "Trop de comptes" for o in client.get("/api/crm/orgs", headers=admin()).json())
+
+
+def test_a_transfer_can_become_an_invoice_once(customer):
+    c = client.get(f"/api/crm/orgs/{customer['org_id']}", headers=admin()).json()["contracts"][-1]
+    t = c["transfers"][0]
+    first = client.post(f"/api/crm/transfers/{t['id']}/invoice", headers=admin()).json()
+    again = client.post(f"/api/crm/transfers/{t['id']}/invoice", headers=admin()).json()
+    assert first["invoice_id"] == again["invoice_id"]
+    inv = client.get(f"/api/invoices/{first['invoice_id']}", headers=admin()).json()
+    assert inv["status"] == "paid" and inv["amount_ttc"] == 1440000
+    # counted once: the transfer, not the transfer and its invoice
+    org = next(o for o in client.get("/api/crm/orgs", headers=admin()).json() if o["id"] == customer["org_id"])
+    assert org["paid"] >= 1440000 and org["paid"] < 2 * 1440000
 
 
 def test_seats_limit_invitations(customer):
@@ -172,10 +215,13 @@ def test_a_lapsed_subscription_closes_the_rulings_not_the_account(customer):
     assert r.status_code == 402 and r.json()["detail"] == {"subscription": "expired"}
     assert client.get("/api/account", headers=boss).json()["access"] == "expired"
     assert client.get("/api/support", headers=boss).status_code == 200
-    # renewed by sales: open again, and its seats with it
-    r = client.post(f"/api/crm/orgs/{customer['org_id']}/subscriptions", headers=customer["sales"],
-                    json={"plan_code": "firm", "status": "active", "days": 365})
-    assert r.status_code == 200
+    # renewed: a new contract, a new transfer -- open again, and its seats with it
+    today = dt.date.today()
+    c = client.post(f"/api/crm/orgs/{customer['org_id']}/contracts", headers=admin(), json={
+        "plan_code": "firm", "seats": 5, "amount_ht": 1200000, "starts_on": today.isoformat(),
+        "ends_on": (today + dt.timedelta(days=364)).isoformat()}).json()
+    assert client.get("/api/browse/courts", headers=boss).status_code == 402        # not before the money
+    client.post(f"/api/crm/contracts/{c['id']}/transfers", headers=admin(), json={"amount": 1440000})
     assert client.get("/api/browse/courts", headers=boss).status_code == 200
     assert client.get("/api/account", headers=boss).json()["seats"]["total"] == 5
 
@@ -298,7 +344,7 @@ def test_support_threads_are_seen_by_the_firm_and_the_team(customer):
     assert client.get(f"/api/support/{t['id']}", headers=_login("lonely@y.ma")).status_code == 404
 
 
-def test_sales_dashboard_adds_up(customer):
-    d = client.get("/api/crm/dashboard", headers=customer["sales"]).json()
-    assert d["revenue_month"] >= 179880
-    assert {p["stage"] for p in d["pipeline"]} == {"new", "contacted", "demo", "trial", "won", "lost"}
+def test_the_admin_overview_adds_up(customer):
+    d = client.get("/api/crm/overview", headers=admin()).json()
+    assert d["received_month"] >= 1440000 and d["readers"] >= 1
+    assert d["contracts_active"] >= 1

@@ -99,7 +99,6 @@ function PlanEditor({ plan }: { plan: Plan }) {
           <Input type="number" min={0} value={p.daily_downloads} onChange={(e) => setP({ ...p, daily_downloads: Number(e.target.value) })} className="h-10" /></div>
         <label className="flex items-center gap-2 text-sm"><Switch checked={p.public} onCheckedChange={(v) => setP({ ...p, public: v })} />{t("plans.public")}</label>
         <label className="flex items-center gap-2 text-sm"><Switch checked={p.active} onCheckedChange={(v) => setP({ ...p, active: v })} />{t("plans.active")}</label>
-        <label className="flex items-center gap-2 text-sm"><Switch checked={p.practice} onCheckedChange={(v) => setP({ ...p, practice: v })} />{t("plans.practice")}</label>
         <span className="self-center text-xs text-muted-foreground">{t("bill.vat")} {p.vat_rate / 100} % · {money(Math.round(parseFloat(price.replace(",", ".") || "0") * 100), lang)}</span>
         <Button type="submit" size="sm" className="w-fit self-center" disabled={save.isPending}>{t("adm.save")}</Button>
       </form>

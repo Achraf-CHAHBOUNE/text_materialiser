@@ -1,8 +1,9 @@
 # The platform as a business: languages, customers, sales, billing
 
 This is the part of the platform that turns a corpus into a service people pay for:
-the site in Arabic and in French, customer accounts with seats and subscriptions, the
-CRM the team sells and renews with, invoices, support, and a reader's own library.
+the site in Arabic and in French, customer accounts with seats, the contracts and bank
+transfers that open them, the CRM the team follows readers and money with, support, and
+a reader's own library.
 
 It is one application -- a modular monolith -- not a set of services: one FastAPI
 backend split into modules, one Postgres database, one background worker.
@@ -10,15 +11,14 @@ backend split into modules, one Postgres database, one background worker.
 ```
 backend/
   accounts.py   organizations, sessions, invitations, password reset, two-factor
-  billing.py    plans, subscriptions, invoices, payments
-  crm.py        leads, contacts, opportunities, activities, tasks, dashboard
-  sales.py      quotes, email from the CRM, revenue reports, CSV in and out, duplicates
-  insights.py   what each reader reads, downloads and searches, what they pay -- for us
-  practice.py   the firm module (switched off): a law firm's own cases, hearings, fees
+  contracts.py  a client's contracts (signed PDF) and bank transfers (proof) -- what opens access
+  billing.py    plans, subscriptions, invoices (optional, made from a transfer), payments
+  crm.py        the public request inbox, clients (organizations) and their health
+  insights.py   what each reader reads, downloads, searches and for how long; alerts; the dashboard
   support.py    tickets and their messages
-  library.py    folders and notes, alerts, history, download quotas and marks
+  library.py    folders and notes, alerts, history, reading time, download quotas and marks
   mailer.py     every email, in the reader's language, through one outbox
-  worker.py     what happens without anyone asking (emails, expiries, reminders, alerts)
+  worker.py     what happens without anyone asking (emails, expiries, reminders, the admin digest)
   deps.py       who is asking and what they may do -- every module's guards
 ```
 
@@ -60,11 +60,11 @@ python translate_labels.py                         # subjects and keyword chains
 |---|---|---|
 | `admin` | you | everything: staff accounts, plans and prices, emails, plus all below |
 | `editor` | the team | the rulings: import, correct, publish, error reports |
-| `sales` | the team | the CRM: leads, organizations, subscriptions, invoices, tickets |
+| `sales` | the team | the CRM: clients, contracts, transfers, readers, tickets |
 | `client_admin` | a customer's account holder | read, and invite or remove colleagues within the seats paid for |
 | `client` | a customer's reader | read, save, download within the quota, alerts, support |
 
-A customer's people read **only while their organization has a running subscription**.
+A customer's people read **only while their organization has a paid, running contract**.
 When it lapses, the rulings close (HTTP 402) but their account, invoices and support
 stay open, so they can see why and put it right. The site shows one banner, not a
 page of errors.
@@ -78,107 +78,81 @@ on the account page for everyone; staff without it are reminded on every visit.
 
 ---
 
-## Selling: the CRM
+## The CRM: for us alone
+
+Readers have a reading space and nothing else; they never see any of this. The CRM
+follows the way a client actually arrives in Morocco:
 
 ```
-demo form (public) ──► lead ──convert──► organization + contact + opportunity
-                                          + 14-day trial + invitation emailed
-opportunity: new → contacted → demo → trial → won | lost
+the client pays by bank transfer (virement) --> a contract is signed --> we open the accounts
 ```
 
-- **Leads** come from the public page (`/pricing`, rate-limited, with a hidden field
-  that catches robots) or are entered by hand. *Convert* does the rest in one click.
-- **Organizations** carry their contacts, their people's accounts, subscriptions,
-  invoices, activities (calls, emails, meetings, notes), tasks, opportunities, and the
-  full audit trail of who changed what.
-- **Health** is read from what the organization's people actually do: *active* (20+
-  actions in 30 days), *quiet*, or *at risk* (nobody opened anything in 30 days, and
-  the customer is older than 30 days).
-- **The dashboard** shows new leads, revenue this month, what is left to collect, the
-  pipeline, renewals in the next 30 days and customers at risk.
+Tabs: **Tableau de bord · Clients · Utilisateurs · Usage · Alertes · Contrats et
+paiements · Assistance**, and the **Nouveau client** button.
 
-Nothing in the CRM is deleted: records are marked, so history and figures stay true.
+### Nouveau client
 
-**Going further** (`sales.py`):
+One page, four steps, one save (`POST /api/crm/clients`):
 
-- **Quotes (devis)** `D-2026-00001`: from a plan (monthly price × months) or with custom
-  lines, valid 30 days, printable, emailed to the organization. *Accept* does everything
-  at once: the subscription at the quoted price (it starts after the current paid one,
-  or at once during a trial), the invoice, the opportunity won, the organization a
-  customer. A quote is accepted once.
-- **Email from the CRM**: written on the organization's page, sent through the outbox,
-  kept in its history.
-- **Reports**: MRR (what active customers pay a month, negotiated price when there is
-  one), ARR, average per customer, cash collected month by month over 12 months, new
-  customers and departures, lead conversion, win rate, and the open pipeline weighted
-  by stage (new 10% → trial 60%).
-- **Lists in and out**: CSV exports for Excel (leads, organizations, invoices,
-  payments); a CSV import of leads that skips anyone already known, so importing the
-  same bar-association list twice is harmless; a warning when a new lead looks like
-  an existing lead or organization.
-- **Each sales person's day** by email: tasks due, renewals they manage.
+1. **The client** -- a person or a firm, ICE, contact details, the language of its emails.
+2. **The contract** -- plan, number of accounts, dates, price HT and VAT; the signed PDF
+   attached. Numbered `C-2026-0001`.
+3. **The transfer** -- amount TTC, date, bank, reference, the proof attached; or *not
+   yet*.
+4. **The accounts** -- one email per seat, at most the seats of the contract (checked
+   before anything is created). Each person is emailed to choose a password.
 
----
+With a transfer the accounts open at once, over the contract's dates. Without one they
+are created but stay closed (HTTP 402) until the first transfer is recorded on the
+contract -- then they open by themselves.
 
-## Following the readers (admin only)
+A request from the public page (`/pricing`, rate-limited, with a hidden field that
+catches robots) lands in the dashboard's inbox; *Créer le client* opens this page
+already filled in.
 
-The CRM is ours: readers have a reading space and nothing else, and never see any of
-this. `insights.py` reads back what the platform already records -- every view,
-search, download, translation and sign-in (`client_activity`), each session's address
-and device, each download's reference -- for admin and sales.
+### Contrats et paiements
+
+Every contract with its status -- *awaiting transfer*, *upcoming*, *running*, *ended*,
+*cancelled* -- what it costs, what was received, what is still owed, and whether the
+signed PDF is on file; filters for awaiting, running, ending within 30 days, owing,
+ended. Every transfer with its bank, reference and proof.
+
+- **Renewal** is a new contract from the client's page; it starts the day after the
+  current one ends and opens access when its transfer is recorded.
+- **Part transfers** are fine; the balance is shown until it reaches zero.
+- **An invoice is optional**: *Faire la facture* turns a transfer into a paid invoice
+  (`F-2026-00001`), once; the money is never counted twice.
+- A contract with no transfer can be cancelled; one that was paid cannot.
+
+### Following the readers
+
+`insights.py` reads back what the platform already records -- every view, search,
+download, translation and sign-in, each session's address and device, each download's
+reference, and the time spent on each ruling and in which language (a beat every 30
+seconds while the page is visible, staff ignored).
 
 | page | what it answers |
 |---|---|
-| **CRM › Utilisateurs** | every reader: organization, plan and until when, reads, downloads and searches over 30 days, total read, what their organization has paid and still owes, last activity, signed in now or not. Filters: active, idle, subscription ended, owing; sorts by activity, reads, downloads, money |
-| **one reader** | everything they did, newest first (each ruling by number and chamber, each search with its words, *no result* marked); activity per day; the chambers they read most; downloads with the reference printed in the file; devices and IP addresses of each sign-in; invoices and payments. Actions: suspend, sign out everywhere, export their activity |
-| **CRM › Usage** | the platform over 7 to 365 days: active readers, reads, downloads, searches, sign-ins per day; most read and most downloaded rulings (times, distinct readers); most frequent searches; **searches that found nothing** -- what the corpus is missing; the most active readers |
+| **Tableau de bord** | readers (active today, this week, this month), money received this month and year, what is owed, contracts running and ending, the alerts, activity per day, most read rulings, the request inbox |
+| **Clients** | each client: contract and dates, accounts used of those paid for, paid and owed, health. One client: contracts and transfers, accounts (invite, change role, suspend), details, history |
+| **Utilisateurs** | every reader: plan and until when, reads, reading time and share in French, downloads, searches, paid and owed, last activity, signed in now or not |
+| **one reader** | everything they did, newest first; reading time and the rulings read longest; team notes; an email written from the page (kept as a note); activity per day; chambers; downloads with their reference; devices and addresses; contracts and invoices. Actions: renew, suspend, sign out everywhere, export |
+| **Usage** | the platform over 7 to 365 days, most read and downloaded rulings, searches -- and **searches that found nothing** |
+| **Alertes** | the serious first: an account used from 3+ addresses in a day (shared), 3+ devices in a week, the download limit reached, reading at a pace no person reads at, a paying reader silent for 15 days, contracts awaiting their transfer, ending within 30 days, or with money still owed |
 
-Everything exports to CSV for Excel, for one reader or for all.
+**Find a file**: under the tabs, type the reference printed at the foot of a Word file
+found circulating -- the page names who downloaded it, when, and which ruling.
 
----
+**Health** is read from what the client's people do: *active* (20+ actions in 30
+days), *quiet*, or *at risk* (nobody opened anything in 30 days, client older than 30
+days).
 
-## The firm module (cabinet) -- switched off
+Everything exports to CSV for Excel, for one reader or for all. Nothing is deleted:
+records are marked, so history and figures stay true.
 
-Built, tested, and **off**: readers have a reading space only. Every plan comes with it
-switched off; an administrator could turn it on per plan (*Administration › Offres et
-prix*) if that is ever wanted. What follows describes it for that day.
-
-### What it is
-
-What makes a firm open the platform every day, not only when it researches: its own
-clients and cases, in the same place as the case law. `practice.py`, at `/cabinet`.
-
-| | |
-|---|---|
-| **Clients** | people and companies the firm represents: identity (CIN / RC, ICE), contact details, notes |
-| **Cases** (dossiers) | the firm's own reference `2026/0001`, client and their role, opposing party and lawyer, court, chamber, level, court file number, nature, responsible lawyer, fee agreement, status |
-| **Hearings** | date, time, room, purpose; recording the outcome can schedule the next hearing in the same step |
-| **Deadlines** | opposition, appeal, cassation... computed from the notification date, moved to the next working day when they fall on a weekend, and marked *to verify* until a lawyer confirms them |
-| **Tasks** | per case or general, assigned to a member |
-| **Documents** | per case, 20 MB each, private to the firm |
-| **Time and expenses** | hours at a rate, court fees, bailiff, expert... |
-| **Fee notes** | numbered per firm `2026-0001`, built from the case's unbilled time and expenses plus any fixed fee, VAT 10% (editable), part payments, printable; cancelling one makes its lines billable again |
-| **Case law** | rulings from the corpus tied to a case from the ruling's own page, with a note |
-| **Agenda and dashboard** | hearings, deadlines and tasks by day (late ones first), for the firm or for me; what is unpaid, what was collected this month |
-| **Daily email** | each lawyer: their hearings within two days and deadlines within seven, unverified ones flagged |
-
-**This module holds real personal data**, unlike the rest of the platform. So:
-
-1. **A firm sees only itself.** The firm is always the signed-in person's organization,
-   never a value from the request; every query filters on it.
-2. **Our own staff cannot read it** -- admin, sales and editors alike are refused. The
-   firm is the data controller; we only process its data (law 09-08).
-3. **Erasing is real.** The account holder can erase a client: every case, hearing,
-   deadline, document *file*, time entry and fee note under it is deleted, not flagged.
-4. **The audit trail keeps ids, never names** -- otherwise it would become a second copy
-   of the firm's client list.
-
-Whether a plan includes the module is a switch on the plan (*Administration › Offres et
-prix*); it is off on every plan.
-
-**A deadline is the lawyer's responsibility.** The presets (opposition 10 days, appeal
-30, criminal appeal 10, cassation 30) are the usual ones; public holidays are not
-counted; a deadline stays *to verify* until someone confirms it, and the page says so.
+**Removed**, because they were not how the business works: the prospect pipeline,
+tasks, quotes, the reports page (its figures are on the dashboard), the sales digest,
+and the firm module (cabinet).
 
 ---
 
@@ -187,14 +161,15 @@ counted; a deadline stays *to verify* until someone confirms it, and the page sa
 - **Plans** (`trial`, `individual`, `firm`, `institution`) are seeded once as
   *examples*. Set the real names, prices, seats and download quotas in
   *Administration › Offres et prix* before launch.
-- **Subscriptions**: a renewal starts the day after the current one ends, so no day is
-  lost or paid twice.
+- **Subscriptions** are opened by contracts (see above): a renewal starts the day after
+  the current one ends, so no day is lost or paid twice.
 - **Invoices** are numbered `F-2026-00001`, `F-2026-00002`... per year, without gaps or
   repeats (the number is unique in the database). VAT 20%. An issued invoice is
   cancelled, never deleted. Each has a printable page; the browser's *print to PDF*
   makes the file. Seller details come from `SELLER_*` settings.
-- **Payments** are recorded by staff: transfer, cheque, cash, card at the desk. Part
-  payments are fine; the invoice turns *paid* when the balance reaches zero.
+- **Money comes in as transfers** recorded on contracts. An invoice is made from a
+  transfer only when the client asks for one. Older invoices and their payments still
+  count in what was received and what is owed.
 - **Online card payment is not built**: it needs a merchant contract with a Moroccan
   bank (CMI). The invoice model is ready for it.
 
@@ -225,7 +200,7 @@ python worker.py --once   # one pass, then exit
 ```
 
 | every minute | send the emails waiting in the outbox |
-| once a day | end the subscriptions past their last day · mark unpaid invoices overdue · remind customers and their account manager 30, 15 and 7 days before the end (once each) · send the alerts |
+| once a day | end the subscriptions past their last day · mark unpaid invoices overdue · remind customers 30, 15 and 7 days before the end (once each) · send the readers' saved-search alerts · email the admins their digest: new readers and transfers of the day before, contracts ending (30/15/7/1 days), contracts awaiting their transfer, serious alerts |
 
 Without `SMTP_HOST`, emails wait in the outbox and *Administration › E-mails* shows
 them -- a fresh install works, nothing is lost.
@@ -274,9 +249,10 @@ before.
 cd platform/backend && python -m pytest tests/ -q
 ```
 
-`test_business.py` follows the business the way it is used -- a demo request becomes a
-customer, its people are invited and read within what they pay for, the team is paid
--- and `test_bilingual.py` the French site. Both pass on SQLite and on Postgres.
-`test_crm_deep.py` covers quotes, reports, import and export, and above all the firm
-module's walls: one firm cannot see another, our staff see nothing, erasing removes the
-files, the audit trail holds no names. The isolation rules are mutation-checked.
+`test_business.py` follows the business the way it is used -- a request reaches the
+inbox, a client is created with its contract and transfer and its people read; without
+a transfer they are refused until it is recorded; too many accounts are refused before
+anything is made; a transfer becomes an invoice once and is counted once; a renewal; the
+dashboard adds up. `test_insights.py` covers the readers: activity, find-a-file, reading
+time, notes and emails, the shared-account alert. `test_bilingual.py` covers the French
+site. They run on SQLite, and on Postgres with `DATABASE_URL` set.

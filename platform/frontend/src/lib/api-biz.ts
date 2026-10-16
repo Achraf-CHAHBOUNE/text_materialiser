@@ -31,7 +31,7 @@ export type Org = {
 export type Plan = {
   code: string; name_ar: string; name_fr: string; blurb_ar: string; blurb_fr: string;
   price: number; period: "month" | "year" | "quote"; seats: number; daily_downloads: number;
-  vat_rate: number; public: boolean; active: boolean; sort: number; practice: boolean;
+  vat_rate: number; public: boolean; active: boolean; sort: number;
 };
 export type Subscription = {
   id: number; org_id: number; plan_code: string; plan_name_ar: string; plan_name_fr: string;
@@ -53,49 +53,36 @@ export type InvoiceDetail = Invoice & {
 export type Account = {
   user: Person; org: Org | null; subscription: Subscription | null; access: Access;
   mfa_required: boolean; seats?: { total: number; used: number }; quota?: number;
-  /** whether the firm module (cabinet) is in the organization's plan */
-  practice: boolean;
 };
 export type Invitation = { id: number; email: string; role: Role; invited_by: string; expires_at: string };
 export type Lead = {
   id: number; source: string; full_name: string; email: string; phone: string; company: string;
-  city: string; message: string; language: Lang; status: string; assigned_to: string;
+  city: string; message: string; language: Lang; status: "new" | "contacted" | "converted" | "rejected";
   org_id: number | null; created_at: string;
 };
-export type Contact = {
-  id: number; org_id: number; full_name: string; job_title: string; email: string; phone: string;
-  language: Lang; is_primary: number;
-};
-export type Opportunity = {
-  id: number; org_id: number; org_name?: string; title: string; stage: Stage; value: number;
-  plan_code: string; expected_close: string | null; owner: string; lost_reason: string;
-  closed_at: string | null; created_at: string;
-};
-export type Stage = "new" | "contacted" | "demo" | "trial" | "won" | "lost";
-export const STAGES: Stage[] = ["new", "contacted", "demo", "trial", "won", "lost"];
-export type ActivityRow = {
-  id: number; org_id: number; kind: "call" | "email" | "meeting" | "note"; body: string; at: string; by_user: string;
-};
-export type TaskRow = {
-  id: number; title: string; due_on: string; assigned_to: string; org_id: number | null;
-  org_name?: string; done_at: string | null; created_by: string;
-};
 export type Health = "active" | "quiet" | "at_risk";
+export type TransferRow = {
+  id: number; org_id: number; contract_id: number | null; amount: number; paid_on: string; bank: string;
+  bank_ref: string; has_proof: boolean; proof_name: string; invoice_id: number | null; recorded_by: string;
+  created_at: string; org_name?: string; contract_number?: string;
+};
+export type ContractStatus = "awaiting_payment" | "upcoming" | "active" | "ended" | "cancelled" | "unassigned";
+export type ContractRow = {
+  id: number | null; number: string; org_id: number; org_name: string; plan_code: string;
+  plan_name_ar: string; plan_name_fr: string; seats: number; starts_on: string; ends_on: string; days_left: number;
+  amount_ht: number; vat_rate: number; vat: number; amount_ttc: number; received: number; balance: number;
+  status: ContractStatus; notes: string; has_file: boolean; file_name: string; created_by: string; created_at: string;
+  transfers: TransferRow[];
+};
 export type OrgRow = Org & {
-  subscription: Subscription | null; access: Access; seats_used: number;
-  activity_30d: number; health: Health;
+  contract: ContractRow | null; access: Access; seats: { total: number; used: number };
+  paid: number; owed: number; activity_30d: number; health: Health;
 };
 export type OrgDetail = Org & {
-  contacts: Contact[]; opportunities: Opportunity[]; activities: ActivityRow[]; tasks: TaskRow[];
   members: Person[]; invitations: Invitation[]; subscription: Subscription | null; access: Access;
   seats: { total: number; used: number }; activity_30d: number; health: Health;
+  contracts: ContractRow[]; paid: number; owed: number; invoices: Invoice[];
   audit: { ts: string; actor: string; action: string; field: string; old: string; new: string }[];
-};
-export type Dashboard = {
-  pipeline: { stage: Stage; count: number; value: number }[]; new_leads: number;
-  revenue_month: number; outstanding: number; overdue_invoices: number;
-  renewals: { org_id: number; name: string; ends_on: string; status: string; plan_code: string; days_left: number }[];
-  at_risk: { id: number; name: string; activity_30d: number }[]; my_tasks_due: number; customers: number;
 };
 export type Ticket = {
   id: number; org_id: number | null; org_name: string; user_email: string; subject: string;
@@ -158,46 +145,49 @@ export const adminPlans = () => j<Plan[]>("/api/admin/plans");
 export const savePlan = (p: Plan) => put<Plan>(`/api/admin/plans/${encodeURIComponent(p.code)}`, p);
 export const outbox = () => j<Outbox[]>("/api/admin/outbox");
 
-// ---------- CRM ----------
-export const crmDashboard = () => j<Dashboard>("/api/crm/dashboard");
-export const leads = (p: { status?: string; q?: string } = {}) => j<Lead[]>(`/api/crm/leads?${qs(p)}`);
-export const createLead = (b: Partial<Lead>) => post<Lead>("/api/crm/leads", b);
-export const updateLead = (id: number, b: Partial<Lead>) => patch<Lead>(`/api/crm/leads/${id}`, b);
-export const convertLead = (id: number, b: { org_name?: string; kind?: string; trial?: boolean; invite?: boolean }) =>
-  post<{ org: Org }>(`/api/crm/leads/${id}/convert`, b);
-export const orgs = (p: { q?: string; status?: string } = {}) => j<OrgRow[]>(`/api/crm/orgs?${qs(p)}`);
-export const createOrg = (b: Partial<Org>) => post<Org>("/api/crm/orgs", b);
+// ---------- CRM: clients, contracts, transfers ----------
+export const leads = (status = "") => j<Lead[]>(`/api/crm/leads?${qs({ status })}`);
+export const updateLead = (id: number, status: Lead["status"]) => patch<Lead>(`/api/crm/leads/${id}`, { status });
+export const orgs = (q = "") => j<OrgRow[]>(`/api/crm/orgs?${qs({ q })}`);
 export const orgDetail = (id: number) => j<OrgDetail>(`/api/crm/orgs/${id}`);
 export const updateOrg = (id: number, b: Partial<Org>) => patch<Org>(`/api/crm/orgs/${id}`, b);
 export const orgInvite = (id: number, email: string, role: Role, language: Lang) =>
   post<{ email: string }>(`/api/crm/orgs/${id}/invite`, { email, role, language });
-export const createContact = (orgId: number, b: Partial<Contact>) => post<Contact>(`/api/crm/orgs/${orgId}/contacts`, b);
-export const deleteContact = (id: number) => del<{ ok: boolean }>(`/api/crm/contacts/${id}`);
-export const createOpp = (orgId: number, b: Partial<Opportunity>) =>
-  post<Opportunity>(`/api/crm/orgs/${orgId}/opportunities`, b);
-export const updateOpp = (id: number, b: Partial<Opportunity>) => patch<Opportunity>(`/api/crm/opportunities/${id}`, b);
-export const pipeline = () => j<Opportunity[]>("/api/crm/pipeline");
-export const addActivity = (orgId: number, b: { kind: string; body: string }) =>
-  post<ActivityRow>(`/api/crm/orgs/${orgId}/activities`, b);
-export const crmTasks = (p: { mine?: boolean; open_only?: boolean } = {}) => j<TaskRow[]>(`/api/crm/tasks?${qs(p)}`);
-export const createTask = (b: { title: string; due_on: string; org_id?: number; assigned_to?: string }) =>
-  post<TaskRow>("/api/crm/tasks", b);
-export const updateTask = (id: number, b: { done?: boolean; due_on?: string; title?: string }) =>
-  patch<TaskRow>(`/api/crm/tasks/${id}`, b);
 
-// ---------- billing ----------
-export const orgSubscriptions = (orgId: number) => j<Subscription[]>(`/api/crm/orgs/${orgId}/subscriptions`);
-export const addSubscription = (orgId: number, b: { plan_code: string; status: string; days?: number | undefined; seats?: number | undefined }) =>
-  post<{ id: number }>(`/api/crm/orgs/${orgId}/subscriptions`, b);
-export const changeSubscription = (id: number, b: { status?: string; ends_on?: string; seats?: number }) =>
-  patch<Subscription>(`/api/crm/subscriptions/${id}`, b);
-export const orgInvoices = (orgId: number) => j<Invoice[]>(`/api/crm/orgs/${orgId}/invoices`);
-export const addInvoice = (orgId: number, b: { amount_ht: number; description: string; vat_rate?: number; due_days?: number; send?: boolean }) =>
-  post<Invoice>(`/api/crm/orgs/${orgId}/invoices`, b);
-export const allInvoices = (status = "") => j<Invoice[]>(`/api/crm/invoices?${qs({ status })}`);
-export const addPayment = (invoiceId: number, b: { amount: number; method: string; reference: string; paid_on?: string }) =>
-  post<Invoice>(`/api/crm/invoices/${invoiceId}/payments`, b);
-export const cancelInvoice = (invoiceId: number) => post<Invoice>(`/api/crm/invoices/${invoiceId}/cancel`);
+export type NewClient = {
+  org: { name: string; kind: string; ice: string; address: string; city: string; phone: string; email: string; language: Lang };
+  contract: { plan_code: string; seats?: number | undefined; starts_on: string; ends_on: string; amount_ht: number; vat_rate: number; notes: string };
+  transfer?: { amount: number; paid_on: string; bank: string; bank_ref: string } | undefined;
+  accounts: { email: string; role: Role }[];
+};
+export const createClient = (b: NewClient) =>
+  post<{ org_id: number; contract: { id: number; number: string }; transfer: TransferRow | null; invited: string[]; active: boolean }>("/api/crm/clients", b);
+export const contracts = (status = "") => j<ContractRow[]>(`/api/crm/contracts?${qs({ status })}`);
+export const transfers = () => j<TransferRow[]>("/api/crm/transfers");
+export const addContract = (orgId: number, b: Partial<NewClient["contract"]>) =>
+  post<{ id: number; number: string }>(`/api/crm/orgs/${orgId}/contracts`, b);
+export const cancelContract = (id: number) => patch<ContractRow>(`/api/crm/contracts/${id}`, { cancel: true });
+export const addTransfer = (contractId: number, b: { amount: number; paid_on?: string; bank?: string; bank_ref?: string }) =>
+  post<TransferRow>(`/api/crm/contracts/${contractId}/transfers`, b);
+export const invoiceFromTransfer = (id: number) => post<{ invoice_id: number; number?: string }>(`/api/crm/transfers/${id}/invoice`);
+async function upload(path: string, file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return j<{ ok: boolean }>(path, { method: "POST", body: fd });
+}
+export const uploadContractFile = (id: number, file: File) => upload(`/api/crm/contracts/${id}/file`, file);
+export const uploadProof = (id: number, file: File) => upload(`/api/crm/transfers/${id}/proof`, file);
+/** Files behind the session: fetched with the token, then saved. */
+export async function downloadWithSession(path: string, name: string) {
+  const { apiBase, getToken } = await import("./api");
+  const r = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
 export const invoiceDetail = (invoiceId: number) => j<InvoiceDetail>(`/api/invoices/${invoiceId}`);
 
 // ---------- support ----------
@@ -236,7 +226,7 @@ export type ReaderRow = {
   email: string; full_name: string; role: Role; status: "active" | "suspended"; org_id: number | null;
   org_name: string; plan: string; access: Access; ends_on: string; last_login: string; last_seen: string;
   reads_30d: number; downloads_30d: number; searches_30d: number; logins_30d: number; reads_total: number;
-  org_paid: number; org_owed: number; sessions: number;
+  org_paid: number; org_owed: number; sessions: number; reading_minutes_30d: number; french_share: number;
 };
 export type TimelineItem = { ts: string; action: string; query?: string; doc_id?: string; decision_no?: string; date?: string; chamber?: string };
 export type ReaderDetail = {
@@ -251,6 +241,10 @@ export type ReaderDetail = {
   downloads: { ref: string; doc_id: string; at: string; decision_no?: string; chamber?: string; date?: string }[];
   sessions: { ip: string; device: string; created_at: string; last_seen: string; ended: string; why: string }[];
   audit: { ts: string; actor: string; action: string; field: string; old: string; new: string }[];
+  reading: { minutes: number; french_share: number;
+    longest: { doc_id: string; minutes: number; decision_no?: string; chamber?: string; date?: string }[] };
+  contracts: ContractRow[];
+  notes: { id: number; body: string; author: string; at: string }[];
 };
 type RulingCount = { doc_id: string; count: number; readers: number; decision_no?: string; chamber?: string; date?: string };
 export type Usage = {
@@ -278,49 +272,22 @@ export async function exportActivity(days: number, email = "") {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
-// ---------- quotes, reports, lists in and out ----------
-export type QuoteLine = { label: string; qty: number; unit_price: number };
-export type Quote = {
-  id: number; number: string; org_id: number; org_name?: string; lines: QuoteLine[]; plan_code: string;
-  months: number; seats: number | null; vat_rate: number; amount_ht: number; vat: number; amount_ttc: number;
-  issued_on: string; valid_until: string; status: "draft" | "sent" | "accepted" | "refused" | "expired";
-  notes: string; invoice_id: number | null; created_by: string;
+// ---------- following the readers: alerts, a file's trail, notes, the first screen ----------
+export type AlertItem = {
+  kind: "shared_ips" | "many_devices" | "quota_hit" | "too_fast" | "inactive" | "awaiting_payment" | "ending" | "balance";
+  level: "high" | "medium" | "low"; email?: string; org_id?: number; org?: string; count: number; at: string; detail: string;
 };
-export type QuoteDetail = Quote & { org: Org | null; seller: { name: string; address: string; ice: string; rib: string } };
-export type Reports = {
-  mrr: number; arr: number; paying_customers: number; arpa: number;
-  revenue: { month: string; amount: number }[]; new_customers: { month: string; count: number }[];
-  churned: { month: string; count: number }[]; leads_12m: number; converted_12m: number;
-  conversion_rate: number; win_rate: number; pipeline_open: number; forecast: number;
-  stage_odds: Record<string, number>; plans: Record<string, number>;
+export type Overview = {
+  readers: number; active_today: number; active_7d: number; active_30d: number; new_readers_30d: number;
+  received_month: number; received_year: number; owed: number; contracts_active: number; contracts_ending: number;
+  awaiting_payment: number; alerts_high: number; alerts: number; new_requests: number; usage: Usage;
 };
-export const quotes = (p: { status?: string; org_id?: number } = {}) => j<Quote[]>(`/api/crm/quotes?${qs(p)}`);
-export const createQuote = (orgId: number, b: { plan_code?: string; months?: number; seats?: number | undefined;
-  lines?: QuoteLine[]; vat_rate?: number; valid_days?: number; notes?: string }) =>
-  post<Quote>(`/api/crm/orgs/${orgId}/quotes`, b);
-export const sendQuote = (id: number) => post<Quote>(`/api/crm/quotes/${id}/send`);
-export const acceptQuote = (id: number) => post<{ invoice: Invoice }>(`/api/crm/quotes/${id}/accept`);
-export const refuseQuote = (id: number) => post<Quote>(`/api/crm/quotes/${id}/refuse`);
-export const quoteDetail = (id: number) => j<QuoteDetail>(`/api/quotes/${id}`);
-export const myQuotes = () => j<Quote[]>("/api/account/quotes");
-export const reports = () => j<Reports>("/api/crm/reports");
-export const emailContact = (orgId: number, b: { to: string; subject: string; body: string; lang: Lang }) =>
-  post<ActivityRow>(`/api/crm/orgs/${orgId}/email`, b);
-export const duplicates = (email: string, company: string) =>
-  j<{ leads: Lead[]; orgs: Org[] }>(`/api/crm/duplicates?${qs({ email, company })}`);
-export async function importLeads(file: File) {
-  const fd = new FormData();
-  fd.append("file", file);
-  return j<{ created: number; skipped: number }>("/api/crm/import/leads", { method: "POST", body: fd });
-}
-/** Lists as CSV for Excel: fetched with the session, then saved. */
-export async function exportCsv(what: "leads" | "orgs" | "invoices" | "payments") {
-  const { apiBase, getToken } = await import("./api");
-  const r = await fetch(`${apiBase}/api/crm/export/${what}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(await r.blob());
-  a.download = `${what}-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-}
+export type FoundDownload = { ref: string; email: string; org_id: number | null; org: string; doc_id: string; at: string;
+  decision_no?: string; chamber?: string; date?: string };
+export const crmAlerts = () => j<AlertItem[]>("/api/crm/alerts");
+export const overview = () => j<Overview>("/api/crm/overview");
+export const findDownload = (ref: string) => j<FoundDownload>(`/api/crm/downloads/${encodeURIComponent(ref.trim())}`);
+export const addNote = (email: string, body: string) =>
+  post<{ id: number }>(`/api/crm/users/${encodeURIComponent(email)}/notes`, { body });
+export const emailReader = (email: string, subject: string, body: string) =>
+  post<{ ok: boolean }>(`/api/crm/users/${encodeURIComponent(email)}/email`, { subject, body });

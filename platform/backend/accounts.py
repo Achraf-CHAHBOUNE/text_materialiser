@@ -305,7 +305,6 @@ def account(user: dict = Depends(current_user)) -> dict:
         out["access"] = billing.access_state(org["id"])
         out["seats"] = {"total": billing.seats_for(org["id"]), "used": seats_used(org["id"])}
         out["quota"] = billing.daily_downloads(org["id"])
-    out["practice"] = user["role"] in CLIENTS and billing.has_practice(user.get("org_id"))
     return out
 
 

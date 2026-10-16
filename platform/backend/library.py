@@ -21,7 +21,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func, or_, select
+from sqlalchemy import Date, DateTime, Integer, String, Text, UniqueConstraint, func, or_, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 import db
@@ -61,6 +61,20 @@ class Alert(db.Base):
     active: Mapped[int] = mapped_column(Integer, default=1)
     last_sent_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class ReadingTime(db.Base):
+    """Seconds a reader kept a ruling open and in view, per day, per language. A page
+    sends a beat every half minute while it is visible; a click that leaves at once
+    sends nothing, so an opened ruling and a read one can be told apart."""
+    __tablename__ = "reading_time"
+    __table_args__ = (UniqueConstraint("actor", "doc_id", "day", "lang", name="uq_reading_time"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    actor: Mapped[str] = mapped_column(String, index=True)
+    doc_id: Mapped[str] = mapped_column(String, index=True)
+    day: Mapped[dt.date] = mapped_column(Date, index=True)
+    lang: Mapped[str] = mapped_column(String, default="ar")
+    seconds: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Download(db.Base):
@@ -394,6 +408,32 @@ def history(user: dict = Depends(current_user)) -> list:
                         chamber=d.category)
         out.append(item)
     return out
+
+
+class BeatBody(BaseModel):
+    seconds: int
+    lang: str = "ar"
+
+
+@router.post("/api/decisions/{doc_id}/reading")
+def reading_beat(doc_id: str, body: BeatBody, user: dict = Depends(current_user)) -> dict:
+    """Add a beat of reading time. At most a minute per beat, whatever the page claims."""
+    seconds = max(0, min(int(body.seconds), 60))
+    if seconds == 0 or user["role"] in STAFF:
+        return {"ok": True}
+    lang = body.lang if body.lang in ("ar", "fr") else "ar"
+    today = dt.date.today()
+    with db.session() as s:
+        row = s.scalar(select(ReadingTime).where(ReadingTime.actor == user["email"], ReadingTime.doc_id == doc_id,
+                                                 ReadingTime.day == today, ReadingTime.lang == lang))
+        if row is None:
+            if not s.get(db.Decision, doc_id):
+                raise HTTPException(status_code=404, detail="Not found")
+            row = ReadingTime(actor=user["email"], doc_id=doc_id, day=today, lang=lang, seconds=0)
+            s.add(row)
+        row.seconds += seconds
+        s.commit()
+    return {"ok": True}
 
 
 @router.get("/api/me/downloads")

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Ban, CheckCircle2, ExternalLink, Eye, Save, Trash2, Upload, UserPlus } from "lucide-react";
+import { CheckCircle2, ExternalLink, Eye, Save, Upload } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,9 @@ import { OutboxPanel, PlansPanel, StaffPanel } from "@/components/AdminPanels";
 import { useStore } from "@/lib/app-store";
 import { useI18n } from "@/lib/i18n";
 import {
-  adminFileUrl, adminGetDecision, adminQueue, correctDecision, createClient, deleteClient,
-  importBatch, listClients, setDecisionState, updateClient,
-  type ClientAccount, type Decision,
+  adminFileUrl, adminGetDecision, adminQueue, correctDecision,
+  importBatch, setDecisionState,
+  type Decision,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/admin")({
@@ -37,7 +37,6 @@ function AdminConsole() {
           <TabsTrigger value="queue" className="px-5">{t("adm.tabQueue")}</TabsTrigger>
           {isSuper && (
             <>
-              <TabsTrigger value="clients" className="px-5">{t("adm.tabClients")}</TabsTrigger>
               <TabsTrigger value="staff" className="px-5">{t("adm.tabStaff")}</TabsTrigger>
               <TabsTrigger value="plans" className="px-5">{t("adm.tabPlans")}</TabsTrigger>
               <TabsTrigger value="mail" className="px-5">{t("adm.tabMail")}</TabsTrigger>
@@ -48,7 +47,6 @@ function AdminConsole() {
         <TabsContent value="queue" className="mt-5"><QueuePanel /></TabsContent>
         {isSuper && (
           <>
-            <TabsContent value="clients" className="mt-5"><ClientsPanel /></TabsContent>
             <TabsContent value="staff" className="mt-5"><StaffPanel /></TabsContent>
             <TabsContent value="plans" className="mt-5"><PlansPanel /></TabsContent>
             <TabsContent value="mail" className="mt-5"><OutboxPanel /></TabsContent>
@@ -279,79 +277,5 @@ function ReviewDialog({ docId, onClose, onChanged }:
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ClientsPanel() {
-  const { t } = useI18n();
-  const [clients, setClients] = useState<ClientAccount[]>([]);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const load = () => listClients().then(setClients).catch(() => setClients([]));
-  useEffect(() => { load(); }, []);
-
-  async function add() {
-    if (!email || password.length < 6) { toast.error(t("adm.needEmail")); return; }
-    try { await createClient(email, password); setEmail(""); setPassword(""); toast.success(t("adm.clientCreated")); load(); }
-    catch (e) { toast.error(e instanceof Error ? e.message : t("adm.failed")); }
-  }
-  async function toggle(c: ClientAccount) {
-    const next = c.status === "active" ? "suspended" : "active";
-    try { await updateClient(c.email, { status: next }); toast.success(`${c.email} — ${t(next === "active" ? "adm.status.active" : "adm.status.suspended")}`); load(); }
-    catch (e) { toast.error(e instanceof Error ? e.message : t("adm.failed")); }
-  }
-  async function remove(c: ClientAccount) {
-    try { await deleteClient(c.email); toast.success(`${t("adm.deleted")} ${c.email}`); load(); }
-    catch (e) { toast.error(e instanceof Error ? e.message : t("adm.failed")); }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border bg-card p-5 shadow-soft">
-        <h2 className="flex items-center gap-2 text-sm font-semibold"><UserPlus className="size-4 text-teal" />{t("adm.newClient")}</h2>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <Input placeholder="client@firm.ma" value={email} onChange={(e) => setEmail(e.target.value)} className="h-10" />
-          <Input placeholder={t("adm.password")} type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-10" />
-          <Button className="h-10" onClick={add}>{t("adm.create")}</Button>
-        </div>
-      </div>
-
-      <div className="overflow-auto rounded-2xl border bg-card shadow-soft">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b text-start text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3 text-start">{t("adm.colEmail")}</th>
-              <th className="px-4 py-3 text-start">{t("adm.colStatus")}</th>
-              <th className="px-4 py-3 text-start">{t("adm.colLastLogin")}</th>
-              <th className="px-4 py-3 text-end">{t("adm.colActions")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {clients.map((c) => (
-              <tr key={c.email} className="odd:bg-muted/25">
-                <td className="px-4 py-3 font-medium">{c.email}</td>
-                <td className="px-4 py-3">
-                  <Pill tone={c.status === "active" ? "success" : "muted"}>{t(c.status === "active" ? "adm.status.active" : "adm.status.suspended")}</Pill>
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{c.last_login ? c.last_login.slice(0, 16).replace("T", " ") : "—"}</td>
-                <td className="px-4 py-3 text-end">
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => toggle(c)}>
-                      <Ban className="size-3.5" />{c.status === "active" ? t("adm.suspend") : t("adm.activate")}
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-8 text-destructive" onClick={() => remove(c)}>
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {clients.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-muted-foreground">{t("adm.noClients")}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }

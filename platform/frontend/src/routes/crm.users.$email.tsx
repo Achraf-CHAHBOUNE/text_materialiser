@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Ban, CheckCircle2, Download, Eye, LogIn, LogOut, Search, SearchX } from "lucide-react";
+import { Ban, CheckCircle2, Download, Eye, FilePlus2, LogIn, LogOut, Mail, Search, SearchX } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/AppShell";
 import { Bars } from "@/components/Bars";
 import { Badge, Card, day, Empty, money, Select, Stat, STATUS_TONE, Table, Td, when } from "@/components/biz";
+import { ContractCard } from "@/components/ContractCard";
 import { CrmNav } from "@/components/CrmNav";
 import { Button } from "@/components/ui/button";
-import { exportActivity, forceLogout, readerDetail, updateUser } from "@/lib/api-biz";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { addNote, emailReader, exportActivity, forceLogout, readerDetail, updateUser, type ReaderDetail } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/crm/users/$email")({
@@ -41,6 +44,7 @@ function ReaderPage() {
     <AppShell title={d?.user.full_name || email} description={d ? `${email}${d.org ? ` · ${d.org.name}` : ""}` : email}
               action={d && (
                 <div className="flex flex-wrap gap-2">
+                  {d.org && <Button asChild size="sm"><Link to="/crm/orgs/$orgId" params={{ orgId: String(d.org.id) }}><FilePlus2 className="size-4" />{t("con.renew")}</Link></Button>}
                   <Button size="sm" variant="outline" onClick={() => void exportActivity(Number(days), email).catch(() => toast.error(t("adm.failed")))}>
                     <Download className="size-4" />{t("trk.export")}</Button>
                   <Button size="sm" variant="outline" onClick={() => logout.mutate()}><LogOut className="size-4" />{t("trk.forceLogout")}</Button>
@@ -62,6 +66,12 @@ function ReaderPage() {
                   hint={d.money.owed ? <span className="text-destructive">{t("trk.owes")} {money(d.money.owed, lang)}</span> : undefined} />
             <Stat label={t("acc.subscription")} value={d.subscription ? (lang === "fr" ? d.subscription.plan_name_fr : d.subscription.plan_name_ar) : "—"}
                   hint={<Badge tone={STATUS_TONE[d.access]}>{status(d.access)}{d.subscription ? ` · ${day(d.subscription.ends_on)}` : ""}</Badge>} />
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <Reading d={d} />
+            <Notes email={email} d={d} onChange={refresh} />
+            <EmailForm email={email} onSent={refresh} />
           </div>
 
           <Card className="mt-4" title={t("trk.activity")}
@@ -160,8 +170,11 @@ function ReaderPage() {
               )}
               <p className="mt-2 text-xs text-muted-foreground">{t("trk.refHint")}</p>
             </Card>
-            <Card title={t("bill.invoices")}>
-              {d.money.invoices.length === 0 ? <Empty>{t("bill.none")}</Empty> : (
+            <div className="space-y-3">
+              {d.contracts.length === 0 ? <Card title={t("con.contracts")}><Empty>{t("con.none")}</Empty></Card>
+                : d.contracts.map((c) => <ContractCard key={c.id ?? "loose"} c={c} onChange={refresh} />)}
+            {d.money.invoices.length > 0 && <Card title={t("bill.invoices")}>
+              {(
                 <Table head={[t("bill.number"), t("bill.issued"), t("bill.total"), t("bill.balance"), t("adm.colStatus")]} minWidth="28rem">
                   {d.money.invoices.map((i) => (
                     <tr key={i.id}>
@@ -173,10 +186,74 @@ function ReaderPage() {
                   ))}
                 </Table>
               )}
-            </Card>
+            </Card>}
+            </div>
           </div>
         </>
       )}
     </AppShell>
+  );
+}
+
+/** How long the reader stays on the rulings, in which language, and on which ones longest. */
+function Reading({ d }: { d: ReaderDetail }) {
+  const { t, num, chamber } = useI18n();
+  const r = d.reading;
+  return (
+    <Card title={t("trk.readingTime")}>
+      <p className="text-2xl font-semibold tabular-nums">{num(r.minutes)} <span className="text-sm font-normal text-muted-foreground">{t("trk.min")}</span></p>
+      <p className="text-xs text-muted-foreground">{num(d.days)} {t("crm.days")} · {num(r.french_share)}% {t("trk.inFrench")} · {num(100 - r.french_share)}% {t("trk.inArabic")}</p>
+      {r.longest.length > 0 && (
+        <ul className="mt-2 divide-y text-xs">
+          {r.longest.slice(0, 5).map((x) => (
+            <li key={x.doc_id} className="flex justify-between gap-2 py-1">
+              <Link to="/ruling/$docId" params={{ docId: x.doc_id }} className="truncate hover:text-teal">{num(x.decision_no ?? "")} · {chamber(x.chamber ?? "")}</Link>
+              <span className="shrink-0 tabular-nums">{num(x.minutes)} {t("trk.min")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/** What the team knows about this reader, for the team only. */
+function Notes({ email, d, onChange }: { email: string; d: ReaderDetail; onChange: () => void }) {
+  const { t } = useI18n();
+  const [body, setBody] = useState("");
+  const add = useMutation({ mutationFn: () => addNote(email, body), onSuccess: () => { setBody(""); onChange(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")) });
+  return (
+    <Card title={t("trk.notes")}>
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (body.trim()) add.mutate(); }}>
+        <Input value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("trk.notePlaceholder")} className="h-9" aria-label={t("trk.notes")} />
+        <Button type="submit" size="sm" disabled={add.isPending || !body.trim()}>{t("trk.addNote")}</Button>
+      </form>
+      {d.notes.length > 0 && (
+        <ul className="mt-2 max-h-48 divide-y overflow-auto text-sm">
+          {d.notes.map((n) => (
+            <li key={n.id} className="py-1.5"><p className="whitespace-pre-wrap">{n.body}</p>
+              <p className="text-xs text-muted-foreground">{n.author} · {when(n.at)}</p></li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function EmailForm({ email, onSent }: { email: string; onSent: () => void }) {
+  const { t } = useI18n();
+  const [f, setF] = useState({ subject: "", body: "" });
+  const send = useMutation({ mutationFn: () => emailReader(email, f.subject, f.body),
+    onSuccess: () => { toast.success(t("trk.emailQueued")); setF({ subject: "", body: "" }); onSent(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")) });
+  return (
+    <Card title={t("trk.writeEmail")}>
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); send.mutate(); }}>
+        <Input required value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} placeholder={t("sup.subject")} className="h-9" aria-label={t("sup.subject")} />
+        <Textarea required value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} rows={3} aria-label={t("trk.writeEmail")} />
+        <Button type="submit" size="sm" disabled={send.isPending}><Mail className="size-4" />{t("trk.send")}</Button>
+      </form>
+    </Card>
   );
 }

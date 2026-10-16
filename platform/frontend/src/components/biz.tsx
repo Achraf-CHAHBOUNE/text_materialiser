@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { Lang } from "@/lib/lang-url";
 import { cn } from "@/lib/utils";
 
@@ -85,10 +84,10 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 

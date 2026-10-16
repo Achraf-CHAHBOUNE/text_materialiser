@@ -8,8 +8,7 @@ Once a day
     remind customers 30, 15 and 7 days before their subscription ends -- and their
       account manager -- once each, however often this runs
     email each reader's alerts: rulings published since their last one
-    email each sales person their day (tasks due, renewals they manage)
-    email each lawyer their hearings in two days and deadlines within seven
+    email the admin their morning: new readers, transfers, contracts to chase, alerts
 
 Runs beside the API, never inside a request:
 
@@ -34,43 +33,38 @@ import crm  # noqa: F401  -- its tables must exist
 import db
 import library
 import mailer
-import practice
-import sales  # noqa: F401  -- its tables must exist
 import support  # noqa: F401
 
 REMIND_DAYS = (30, 15, 7)
 
 
-def sales_digests(today: dt.date) -> int:
-    """Each sales person's day: tasks due, and the renewals they manage this month."""
-    sent = 0
+def admin_digest(today: dt.date) -> int:
+    """The admin's morning: new readers, money received, contracts to chase, alerts."""
+    import contracts
+    import insights
+    yesterday = today - dt.timedelta(days=1)
     with db.session() as s:
-        tasks = list(s.execute(select(crm.Task.assigned_to, crm.Task.title, crm.Task.due_on).where(
-            crm.Task.done_at.is_(None), crm.Task.due_on <= today)).all())
-        subs = list(s.scalars(select(billing.Subscription).where(
-            billing.Subscription.status.in_(("trial", "active")),
-            billing.Subscription.ends_on >= today,
-            billing.Subscription.ends_on <= today + dt.timedelta(days=30))))
-    per: dict = {}
-    for who, title, due in tasks:
-        late = " (!)" if due < today else ""
-        per.setdefault(who, []).append(f"• {due.isoformat()}{late} — {title}")
-    for x in subs:
-        org = accounts.get_org(x.org_id) or {}
-        who = org.get("account_manager") or ""
-        if who:
-            per.setdefault(who, []).append(f"• fin {x.ends_on.isoformat()} — {org.get('name', '')} ({x.status})")
-    for email, lines in per.items():
-        sent += mailer.queue(email, "digest", "fr", dedupe=f"digest:{today.isoformat()}:{email}",
-                             body="\n".join(lines), link=f"{mailer.site_url()}/fr/crm")
-    return sent
-
-
-def practice_digests(today: dt.date) -> int:
+        new = list(s.scalars(select(db.User.email).where(db.User.role.in_(("client", "client_admin")),
+                                                         db.User.created_at >= dt.datetime.combine(yesterday, dt.time.min),
+                                                         db.User.created_at < dt.datetime.combine(today, dt.time.min))))
+        got = list(s.execute(select(contracts.Transfer.amount, accounts.Organization.name)
+                             .join(accounts.Organization, accounts.Organization.id == contracts.Transfer.org_id)
+                             .where(contracts.Transfer.paid_on == yesterday)).all())
+    every = contracts.all_contracts(status="", _={})
+    ending = [c for c in every if c["status"] == "active" and c["days_left"] in (30, 15, 7, 1)]
+    waiting = [c for c in every if c["status"] == "awaiting_payment"]
+    high = [a for a in insights.alerts(_={}) if a["level"] == "high"]
+    if not (new or got or ending or waiting or high):
+        return 0
+    lines = [f"Nouveaux lecteurs hier : {len(new)}"] + [f"  • {e}" for e in new]
+    lines += [f"Virements reçus hier : {len(got)}"] + [f"  • {name} — {a / 100:.2f} MAD" for a, name in got]
+    lines += [f"Contrats qui se terminent : {len(ending)}"] + [f"  • {c['org_name']} — {c['ends_on']} ({c['days_left']} j)" for c in ending]
+    lines += [f"Contrats en attente de paiement : {len(waiting)}"] + [f"  • {c['org_name']} — {c['number']}" for c in waiting]
+    lines += [f"Alertes importantes : {len(high)}"] + [f"  • {a['kind']} — {a.get('email') or a.get('org', '')}" for a in high[:10]]
     sent = 0
-    for email, lang, body in practice.digests(today):
-        sent += mailer.queue(email, "hearing_digest", lang, dedupe=f"hearings:{today.isoformat()}:{email}",
-                             body=body, link=f"{mailer.site_url()}/{lang}/cabinet")
+    for email in mailer.staff_addresses(("admin",)):
+        sent += mailer.queue(email, "digest", "fr", dedupe=f"admin_digest:{today.isoformat()}:{email}",
+                             body="\n".join(lines), link=f"{mailer.site_url()}/fr/crm")
     return sent
 
 
@@ -197,7 +191,7 @@ def daily(force: bool = False) -> dict:
         return {}
     out = {"expired": expire_subscriptions(today), "overdue": mark_overdue(today),
            "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow()),
-           "sales_digests": sales_digests(today), "practice_digests": practice_digests(today)}
+           "admin_digest": admin_digest(today)}
     _set("daily", today.isoformat())
     return out
 

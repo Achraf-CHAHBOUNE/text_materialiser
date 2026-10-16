@@ -115,3 +115,40 @@ def test_the_activity_exports_for_excel(reader):
     r = client.get("/api/crm/activity/export?email=lecteur@cab.ma", headers=admin())
     text = r.content.decode("utf-8-sig")
     assert r.status_code == 200 and "lecteur@cab.ma,view,ins_001,501" in text
+
+
+def test_a_file_found_circulating_leads_back_to_who_took_it(reader):
+    d = client.get("/api/crm/users/lecteur@cab.ma", headers=admin()).json()
+    ref = d["downloads"][0]["ref"]
+    found = client.get(f"/api/crm/downloads/{ref.lower()}", headers=admin()).json()
+    assert found["email"] == "lecteur@cab.ma" and found["decision_no"] == "501" and found["org"] == "Cabinet Lecteur"
+    assert client.get("/api/crm/downloads/NOPE", headers=admin()).status_code == 404
+
+
+def test_reading_time_tells_a_read_from_a_click(reader):
+    h = _login("lecteur@cab.ma")
+    for _ in range(3):
+        client.post("/api/decisions/ins_001/reading", headers=h, json={"seconds": 30, "lang": "fr"})
+    client.post("/api/decisions/ins_001/reading", headers=h, json={"seconds": 5000, "lang": "ar"})   # capped at 60
+    d = client.get("/api/crm/users/lecteur@cab.ma", headers=admin()).json()
+    assert d["reading"]["minutes"] == 2 and d["reading"]["french_share"] == 60
+    assert d["reading"]["longest"][0]["doc_id"] == "ins_001"
+
+
+def test_notes_and_emails_stay_on_the_reader(reader):
+    client.post("/api/crm/users/lecteur@cab.ma/notes", headers=admin(), json={"body": "Appelé : renouvelle en janvier"})
+    client.post("/api/crm/users/lecteur@cab.ma/email", headers=admin(), json={"subject": "Bienvenue", "body": "Bonjour"})
+    notes = client.get("/api/crm/users/lecteur@cab.ma", headers=admin()).json()["notes"]
+    assert {n["body"].split("\n")[0] for n in notes} == {"Appelé : renouvelle en janvier", "✉ Bienvenue"}
+    out = client.get("/api/admin/outbox", headers=admin()).json()
+    assert any(m["to"] == "lecteur@cab.ma" and m["subject"] == "Bienvenue" for m in out)
+
+
+def test_an_account_used_from_three_addresses_in_a_day_is_flagged(reader):
+    for ip in ("10.0.0.1", "10.0.0.2", "10.0.0.3"):
+        client.post("/api/auth/login", json={"email": "lecteur@cab.ma", "password": PW},
+                    headers={"x-forwarded-for": ip})
+    al = client.get("/api/crm/alerts", headers=admin()).json()
+    shared = [a for a in al if a["kind"] == "shared_ips" and a["email"] == "lecteur@cab.ma"]
+    assert shared and shared[0]["level"] == "high" and shared[0]["count"] >= 3
+    assert al[0]["level"] == "high"                                              # the serious first

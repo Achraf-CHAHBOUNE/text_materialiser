@@ -3,12 +3,15 @@
 Every view, search, download, translation and sign-in is already written to
 client_activity as it happens; sessions keep the address and device of each sign-in;
 downloads keep the reference printed in the file. This module only reads them back,
-for the people allowed to see them (admin and sales), three ways:
+for the people allowed to see them (admin and sales):
 
     /api/crm/users            every reader, with their subscription, money and use
     /api/crm/users/{email}    one reader: timeline, downloads, devices, invoices
     /api/crm/usage            the whole platform: who is active, what is read,
                               what is searched -- and what is searched and not found
+    /api/crm/alerts           what deserves a look: shared accounts, limits hit, quiet payers
+    /api/crm/downloads/{ref}  who downloaded the file a reference was printed in
+    /api/crm/overview         the first screen: readers, money, contracts, alerts
 
 Readers never see any of this about each other; it is ours, to run the service.
 """
@@ -21,12 +24,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select, text
+from pydantic import BaseModel
+from sqlalchemy import DateTime, Integer, String, Text, func, select, text
+from sqlalchemy.orm import Mapped, mapped_column
 
 import accounts
 import billing
 import db
 import library
+import mailer
 from deps import CLIENTS, require_sales
 
 ACTIONS = ("view", "download", "search", "search_empty", "translate", "login")
@@ -53,16 +59,33 @@ def _decisions(ids) -> dict:
 
 
 def _money_by_org() -> dict:
-    """{org_id: (paid, still owed)} in centimes."""
+    """{org_id: (paid, still owed)} in centimes -- transfers and contracts (contracts.py)."""
+    import contracts
+    return contracts.money_by_org()
+
+
+def _reading(email: Optional[str], since: dt.date) -> dict:
+    """{actor: (seconds, seconds in French)} of reading since a date."""
+    R = library.ReadingTime
     with db.session() as s:
-        paid = dict(s.execute(select(billing.Invoice.org_id, func.sum(billing.Payment.amount))
-                              .join(billing.Payment, billing.Payment.invoice_id == billing.Invoice.id)
-                              .group_by(billing.Invoice.org_id)).all())
-    owed: dict = {}
-    for i in billing.list_invoices():
-        if i["status"] in ("sent", "overdue"):
-            owed[i["org_id"]] = owed.get(i["org_id"], 0) + i["balance"]
-    return {o: (int(paid.get(o, 0) or 0), int(owed.get(o, 0))) for o in set(paid) | set(owed)}
+        q = select(R.actor, R.lang, func.sum(R.seconds)).where(R.day >= since).group_by(R.actor, R.lang)
+        if email:
+            q = q.where(R.actor == email)
+        out: dict = {}
+        for actor, lang, secs in s.execute(q):
+            total, fr = out.get(actor, (0, 0))
+            out[actor] = (total + int(secs or 0), fr + (int(secs or 0) if lang == "fr" else 0))
+    return out
+
+
+class UserNote(db.Base):
+    """What the admin wants to remember about a reader: a call, an agreement, a warning."""
+    __tablename__ = "user_notes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, index=True)
+    body: Mapped[str] = mapped_column(Text, default="")
+    author: Mapped[str] = mapped_column(String, default="")
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 router = APIRouter()
@@ -92,9 +115,11 @@ def users(q: str = "", _: dict = Depends(require_sales)) -> list:
                               .group_by(accounts.UserSession.user_id)).all())
         orgs = {o.id: o.name for o in s.scalars(select(accounts.Organization))}
     money = _money_by_org()
+    reading = _reading(None, (dt.datetime.utcnow() - dt.timedelta(days=30)).date())
     out = []
     for u in people:
         c = counts.get(u.email, {})
+        secs, fr = reading.get(u.email, (0, 0))
         sub = billing.current_subscription(u.org_id)
         paid, owed = money.get(u.org_id, (0, 0))
         seen = last.get(u.email)
@@ -109,6 +134,7 @@ def users(q: str = "", _: dict = Depends(require_sales)) -> list:
             "searches_30d": c.get("search", 0) + c.get("search_empty", 0),
             "logins_30d": c.get("login", 0), "reads_total": int(totals.get(u.email, 0)),
             "org_paid": paid, "org_owed": owed, "sessions": int(live.get(u.id, 0)),
+            "reading_minutes_30d": secs // 60, "french_share": round(100 * fr / secs) if secs else 0,
         })
     return out
 
@@ -162,8 +188,17 @@ def user_detail(email: str, days: int = 30, _: dict = Depends(require_sales)) ->
         ch = decs.get(d, {}).get("chamber")
         if ch:
             chambers[ch] = chambers.get(ch, 0) + 1
+    import contracts
     org = accounts.get_org(u.get("org_id"))
     paid, owed = _money_by_org().get(u.get("org_id"), (0, 0))
+    R = library.ReadingTime
+    with db.session() as s:
+        per_doc = list(s.execute(select(R.doc_id, func.sum(R.seconds)).where(R.actor == email, R.day >= since.date())
+                                 .group_by(R.doc_id).order_by(func.sum(R.seconds).desc()).limit(10)).all())
+        notes = [{"id": n.id, "body": n.body, "author": n.author, "at": n.at.isoformat()}
+                 for n in s.scalars(select(UserNote).where(UserNote.email == email).order_by(UserNote.at.desc()))]
+    secs, fr = _reading(email, since.date()).get(email, (0, 0))
+    long_reads = _decisions([d for d, _ in per_doc])
     profile = {k: u.get(k) for k in ("email", "full_name", "phone", "role", "status", "language",
                                      "org_id", "mfa", "created_at", "last_login")}
     return {
@@ -182,6 +217,167 @@ def user_detail(email: str, days: int = 30, _: dict = Depends(require_sales)) ->
         "downloads": [{"ref": d.ref, "doc_id": d.doc_id, "at": d.at.isoformat(), **decs.get(d.doc_id, {})} for d in dls],
         "sessions": sessions,
         "audit": db.audit_for(email)[:50],
+        "reading": {"minutes": secs // 60, "french_share": round(100 * fr / secs) if secs else 0,
+                    "longest": [{"doc_id": d, "minutes": int(n) // 60, **long_reads.get(d, {})} for d, n in per_doc]},
+        "contracts": contracts.contracts_for(u["org_id"]) if u.get("org_id") else [],
+        "notes": notes,
+    }
+
+
+class NoteBody(BaseModel):
+    body: str
+
+
+@router.post("/api/crm/users/{email}/notes")
+def add_note(email: str, body: NoteBody, user: dict = Depends(require_sales)) -> dict:
+    if not db.get_user(email) or not body.body.strip():
+        raise HTTPException(status_code=400, detail="A note needs a reader and a text")
+    with db.session() as s:
+        n = UserNote(email=email, body=body.body.strip()[:4000], author=user["email"])
+        s.add(n)
+        s.commit()
+        return {"id": n.id, "body": n.body, "author": n.author, "at": n.at.isoformat()}
+
+
+class MailBody(BaseModel):
+    subject: str
+    body: str
+
+
+@router.post("/api/crm/users/{email}/email")
+def email_reader(email: str, body: MailBody, user: dict = Depends(require_sales)) -> dict:
+    """Write to a reader from their page; the message is kept as a note too."""
+    u = db.get_user(email)
+    if not u or not body.subject.strip() or not body.body.strip():
+        raise HTTPException(status_code=400, detail="Subject and message required")
+    mailer.queue_text(email, body.subject.strip(), body.body.strip(), u.get("language", "ar"))
+    with db.session() as s:
+        s.add(UserNote(email=email, author=user["email"],
+                       body=f"✉ {body.subject.strip()}\n\n{body.body.strip()}"[:4000]))
+        s.commit()
+    return {"ok": True}
+
+
+@router.get("/api/crm/downloads/{ref}")
+def find_download(ref: str, _: dict = Depends(require_sales)) -> dict:
+    """A Word file found circulating: the reference at the foot of its pages says who
+    downloaded it, when, and which ruling it is."""
+    with db.session() as s:
+        d = s.scalar(select(library.Download).where(func.upper(library.Download.ref) == ref.strip().upper()))
+        if not d:
+            raise HTTPException(status_code=404, detail="No download with this reference")
+        out = {"ref": d.ref, "email": d.user_email, "org_id": d.org_id, "doc_id": d.doc_id, "at": d.at.isoformat()}
+    out.update(_decisions([out["doc_id"]]).get(out["doc_id"], {}))
+    out["org"] = (accounts.get_org(out["org_id"]) or {}).get("name", "")
+    return out
+
+
+@router.get("/api/crm/alerts")
+def alerts(_: dict = Depends(require_sales)) -> list:
+    """What deserves a look: an account used like a shared one, a reader at the download
+    limit day after day, reading too fast to be a person, a paying reader gone quiet,
+    contracts unpaid or ending. Newest and most serious first."""
+    import contracts
+    today = dt.date.today()
+    week = _since(7)
+    out = []
+    with db.session() as s:
+        readers = {u.id: u for u in s.scalars(select(db.User).where(db.User.role.in_(CLIENTS), db.User.status == "active"))}
+        ips: dict = {}
+        devices: dict = {}
+        for x in s.scalars(select(accounts.UserSession).where(accounts.UserSession.created_at >= week,
+                                                               accounts.UserSession.user_id.in_(list(readers)))):
+            day_ = x.created_at.date()
+            ips.setdefault((x.user_id, day_), set()).add(x.ip)
+            devices.setdefault(x.user_id, set()).add(x.device)
+        dl_days = list(s.execute(select(library.Download.user_email, func.date(library.Download.at), func.count())
+                                 .where(library.Download.at >= _since(30))
+                                 .group_by(library.Download.user_email, func.date(library.Download.at))).all())
+        throttled = list(s.execute(select(db.AuditLog.actor, func.count(), func.max(db.AuditLog.ts))
+                                   .where(db.AuditLog.action == "throttled", db.AuditLog.ts >= _since(30))
+                                   .group_by(db.AuditLog.actor)).all())
+        last = dict(s.execute(select(db.ClientActivity.actor, func.max(db.ClientActivity.ts))
+                              .group_by(db.ClientActivity.actor)).all())
+    by_email = {u.email: u for u in readers.values()}
+    for (uid, day_), seen in ips.items():
+        if len(seen) >= 3:
+            u = readers[uid]
+            out.append({"kind": "shared_ips", "level": "high", "email": u.email, "count": len(seen),
+                        "at": day_.isoformat(), "detail": ", ".join(sorted(seen))[:200]})
+    for uid, seen in devices.items():
+        if len(seen) >= 3:
+            out.append({"kind": "many_devices", "level": "medium", "email": readers[uid].email,
+                        "count": len(seen), "at": today.isoformat(), "detail": ""})
+    hits: dict = {}
+    for email, day_, n in dl_days:
+        u = by_email.get(email)
+        if u and n >= max(1, billing.daily_downloads(u.org_id)):
+            hits.setdefault(email, []).append(str(day_))
+    for email, days_ in hits.items():
+        out.append({"kind": "quota_hit", "level": "high" if len(days_) >= 3 else "medium", "email": email,
+                    "count": len(days_), "at": max(days_), "detail": ""})
+    for email, n, at in throttled:
+        out.append({"kind": "too_fast", "level": "high", "email": email, "count": int(n),
+                    "at": at.isoformat() if at else "", "detail": ""})
+    for u in readers.values():
+        if billing.access_state(u.org_id) != "ok":
+            continue
+        seen = last.get(u.email)
+        quiet = (dt.datetime.utcnow() - seen).days if seen else None
+        if quiet is None or quiet >= 15:
+            out.append({"kind": "inactive", "level": "low", "email": u.email, "count": quiet or 0,
+                        "at": seen.isoformat() if seen else "", "detail": ""})
+    for c in contracts.all_contracts(status="", _={}):
+        if c["status"] == "awaiting_payment":
+            out.append({"kind": "awaiting_payment", "level": "medium", "org_id": c["org_id"], "org": c["org_name"],
+                        "count": c["amount_ttc"], "at": c["created_at"], "detail": c["number"]})
+        elif c["status"] == "active" and c["days_left"] <= 30:
+            out.append({"kind": "ending", "level": "medium" if c["days_left"] > 7 else "high", "org_id": c["org_id"],
+                        "org": c["org_name"], "count": c["days_left"], "at": c["ends_on"], "detail": c["number"]})
+        if c["balance"] > 0 and c["status"] in ("active", "ended", "upcoming"):
+            out.append({"kind": "balance", "level": "medium", "org_id": c["org_id"], "org": c["org_name"],
+                        "count": c["balance"], "at": c["ends_on"], "detail": c["number"]})
+    rank = {"high": 0, "medium": 1, "low": 2}
+    out.sort(key=lambda a: a["at"] or "", reverse=True)          # newest first...
+    return sorted(out, key=lambda a: rank[a["level"]])            # ...within each level
+
+
+@router.get("/api/crm/overview")
+def overview(_: dict = Depends(require_sales)) -> dict:
+    """The admin's first screen: readers, money, contracts, what needs a look."""
+    import contracts
+    import crm
+    today = dt.date.today()
+    month = today.replace(day=1)
+    A = db.ClientActivity
+    readers = select(db.User.email).where(db.User.role.in_(CLIENTS))
+
+    def active(days: int) -> int:
+        with db.session() as s:
+            return s.scalar(select(func.count(func.distinct(A.actor))).where(A.ts >= _since(days), A.actor.in_(readers))) or 0
+
+    with db.session() as s:
+        n_readers = s.scalar(select(func.count()).select_from(db.User).where(db.User.role.in_(CLIENTS))) or 0
+        new_readers = s.scalar(select(func.count()).select_from(db.User).where(
+            db.User.role.in_(CLIENTS), db.User.created_at >= _since(30))) or 0
+        received = s.scalar(select(func.sum(contracts.Transfer.amount)).where(contracts.Transfer.paid_on >= month)) or 0
+        received_year = s.scalar(select(func.sum(contracts.Transfer.amount)).where(
+            contracts.Transfer.paid_on >= today.replace(month=1, day=1))) or 0
+        leads_new = s.scalar(select(func.count()).select_from(crm.Lead).where(
+            crm.Lead.status == "new", crm.Lead.deleted_at.is_(None))) or 0
+    money = _money_by_org()
+    all_c = contracts.all_contracts(status="", _={})
+    al = alerts(_={})
+    return {
+        "readers": n_readers, "active_today": active(1), "active_7d": active(7), "active_30d": active(30),
+        "new_readers_30d": new_readers, "received_month": int(received), "received_year": int(received_year),
+        "owed": sum(o for _, o in money.values()),
+        "contracts_active": sum(1 for c in all_c if c["status"] == "active"),
+        "contracts_ending": sum(1 for c in all_c if c["status"] == "active" and c["days_left"] <= 30),
+        "awaiting_payment": sum(1 for c in all_c if c["status"] == "awaiting_payment"),
+        "alerts_high": sum(1 for a in al if a["level"] == "high"), "alerts": len(al),
+        "new_requests": leads_new,
+        "usage": usage(days=30, _={}),
     }
 
 

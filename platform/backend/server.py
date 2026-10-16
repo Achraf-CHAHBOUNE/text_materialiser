@@ -29,12 +29,11 @@ from pydantic import BaseModel
 import accounts
 import auth as authmod
 import billing
+import contracts
 import crm
 import db
 import insights
 import library
-import practice
-import sales
 import support
 import docedit
 import piigate
@@ -51,7 +50,7 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
-for _module in (accounts, billing, crm, sales, practice, support, library, insights):
+for _module in (accounts, billing, contracts, crm, support, library, insights):
     app.include_router(_module.router)
 
 STORE = get_filestore()

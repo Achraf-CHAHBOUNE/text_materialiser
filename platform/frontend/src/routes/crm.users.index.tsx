@@ -66,7 +66,7 @@ function Readers() {
               { value: "owed", label: t("trk.sortOwed") }]} /></span>
         </div>
         {rows.length === 0 && list.data ? <Empty>{t("trk.none")}</Empty> : (
-          <Table head={[t("trk.reader"), t("acc.subscription"), t("trk.reads30short"), t("trk.downloads"), t("trk.searches"), t("trk.paid"), t("trk.lastSeen")]} minWidth="64rem">
+          <Table head={[t("trk.reader"), t("acc.subscription"), t("trk.reads30short"), t("trk.readingTime"), t("trk.downloads"), t("trk.searches"), t("trk.paid"), t("trk.lastSeen")]} minWidth="64rem">
             {rows.map((r) => (
               <tr key={r.email}>
                 <Td>
@@ -77,6 +77,8 @@ function Readers() {
                 <Td>{r.plan || "—"} <Badge tone={STATUS_TONE[r.access]}>{status(r.access)}</Badge>
                   {r.ends_on && <p className="text-xs text-muted-foreground">{t("acc.until")} {day(r.ends_on)}</p>}</Td>
                 <Td className="tabular-nums">{num(r.reads_30d)}<p className="text-xs text-muted-foreground">{num(r.reads_total)} {t("trk.inTotal")}</p></Td>
+                <Td className="tabular-nums">{num(r.reading_minutes_30d)} {t("trk.min")}
+                  {r.reading_minutes_30d > 0 && <p className="text-xs text-muted-foreground">{num(r.french_share)}% {t("trk.inFrench")}</p>}</Td>
                 <Td className="tabular-nums">{num(r.downloads_30d)}</Td>
                 <Td className="tabular-nums">{num(r.searches_30d)}</Td>
                 <Td className="tabular-nums">{money(r.org_paid, lang)}

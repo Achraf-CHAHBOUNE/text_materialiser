@@ -104,18 +104,9 @@ TEMPLATES = {
         "ar": ("طلب دعم جديد: {subject}", "طلب دعم جديد من {author} ({org}):\n\n{body}\n\n{link}"),
         "fr": ("Nouvelle demande d'assistance : {subject}", "Nouvelle demande de {author} ({org}) :\n\n{body}\n\n{link}"),
     },
-    "quote": {
-        "ar": ("عرض سعر {number}", "مرحبا،\n\nتجدون عرض السعر {number} بمبلغ {amount} درهم، صالح إلى غاية {valid}:\n{link}"),
-        "fr": ("Devis {number}", "Bonjour,\n\nVeuillez trouver le devis {number} d'un montant de {amount} MAD, "
-               "valable jusqu'au {valid} :\n{link}"),
-    },
     "digest": {
         "ar": ("مهامك اليوم", "{body}\n\n{link}"),
         "fr": ("Votre journée", "{body}\n\n{link}"),
-    },
-    "hearing_digest": {
-        "ar": ("جلسات وآجال الأيام القادمة", "{body}\n\n{link}"),
-        "fr": ("Audiences et délais à venir", "{body}\n\n{link}"),
     },
     "invoice": {
         "ar": ("فاتورة {number}", "مرحبا،\n\nتجدون فاتورة {number} بمبلغ {amount} درهم، تستحق في {due}:\n{link}"),

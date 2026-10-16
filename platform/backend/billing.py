@@ -46,8 +46,6 @@ class Plan(db.Base):
     public: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
-    # the firm module (cabinet): off -- readers have a reading space only; kept for later
-    practice: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Subscription(db.Base):
@@ -120,7 +118,6 @@ TRIAL_DAYS = 14
 
 def seed_plans() -> None:
     db.add_columns("subscriptions", [("monthly_price", "INTEGER")])
-    db.add_columns("plans", [("practice", "BOOLEAN DEFAULT FALSE")])
     with db.session() as s:
         if s.scalar(select(func.count()).select_from(Plan)):
             return
@@ -132,7 +129,7 @@ def seed_plans() -> None:
 def plan_dict(p: Plan) -> dict:
     return {k: getattr(p, k) for k in ("code", "name_ar", "name_fr", "blurb_ar", "blurb_fr",
                                        "price", "period", "seats", "daily_downloads",
-                                       "vat_rate", "public", "active", "sort", "practice")}
+                                       "vat_rate", "public", "active", "sort")}
 
 
 def get_plan(code: str) -> Optional[dict]:
@@ -160,15 +157,6 @@ def monthly_price(x: "Subscription", plan: Optional[dict] = None) -> int:
     if plan.get("period") == "year":
         return int(plan.get("price", 0)) // 12
     return int(plan.get("price", 0)) if plan.get("period") == "month" else 0
-
-
-def has_practice(org_id: Optional[int]) -> bool:
-    """Whether the organization's plan includes the firm module."""
-    if access_state(org_id) != "ok":
-        return False
-    sub = current_subscription(org_id)
-    plan = get_plan(sub["plan_code"]) if sub else None
-    return bool(plan and plan.get("practice", False))
 
 
 def current_subscription(org_id: Optional[int]) -> Optional[dict]:
@@ -371,7 +359,6 @@ class PlanBody(BaseModel):
     public: bool = True
     active: bool = True
     sort: int = 0
-    practice: bool = False
 
 
 @router.put("/api/admin/plans/{code}")
