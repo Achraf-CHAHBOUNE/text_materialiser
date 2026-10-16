@@ -30,7 +30,9 @@ python -m anonymizer --input input --output output  # 3. full run
 
 Step 1 (`audit`) profiles the folder — format mix, scanned-vs-text ratio, chamber guess,
 empty/damaged files, duplicates — and writes `output/audit.md`/`.json`. Do it first.
-The optional operator UI is `streamlit run app.py` (`pip install streamlit`).
+
+For the real corpus, use `run.bat` / `run.sh` at the top of the repository: one chamber
+folder from `data/corpus/` at a time, then `results/` is rebuilt for the client.
 
 ## Run (container — one command)
 
@@ -73,9 +75,12 @@ Raw inputs and everything under `output/` are git-ignored — they must never be
 anonymizer/           the engine (importable package)
   core/               redaction, categories, identifiers, case-linkage DB, run state
   documents/          format loaders, .doc conversion, .docx writer
-  llm/                provider abstraction (Gemini), prompt, factory
+  llm/                provider abstraction (Gemini, Vertex), prompt, factory
   pipeline.py         orchestration
-  cli.py              command-line entry
+  cli.py              command-line entry (`python -m anonymizer`)
+  assemble.py         gathers every processed folder into results/
+  audit.py            corpus profile before a run (no LLM)
+  evaluate.py         scores a run against a ground-truth file
 tests/                engine tests
 input/  output/       local I/O (git-ignored)
 ```
