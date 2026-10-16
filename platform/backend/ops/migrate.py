@@ -13,7 +13,8 @@ A target that already holds rows is refused unless --replace is given, which
 empties every table first.
 
 Files: every file missing from the store, or there with another size, is uploaded;
-the rest are skipped, so an interrupted upload resumes where it stopped.
+the rest are skipped, so an interrupted upload resumes where it stopped. With --replace,
+files the source does not have are removed, as the database's rows are.
 
 Both end with a check -- the row count of every table, the name and size of every
 file, and the content of a random sample -- and the command fails if anything
@@ -94,13 +95,20 @@ def copy_database(sqlite_path: str, replace: bool) -> None:
     print(f"db: checked, {sum(expected.values())} rows in {len(tables)} tables match the source")
 
 
-def copy_files(folder: str, workers: int) -> None:
+def copy_files(folder: str, workers: int, replace: bool = False) -> None:
     from filestore import LocalFileStore, S3FileStore, get_filestore
 
     local, store = LocalFileStore(folder), get_filestore()
     if not isinstance(store, S3FileStore):
         raise SystemExit("S3_ENDPOINT is not set: there is no object store to copy into.")
     want, have = local.sizes(), store.sizes()
+    if replace:                 # the database was emptied too: what it no longer knows goes
+        extra = [n for n in have if n not in want]
+        for n in extra:
+            store.delete(n)
+        if extra:
+            print(f"files: removed {len(extra)} the source does not have")
+        have = {n: v for n, v in have.items() if n in want}
     todo = [n for n, size in want.items() if have.get(n) != size]
     print(f"files: {len(want)} in the folder, {len(want) - len(todo)} already in the store, {len(todo)} to upload")
 
@@ -138,7 +146,7 @@ def main() -> int:
     if a.sqlite:
         copy_database(a.sqlite, a.replace)
     if a.files:
-        copy_files(a.files, a.workers)
+        copy_files(a.files, a.workers, a.replace)
     return 0
 
 
