@@ -18,8 +18,10 @@ Run (local):   uvicorn server:app --port 8000
 from __future__ import annotations
 
 import os
+import time
+import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 import accounts
@@ -33,6 +35,7 @@ import editing
 import import_routes
 import insights
 import library
+import logs
 import reading
 import settings
 import storage
@@ -44,6 +47,34 @@ app.add_middleware(
     allow_origins=settings.S.allow_origins.split(","),
     allow_methods=["*"], allow_headers=["*"],
 )
+
+log = logs.setup("api")
+
+
+def _route(request: Request) -> str:
+    """The route's pattern, not the address: /api/crm/users/{email}, never the email."""
+    route = request.scope.get("route")
+    return getattr(route, "path", "(no route)")
+
+
+@app.middleware("http")
+async def _log_request(request: Request, call_next):
+    """One log line per request, and its id in the answer (X-Request-ID): a reader who
+    reports a problem can quote it, and that line is found at once."""
+    rid = (request.headers.get("x-request-id") or uuid.uuid4().hex)[:32]
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("request failed", extra={"rid": rid, "method": request.method, "path": _route(request)})
+        raise
+    response.headers["X-Request-ID"] = rid
+    if request.url.path != "/health":                     # the health check every 15 s is noise
+        log.info("request", extra={"rid": rid, "method": request.method, "path": _route(request),
+                                   "status": response.status_code,
+                                   "ms": round((time.perf_counter() - started) * 1000)})
+    return response
+
 
 for _module in (auth_routes, reading, editing, import_routes,
                 accounts, billing, contracts, crm, support, library, insights):

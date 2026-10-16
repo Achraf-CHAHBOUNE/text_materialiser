@@ -33,6 +33,7 @@ import db
 import importer
 import library
 import limits
+import logs
 import mailer
 import settings
 
@@ -208,6 +209,7 @@ def main() -> int:
     ap.add_argument("--interval", type=int, default=int(os.getenv("WORKER_INTERVAL", "60")))
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
+    log = logs.setup("worker")
     settings.check()
     db.init_db()
     billing.seed_plans()
@@ -218,9 +220,9 @@ def main() -> int:
         try:
             out = once()
             if any(v for k, v in out.items() if k != "mail") or (out.get("mail") or {}).get("sent"):
-                print(dt.datetime.now().isoformat(timespec="seconds"), out, flush=True)
-        except Exception as e:                       # one bad pass must not stop the worker
-            print("worker error:", type(e).__name__, e, flush=True)
+                log.info("pass", extra={"done": out})
+        except Exception:                            # one bad pass must not stop the worker
+            log.exception("pass failed")
         time.sleep(args.interval)
 
 
