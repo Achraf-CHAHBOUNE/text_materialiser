@@ -66,27 +66,55 @@ they can never reach an admin route or obtain an unpublished/unclean file by any
 
 ## 4. Backup & restore
 
-State lives in two Docker volumes: `*_pg-data` (Postgres: metadata, audit, accounts) and
-`*_minio-data` (anonymized files). Snapshot both together:
+What cannot be rebuilt lives in two places: Postgres (rulings, accounts, contracts,
+every correction and the audit trail) and Garage (the Word files as they stand now --
+a corrected ruling's file differs from what the pipeline produced). A backup takes both
+together into one folder:
 
 ```bash
-./scripts/backup.sh                 # -> backups/<timestamp>/{pg-data.tgz,minio-data.tgz}
-./scripts/restore.sh backups/<ts>   # stops stack, replaces volumes, restarts (destructive)
+./scripts/backup.sh                        # -> backups/<date-time>/
+./scripts/backup.sh /mnt/other-disk/tok    # better: another disk, or another machine
+./scripts/restore.sh backups/<date-time>   # destructive: asks first (YES=1 skips)
 ```
 
-Schedule `backup.sh` (cron/Task Scheduler) and keep copies off-host. Test a restore into a
-throwaway project (`COMPOSE_PROJECT_NAME=platform_test`) periodically.
+Each folder holds `database.dump` (pg_dump), `files/` with a `manifest.json`, and
+`env.txt` (a copy of `.env`: secrets, keep it private). Each backup is complete on its
+own; files unchanged since the previous one are hard-linked, so nightly backups cost
+what changed. The newest 14 are kept (`KEEP=30` for more).
 
-For a logical, portable DB dump instead of the volume snapshot:
+On a server, run it nightly (the line is in the script's header) and copy the folder
+off the machine. Try a restore now and then -- a backup never restored is a hope.
+
+## 5. Changing the database's structure
+
+Every change is a numbered migration in `backend/migrations/versions/`, applied by the
+backend at start (one copy migrates, the others wait):
 
 ```bash
-docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > db.sql
-docker compose exec -T postgres psql   -U "$POSTGRES_USER" "$POSTGRES_DB" < db.sql   # restore
+cd backend
+alembic revision --autogenerate -m "what changes"   # write it -- then read it
+alembic upgrade head                                # apply by hand, if wanted
+alembic downgrade -1                                # undo the last one
 ```
 
-## 5. Scale notes
+Run `alembic check` against Postgres: on SQLite a few NOT NULL differences are expected
+(see migration 0002).
 
-Search normalizes Arabic (alef/ya/taa, diacritics, tatweel, Arabic-Indic digits) into a
-`search_text` column. On Postgres a `pg_trgm` GIN index is created automatically so
-`LIKE '%q%'` stays fast well beyond the initial corpus. If you outgrow that, move to a
-`tsvector`/`websearch_to_tsquery` column with a custom Arabic normalization dictionary.
+## 6. Logs
+
+Every service writes one JSON line per event to stdout: `docker compose logs -f backend`.
+Each request carries an id, returned to the browser as `X-Request-ID`; a reader who
+reports a problem can quote it. Requests are logged by route pattern, never by address
+or query, so no search and no email reaches the logs. `LOG_FORMAT=text` for plain lines.
+
+## 7. Scale notes
+
+- **More readers:** `docker compose ... up -d --scale backend=3` (or `API_WORKERS` per
+  container). No backend copy keeps anything of its own: sessions, limits and locks are
+  in Postgres, files in Garage, and Caddy spreads the requests.
+- **More workers:** they can be scaled too; a lock in Postgres lets one at a time run
+  the daily jobs, the mail, the imports and the model step.
+- **Search:** Arabic is normalized into `search_text`, matched by a `pg_trgm` index and a
+  stored word index (`search_tsv`); French by a stored French `tsvector`.
+- **Files:** Garage runs one node with one copy. For several machines, raise
+  `replication_factor` in `deploy/garage.toml` and add nodes; nothing in the code changes.
