@@ -8,7 +8,7 @@ import re
 import zipfile
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/api/admin/decisions")
 def admin_decisions(state: str = "", category: str = "", level: str = "",
-                    limit: int = 200, offset: int = 0,
+                    limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0),
                     _: dict = Depends(require_editor)) -> list:
     states = (state,) if state else None
     return db.list_decisions(states=states, category=category, level=level,

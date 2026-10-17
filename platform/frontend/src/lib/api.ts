@@ -184,18 +184,23 @@ export async function logoutRemote() {
 // ---------- client space ----------
 export const getCategories = () => j<string[]>("/api/categories");
 
-export function listDecisions(p: { category?: string; level?: string; limit?: number } = {}) {
+type Page = { category?: string; level?: string; limit?: number; offset?: number };
+
+export function listDecisions(p: Page = {}) {
   const q = new URLSearchParams();
   if (p.category) q.set("category", p.category);
   if (p.level) q.set("level", p.level);
-  q.set("limit", String(p.limit ?? 100));
+  q.set("limit", String(p.limit ?? 50));
+  q.set("offset", String(p.offset ?? 0));
   return j<Decision[]>(`/api/decisions?${q}`);
 }
 
-export function searchDecisions(query: string, p: { category?: string; level?: string } = {}) {
+export function searchDecisions(query: string, p: Page = {}) {
   const q = new URLSearchParams({ q: query });
   if (p.category) q.set("category", p.category);
   if (p.level) q.set("level", p.level);
+  q.set("limit", String(p.limit ?? 50));
+  q.set("offset", String(p.offset ?? 0));
   return j<Decision[]>(`/api/search?${q}`);
 }
 

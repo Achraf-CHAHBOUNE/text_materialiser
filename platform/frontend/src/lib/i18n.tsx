@@ -942,6 +942,11 @@ const STRINGS = {
   "adm.job.running": { ar: "جارٍ", fr: "En cours" },
   "adm.job.done": { ar: "تم", fr: "Terminé" },
   "adm.job.failed": { ar: "فشل", fr: "Échec" },
+  "results.range": { ar: "القرارات", fr: "Décisions" },
+  "results.pages": { ar: "الصفحات", fr: "Pages" },
+  "results.page": { ar: "الصفحة", fr: "Page" },
+  "results.prev": { ar: "السابق", fr: "Précédent" },
+  "results.next": { ar: "التالي", fr: "Suivant" },
 } satisfies Record<string, Entry>;
 
 export type StringKey = keyof typeof STRINGS;

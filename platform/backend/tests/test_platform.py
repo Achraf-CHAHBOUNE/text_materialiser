@@ -368,3 +368,21 @@ def test_a_production_start_with_unsafe_settings_is_refused(monkeypatch):
     monkeypatch.setenv("AUTH_SECRET", "x" * 40)
     monkeypatch.setenv("S3_ENDPOINT", "garage:3900")
     assert settings.problems(settings.load()) == []
+
+
+def test_the_list_and_the_search_come_in_pages_without_repeats():
+    """Page 2 continues page 1, and nobody can ask for the whole corpus in one request."""
+    ids = [f"page_{i}" for i in range(7)]
+    payload = _zip([_record(d) for d in ids],
+                   {f"{d}.docx": _docx("محكمة النقض" + chr(10) + f"كراء المحل التجاري رقم {d}") for d in ids})
+    up = client.post("/api/admin/import", headers=_h(_admin()), files={"file": ("p.zip", payload, "application/zip")})
+    assert up.status_code == 200 and up.json()["imported"] + up.json()["updated"] == 7, up.text
+    for d in ids:                          # this file imports for review: publish them
+        server.db.set_decision_state(d, "published", "test")
+    tok = _h(_admin())
+    first = client.get("/api/search", params={"q": "المحل التجاري", "limit": 3, "offset": 0}, headers=tok).json()
+    second = client.get("/api/search", params={"q": "المحل التجاري", "limit": 3, "offset": 3}, headers=tok).json()
+    assert len(first) == 3 and len(second) == 3
+    assert not {d["doc_id"] for d in first} & {d["doc_id"] for d in second}, "no ruling on two pages"
+    assert client.get("/api/decisions?limit=100000", headers=tok).status_code == 422
+    assert client.get("/api/search?q=x&limit=100000", headers=tok).status_code == 422

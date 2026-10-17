@@ -730,7 +730,7 @@ def list_decisions(*, states: Optional[tuple] = None, category: str = "",
 
 
 def search_decisions(query: str, *, states: tuple = ("published",),
-                     category: str = "", level: str = "", limit: int = 50) -> List[dict]:
+                     category: str = "", level: str = "", limit: int = 50, offset: int = 0) -> List[dict]:
     nq = textnorm.normalize(query)
     with session() as s:
         q = select(Decision).where(Decision.state.in_(states))
@@ -741,7 +741,9 @@ def search_decisions(query: str, *, states: tuple = ("published",),
         if nq:
             q = q.where(Decision.search_text.like(f"%{nq}%"))
         results = []
-        for d in s.scalars(q.limit(limit)):
+        # a fixed order, newest first, so page 2 continues page 1 without repeats or gaps
+        q = q.order_by(Decision.sort_key.desc(), Decision.doc_id).offset(offset).limit(limit)
+        for d in s.scalars(q):
             row = _dec_dict(d)
             row["snippets"] = textnorm.snippets(d.body_text, query)
             results.append(row)

@@ -28,9 +28,14 @@ def categories(_: dict = Depends(current_user)) -> list:
     return db.CATEGORIES
 
 
+# One page is at most PAGE_MAX rulings: asking for the whole corpus at once would let any
+# signed-in reader tie up the server, and nobody reads 29,000 rows on a screen.
+PAGE_MAX = 200
+
+
 @router.get("/api/decisions")
 def client_decisions(category: str = "", level: str = "",
-                     limit: int = 50, offset: int = 0,
+                     limit: int = Query(50, ge=1, le=PAGE_MAX), offset: int = Query(0, ge=0),
                      _: dict = Depends(current_user)) -> list:
     return db.list_decisions(states=("published",), category=category, level=level,
                              limit=limit, offset=offset)
@@ -38,9 +43,12 @@ def client_decisions(category: str = "", level: str = "",
 
 @router.get("/api/search")
 def client_search(q: str = Query(""), category: str = "", level: str = "",
+                  limit: int = Query(50, ge=1, le=PAGE_MAX), offset: int = Query(0, ge=0),
                   user: dict = Depends(current_user)) -> list:
-    db.log_activity(user["email"], "search", q[:80])
-    return db.search_decisions(q, states=("published",), category=category, level=level)
+    if offset == 0:                          # a search, not each page of it
+        db.log_activity(user["email"], "search", q[:80])
+    return db.search_decisions(q, states=("published",), category=category, level=level,
+                               limit=limit, offset=offset)
 
 
 # ---------------- client: browse (court > chamber > year > ruling) ----------------

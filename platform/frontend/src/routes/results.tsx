@@ -17,6 +17,8 @@ import {
 import { useStore } from "@/lib/app-store";
 import { listDecisions, searchDecisions } from "@/lib/api";
 
+
+const PAGE = 50;                          // rulings per page
 export const Route = createFileRoute("/results")({
   head: () => ({ meta: [{ title: "القرارات · Décisions" }] }),
   component: Decisions,
@@ -30,6 +32,7 @@ function Decisions() {
   const [category, setCategory] = useState("all");
   const [level, setLevel] = useState("all");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -38,15 +41,18 @@ function Decisions() {
 
   const categoryFilter = category === "all" ? "" : category;
   const levelFilter = level === "all" ? "" : level;
+  // a new search or filter starts again from the first page
+  useEffect(() => setPage(0), [debouncedQuery, categoryFilter, levelFilter]);
   const decisions = useQuery({
-    queryKey: ["decisions", debouncedQuery, categoryFilter, levelFilter],
-    queryFn: () =>
-      debouncedQuery
-        ? searchDecisions(debouncedQuery, { category: categoryFilter, level: levelFilter })
-        : listDecisions({ category: categoryFilter, level: levelFilter, limit: 100 }),
+    queryKey: ["decisions", debouncedQuery, categoryFilter, levelFilter, page],
+    queryFn: () => {
+      const p = { category: categoryFilter, level: levelFilter, limit: PAGE, offset: page * PAGE };
+      return debouncedQuery ? searchDecisions(debouncedQuery, p) : listDecisions(p);
+    },
     placeholderData: (previous) => previous,
   });
   const rows = decisions.data ?? [];
+  const hasNext = rows.length === PAGE;      // a full page: there may be more
   const isSearching = query.trim() !== debouncedQuery || decisions.isFetching;
 
   return (
@@ -112,7 +118,11 @@ function Decisions() {
       <div className="mt-4 flex min-h-6 items-center justify-between gap-3" aria-live="polite">
         <p className="text-sm text-muted-foreground">
           {!decisions.isPending && !decisions.isError
-            ? `${rows.length} ${t(rows.length === 1 ? "results.count" : "results.countPlural")}`
+            ? page === 0 && !hasNext
+              ? `${rows.length} ${t(rows.length === 1 ? "results.count" : "results.countPlural")}`
+              : rows.length
+                ? `${t("results.range")} ${page * PAGE + 1}–${page * PAGE + rows.length}`
+                : ""
             : ""}
         </p>
         {(query || category !== "all" || level !== "all") && (
@@ -223,6 +233,20 @@ function Decisions() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {(page > 0 || hasNext) && (
+        <nav className="mt-4 flex items-center justify-center gap-3" aria-label={t("results.pages")}>
+          <Button variant="outline" size="sm" disabled={page === 0 || decisions.isFetching}
+                  onClick={() => setPage((n) => Math.max(0, n - 1))}>
+            {t("results.prev")}
+          </Button>
+          <span className="text-sm tabular-nums text-muted-foreground">{t("results.page")} {page + 1}</span>
+          <Button variant="outline" size="sm" disabled={!hasNext || decisions.isFetching}
+                  onClick={() => setPage((n) => n + 1)}>
+            {t("results.next")}
+          </Button>
+        </nav>
       )}
     </AppShell>
   );
