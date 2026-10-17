@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    paths: ["pipeline/**", "platform/backend/**", ".github/workflows/ci.yml"]
+    paths: ["pipeline/**", "platform/backend/**", "platform/frontend/**", ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["pipeline/**", "platform/backend/**", ".github/workflows/ci.yml"]
+    paths: ["pipeline/**", "platform/backend/**", "platform/frontend/**", ".github/workflows/ci.yml"]
 
 jobs:
   pipeline:
@@ -38,3 +38,25 @@ jobs:
       - run: pip install -r requirements.txt pytest httpx
       - name: Tests (permissions, boundary, import gate, search)
         run: python -m pytest tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"            # its npm reads this lock file (npm 10 refuses it)
+          cache: npm
+          cache-dependency-path: platform/frontend/package-lock.json
+      - run: npm ci
+      - name: Types
+        run: npx tsc --noEmit
+      - name: Lint and formatting (Prettier runs inside ESLint; errors fail, warnings do not)
+        run: npx eslint src
+      - name: Build
+        run: npm run build
+      - name: Dependencies (fails on a high or critical advisory)
+        run: npm audit --omit=dev --audit-level=high

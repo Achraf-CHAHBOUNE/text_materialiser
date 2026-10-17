@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { FileCheck2, FolderOpen, Layers, Users } from "lucide-react";
+import { FileCheck2, FolderOpen, Layers, Users, type LucideIcon } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useI18n } from "@/lib/i18n";
 import { useStore } from "@/lib/app-store";
@@ -11,7 +11,15 @@ export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
-function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: number | string }) {
+function Stat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number | string;
+}) {
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-soft">
       <div className="flex items-center gap-3">
