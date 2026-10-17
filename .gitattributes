@@ -7,3 +7,6 @@ Caddyfile    text eol=lf
 *.toml       text eol=lf
 *.yml        text eol=lf
 .dockerignore text eol=lf
+# The frontend is formatted by Prettier with LF endings: checked out as LF everywhere,
+# Windows included, so the formatter and the repository always agree.
+platform/frontend/** text=auto eol=lf
