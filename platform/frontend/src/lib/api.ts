@@ -4,7 +4,12 @@
 
 import type { Lang } from "./lang-url";
 
-const BASE = (import.meta.env["VITE_API_URL"] ?? "http://localhost:8000").replace(/\/$/, "");
+// The API is called on the page's own address (/api/...): Caddy serves both in
+// production, and the Vite dev server forwards /api to the backend (vite.config.ts). One
+// site, so the session cookie is first-party whatever host is typed -- `localhost` and
+// `127.0.0.1` used to count as two sites, and signing in looped back to the form.
+// VITE_API_URL can still point elsewhere; then that API must allow this origin.
+const BASE = (import.meta.env["VITE_API_URL"] ?? "").replace(/\/$/, "");
 // The session is an HttpOnly cookie the server sets at sign-in: no script on the page
 // can read it, and file links need no token in their address. What is kept here is
 // only who is signed in -- a hint for the interface; the cookie decides.

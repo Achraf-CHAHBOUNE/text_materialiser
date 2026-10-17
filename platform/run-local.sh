@@ -15,9 +15,8 @@ WEB_PORT=5199
 export DB_DIR="$ROOT/data/platform"
 export FILESTORE_DIR="$ROOT/data/platform/files"
 export AUTH_SECRET="${AUTH_SECRET:-local-dev-secret-change-me}"
-# the site (5199) and the API (8099) are two origins here: the session cookie may cross
-# between them only because they are named
-export ALLOW_ORIGINS="${ALLOW_ORIGINS:-http://127.0.0.1:5199,http://localhost:5199}"
+# The site (5199) forwards /api to the API (8099): one address for the browser, as behind
+# Caddy, so the session cookie is first-party whether you open localhost or 127.0.0.1.
 export SEED_EMAIL="${SEED_EMAIL:-admin@local}"
 export SEED_PASSWORD="${SEED_PASSWORD:-dev-password-1234}"
 
@@ -54,7 +53,7 @@ echo "starting the worker (emails, expiries, reminders, alerts) ..."
 
 echo "starting the site on $WEB_PORT ..."
 ( cd "$ROOT/platform/frontend" \
-  && VITE_API_URL="http://127.0.0.1:$API_PORT" nohup npm run dev -- --port "$WEB_PORT" \
+  && VITE_API_URL="" API_PROXY_TARGET="http://127.0.0.1:$API_PORT" nohup npm run dev -- --port "$WEB_PORT" \
        > "$DB_DIR/web.log" 2>&1 & )
 
 for i in $(seq 1 40); do

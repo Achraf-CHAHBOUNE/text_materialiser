@@ -7,6 +7,23 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  vite: {
+    server: {
+      // Development: the page calls /api on its own address, and this forwards it to the
+      // backend -- the same single address the browser sees behind Caddy in production.
+      // changeOrigin stays false: the backend compares the request's Host with its Origin.
+      proxy: {
+        "/api": {
+          target: process.env["API_PROXY_TARGET"] ?? "http://127.0.0.1:8000",
+          changeOrigin: false,
+        },
+        "/health": {
+          target: process.env["API_PROXY_TARGET"] ?? "http://127.0.0.1:8000",
+          changeOrigin: false,
+        },
+      },
+    },
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
