@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, case, func, select, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import accounts
 import billing
 import db
@@ -46,7 +47,7 @@ def ensure_indexes() -> None:
 
 
 def _since(days: int) -> dt.datetime:
-    return dt.datetime.utcnow() - dt.timedelta(days=days)
+    return clock.utcnow() - dt.timedelta(days=days)
 
 
 def _decisions(ids) -> dict:
@@ -85,7 +86,7 @@ class UserNote(db.Base):
     email: Mapped[str] = mapped_column(String, index=True)
     body: Mapped[str] = mapped_column(Text, default="")
     author: Mapped[str] = mapped_column(String, default="")
-    at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 router = APIRouter()
@@ -115,7 +116,7 @@ def users(q: str = "", _: dict = Depends(require_sales)) -> list:
                               .group_by(accounts.UserSession.user_id)).all())
         orgs = {o.id: o.name for o in s.scalars(select(accounts.Organization))}
     money = _money_by_org()
-    reading = _reading(None, (dt.datetime.utcnow() - dt.timedelta(days=30)).date())
+    reading = _reading(None, (clock.utcnow() - dt.timedelta(days=30)).date())
     subs = billing.subscriptions_for(u.org_id for u in people)
     out = []
     for u in people:
@@ -325,7 +326,7 @@ def _alerts(all_c: Optional[list] = None, money: Optional[dict] = None) -> list:
     for email, n, at in throttled:
         out.append({"kind": "too_fast", "level": "high", "email": email, "count": int(n),
                     "at": at.isoformat() if at else "", "detail": ""})
-    now = dt.datetime.utcnow()
+    now = clock.utcnow()
     for u in readers.values():
         if billing.access_of(subs.get(u.org_id)) != "ok":
             continue

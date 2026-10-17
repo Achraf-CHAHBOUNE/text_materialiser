@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import Date, DateTime, Integer, String, Text, UniqueConstraint, func, or_, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import db
 from deps import STAFF, current_user
 
@@ -34,7 +35,7 @@ class Folder(db.Base):
     org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String, default="")
     shared: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class FolderItem(db.Base):
@@ -45,7 +46,7 @@ class FolderItem(db.Base):
     doc_id: Mapped[str] = mapped_column(String, index=True)
     note: Mapped[str] = mapped_column(Text, default="")
     added_by: Mapped[str] = mapped_column(String, default="")
-    added_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Alert(db.Base):
@@ -59,7 +60,7 @@ class Alert(db.Base):
     frequency: Mapped[str] = mapped_column(String, default="weekly")   # daily | weekly
     active: Mapped[int] = mapped_column(Integer, default=1)
     last_sent_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class ReadingTime(db.Base):
@@ -83,7 +84,7 @@ class Download(db.Base):
     user_email: Mapped[str] = mapped_column(String, index=True)
     org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     doc_id: Mapped[str] = mapped_column(String)
-    at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow, index=True)
 
 
 # ---------------- pace and quota ----------------
@@ -95,7 +96,7 @@ def note_view(user: dict) -> None:
     views already recorded in client_activity, so every copy of the API agrees."""
     if user["role"] in STAFF:
         return
-    since = dt.datetime.utcnow() - dt.timedelta(hours=1)
+    since = clock.utcnow() - dt.timedelta(hours=1)
     with db.session() as s:
         n = s.scalar(select(func.count()).select_from(db.ClientActivity).where(
             db.ClientActivity.actor == user["email"], db.ClientActivity.action == "view",
@@ -354,7 +355,7 @@ def alert_create(body: AlertBody, user: dict = Depends(current_user)) -> dict:
                   lang=body.lang if body.lang in ("ar", "fr") else "ar",
                   frequency=body.frequency if body.frequency in ("daily", "weekly") else "weekly",
                   # start from now: the first email brings what is new, not the whole corpus
-                  last_sent_at=dt.datetime.utcnow())
+                  last_sent_at=clock.utcnow())
         s.add(a)
         s.commit()
         return _alert(a)

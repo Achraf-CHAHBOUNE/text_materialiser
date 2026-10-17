@@ -33,6 +33,7 @@ from sqlalchemy import Date, DateTime, Integer, String, Text, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import accounts
 import billing
 import db
@@ -58,7 +59,7 @@ class Contract(db.Base):
     subscription_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cancelled_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Transfer(db.Base):
@@ -74,7 +75,7 @@ class Transfer(db.Base):
     proof_name: Mapped[str] = mapped_column(String, default="")
     invoice_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     recorded_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 # ---------------- reading ----------------
@@ -446,7 +447,7 @@ def change_contract(contract_id: int, body: ContractPatch, user: dict = Depends(
         if body.cancel:
             if s.scalar(select(func.count()).select_from(Transfer).where(Transfer.contract_id == contract_id)):
                 raise HTTPException(status_code=409, detail="Money was received on this contract: it cannot be cancelled")
-            c.cancelled_at = dt.datetime.utcnow()
+            c.cancelled_at = clock.utcnow()
         s.commit()
         org_id, number = c.org_id, c.number
     if body.cancel:

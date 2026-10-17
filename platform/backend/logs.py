@@ -25,7 +25,7 @@ class _Json(logging.Formatter):
         self.service = service
 
     def format(self, record: logging.LogRecord) -> str:
-        out = {"ts": dt.datetime.utcfromtimestamp(record.created).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        out = {"ts": dt.datetime.fromtimestamp(record.created, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                "level": record.levelname.lower(), "service": self.service, "msg": record.getMessage()}
         out.update({k: v for k, v in record.__dict__.items() if k not in _STANDARD})
         if record.exc_info:

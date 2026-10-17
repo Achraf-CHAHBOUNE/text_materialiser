@@ -27,6 +27,7 @@ from sqlalchemy import Boolean, Date, DateTime, Integer, String, Text, func, sel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import db
 import mailer
 from deps import current_user, require_admin, require_sales
@@ -64,7 +65,7 @@ class Subscription(db.Base):
     # negotiated (an accepted quote, an institution on a custom price). Feeds the MRR.
     monthly_price: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Invoice(db.Base):
@@ -82,7 +83,7 @@ class Invoice(db.Base):
     due_on: Mapped[dt.date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String, default="sent", index=True)  # draft|sent|paid|overdue|cancelled
     created_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Payment(db.Base):
@@ -94,7 +95,7 @@ class Payment(db.Base):
     reference: Mapped[str] = mapped_column(String, default="")
     paid_on: Mapped[dt.date] = mapped_column(Date, index=True)
     recorded_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 # Example plans, created once on an empty database. Prices are placeholders to be set

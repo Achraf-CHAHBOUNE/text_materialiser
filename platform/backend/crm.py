@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, func, or_, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import accounts
 import billing
 import db
@@ -45,7 +46,7 @@ class Lead(db.Base):
     status: Mapped[str] = mapped_column(String, default="new", index=True)
     assigned_to: Mapped[str] = mapped_column(String, default="")
     org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     deleted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -66,7 +67,7 @@ def health(org_ids: list) -> dict:
     """{org_id: (actions in 30 days, 'active'|'new'|'quiet'|'at_risk')} from what its people did."""
     if not org_ids:
         return {}
-    since = dt.datetime.utcnow() - dt.timedelta(days=30)
+    since = clock.utcnow() - dt.timedelta(days=30)
     with db.session() as s:
         rows = s.execute(
             select(db.User.org_id, func.count(db.ClientActivity.id))

@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
+import clock
 import settings  # reads platform/.env before anything connects
 import textnorm
 
@@ -53,7 +54,7 @@ class User(Base):
     language: Mapped[str] = mapped_column(String, default="ar")     # ar | fr
     org_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     mfa_secret: Mapped[str] = mapped_column(String, default="")     # empty: no second factor
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     last_login: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -111,9 +112,9 @@ class Decision(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     edited_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     edited_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow,
-                                                    onupdate=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow,
+                                                    onupdate=clock.utcnow)
 
 
 class DecisionVersion(Base):
@@ -133,7 +134,7 @@ class DecisionVersion(Base):
     action: Mapped[str] = mapped_column(String, default="")   # import|hide|hide_all|edit|restore|title|replace_file
     summary: Mapped[str] = mapped_column(String, default="")
     actor: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     base_version: Mapped[int] = mapped_column(Integer, default=0)
     restore_of: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     body_text: Mapped[str] = mapped_column(Text, default="")
@@ -156,7 +157,7 @@ class Translation(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     model: Mapped[str] = mapped_column(String, default="")
     source_version: Mapped[int] = mapped_column(Integer, default=0)   # ruling version translated
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class DecisionI18n(Base):
@@ -180,7 +181,7 @@ class DecisionI18n(Base):
     search_text: Mapped[str] = mapped_column(Text, default="")        # folded, for search
     model: Mapped[str] = mapped_column(String, default="")
     source_version: Mapped[int] = mapped_column(Integer, default=0)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Subject(Base):
@@ -194,7 +195,7 @@ class Subject(Base):
     label_ar: Mapped[str] = mapped_column(String, default="")
     label_fr: Mapped[str] = mapped_column(String, default="")
     model: Mapped[str] = mapped_column(String, default="")
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class Report(Base):
@@ -206,7 +207,7 @@ class Report(Base):
     quote: Mapped[str] = mapped_column(Text, default="")      # blanked once handled
     note: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String, default="open", index=True)   # open|resolved|dismissed
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     resolved_by: Mapped[str] = mapped_column(String, default="")
     resolved_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -222,7 +223,7 @@ class Link(Base):
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     actor: Mapped[str] = mapped_column(String, default="")
     action: Mapped[str] = mapped_column(String, default="")       # correct | publish | withdraw | import | ...
     entity: Mapped[str] = mapped_column(String, default="")       # decision | user
@@ -239,13 +240,13 @@ class WorkerState(Base):
     __tablename__ = "worker_state"
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String, default="")
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class ClientActivity(Base):
     __tablename__ = "client_activity"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     actor: Mapped[str] = mapped_column(String, index=True)
     action: Mapped[str] = mapped_column(String, default="")       # view | search | download
     decision_id: Mapped[str] = mapped_column(String, default="")
@@ -618,7 +619,7 @@ def touch_login(email: str) -> None:
     with session() as s:
         u = s.scalar(select(User).where(User.email == email))
         if u:
-            u.last_login = dt.datetime.utcnow()
+            u.last_login = clock.utcnow()
             s.commit()
 
 
@@ -774,7 +775,7 @@ def update_decision_fields(doc_id: str, changes: dict, actor: str) -> Optional[d
                     d.year = v[-4:]
         if changed:
             d.sort_key = _sort_key(d.decision_date, d.decision_no)
-            d.edited_at, d.edited_by = dt.datetime.utcnow(), actor
+            d.edited_at, d.edited_by = clock.utcnow(), actor
         s.commit()
         out = _dec_dict(d)
         out["_old_title_parts"] = before
@@ -1089,7 +1090,7 @@ def save_i18n(doc_id: str, lang: str, *, model: str = "", version: Optional[int]
         if version is not None:
             t.source_version = version
         t.search_text = _fold_i18n(t)
-        t.updated_at = dt.datetime.utcnow()
+        t.updated_at = clock.utcnow()
         s.commit()
 
 

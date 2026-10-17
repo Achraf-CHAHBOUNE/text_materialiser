@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 
+import clock
 import db
 import importer
 import settings
@@ -45,9 +46,9 @@ def import_batch(file: UploadFile = File(...), user: dict = Depends(require_edit
             s.commit()
             job_id = job.id
         if n <= settings.S.import_inline_max:
-            importer._save(job_id, status="running", started_at=dt.datetime.utcnow())
+            importer._save(job_id, status="running", started_at=clock.utcnow())
             result = importer.run(Path(tmp), publish=settings.S.auto_publish, actor=user["email"], store=storage.STORE, workers=1)
-            importer._save(job_id, status="done", finished_at=dt.datetime.utcnow(),
+            importer._save(job_id, status="done", finished_at=clock.utcnow(),
                            result=json.dumps(result, ensure_ascii=False))
         else:
             key = f"import-{uuid.uuid4().hex}.zip"

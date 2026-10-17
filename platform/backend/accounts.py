@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, func, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import auth as authmod
 import db
 import mailer
@@ -40,7 +41,7 @@ class Organization(db.Base):
     account_manager: Mapped[str] = mapped_column(String, default="")   # a sales user's email
     status: Mapped[str] = mapped_column(String, default="prospect")    # prospect|customer|former
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     deleted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -50,8 +51,8 @@ class UserSession(db.Base):
     user_id: Mapped[int] = mapped_column(Integer, index=True)
     ip: Mapped[str] = mapped_column(String, default="")
     device: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
-    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     revoked_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     revoked_why: Mapped[str] = mapped_column(String, default="")
 
@@ -67,7 +68,7 @@ class Invitation(db.Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
     accepted_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     cancelled_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class PasswordReset(db.Base):
@@ -86,7 +87,7 @@ _SEEN_EVERY = dt.timedelta(minutes=5)     # last_seen is a guide, not a log: wri
 def open_session(user: dict, ip: str, device: str) -> str:
     """A new session; for a customer's reader, the end of any other."""
     sid = uuid.uuid4().hex
-    now = dt.datetime.utcnow()
+    now = clock.utcnow()
     with db.session() as s:
         if user["role"] in CLIENTS:
             for old in s.scalars(select(UserSession).where(UserSession.user_id == user["id"],
@@ -104,7 +105,7 @@ def session_alive(sid: str, user_id: int) -> bool:
         row = s.get(UserSession, sid)
         if row is None or row.user_id != user_id or row.revoked_at is not None:
             return False
-        now = dt.datetime.utcnow()
+        now = clock.utcnow()
         if now - (row.last_seen or now) > _SEEN_EVERY:
             row.last_seen = now
             s.commit()
@@ -117,7 +118,7 @@ def end_sessions(user_id: int, why: str, except_sid: str = "") -> int:
         for row in s.scalars(select(UserSession).where(UserSession.user_id == user_id,
                                                        UserSession.revoked_at.is_(None))):
             if row.id != except_sid:
-                row.revoked_at, row.revoked_why = dt.datetime.utcnow(), why
+                row.revoked_at, row.revoked_why = clock.utcnow(), why
                 n += 1
         s.commit()
     return n
@@ -127,7 +128,7 @@ def end_session(sid: str, why: str = "signed out") -> None:
     with db.session() as s:
         row = s.get(UserSession, sid)
         if row and row.revoked_at is None:
-            row.revoked_at, row.revoked_why = dt.datetime.utcnow(), why
+            row.revoked_at, row.revoked_why = clock.utcnow(), why
             s.commit()
 
 
@@ -189,7 +190,7 @@ def org_members(org_id: int) -> List[dict]:
 
 
 def pending_invitations(org_id: int) -> List[dict]:
-    now = dt.datetime.utcnow()
+    now = clock.utcnow()
     with db.session() as s:
         rows = s.scalars(select(Invitation).where(
             Invitation.org_id == org_id, Invitation.accepted_at.is_(None),
@@ -210,7 +211,7 @@ def seats_used_many(org_ids) -> dict:
     ids = list({o for o in org_ids if o})
     if not ids:
         return {}
-    now = dt.datetime.utcnow()
+    now = clock.utcnow()
     with db.session() as s:
         users = dict(s.execute(select(db.User.org_id, func.count()).where(
             db.User.org_id.in_(ids), db.User.status == "active").group_by(db.User.org_id)).all())
@@ -244,10 +245,10 @@ def invite(org_id: int, email: str, role: str, inviter: dict, lang: str = "") ->
         for old in s.scalars(select(Invitation).where(Invitation.email == email,
                                                       Invitation.org_id == org_id,
                                                       Invitation.accepted_at.is_(None))):
-            old.cancelled_at = dt.datetime.utcnow()
+            old.cancelled_at = clock.utcnow()
         s.add(Invitation(email=email, org_id=org_id, role=role,
                          token_hash=authmod.hash_secret(token), invited_by=inviter["email"],
-                         expires_at=dt.datetime.utcnow() + dt.timedelta(days=7)))
+                         expires_at=clock.utcnow() + dt.timedelta(days=7)))
         s.commit()
     lang = lang or org.get("language") or "ar"
     mailer.queue(email, "invitation", lang, org=org["name"],
@@ -428,7 +429,7 @@ def team_cancel_invitation(inv_id: int, user: dict = Depends(current_user)) -> d
         inv = s.get(Invitation, inv_id)
         if not inv or inv.org_id != org_id:
             raise HTTPException(status_code=404, detail="Not found")
-        inv.cancelled_at = dt.datetime.utcnow()
+        inv.cancelled_at = clock.utcnow()
         s.commit()
     return {"ok": True}
 
@@ -451,7 +452,7 @@ def _invitation(token: str) -> Invitation:
     with db.session() as s:
         inv = s.scalar(select(Invitation).where(Invitation.token_hash == authmod.hash_secret(token)))
         if (not inv or inv.accepted_at or inv.cancelled_at
-                or inv.expires_at < dt.datetime.utcnow()):
+                or inv.expires_at < clock.utcnow()):
             raise HTTPException(status_code=404, detail="This invitation is no longer valid")
         s.expunge(inv)
         return inv
@@ -476,7 +477,7 @@ def invitation_accept(token: str, body: AcceptBody) -> dict:
                       role=inv.role, status="active", org_id=inv.org_id,
                       full_name=body.full_name.strip()[:120], language=org.get("language") or "ar"))
         row = s.get(Invitation, inv.id)
-        row.accepted_at = dt.datetime.utcnow()
+        row.accepted_at = clock.utcnow()
         s.commit()
     db.add_audit(inv.email, "accept_invitation", "organization", str(inv.org_id))
     return {"ok": True, "email": inv.email}
@@ -493,7 +494,7 @@ def forgot(body: ForgotBody) -> dict:
         token = authmod.new_secret_token()
         with db.session() as s:
             s.add(PasswordReset(user_id=user["id"], token_hash=authmod.hash_secret(token),
-                                expires_at=dt.datetime.utcnow() + _RESET_TTL))
+                                expires_at=clock.utcnow() + _RESET_TTL))
             s.commit()
         lang = body.language if body.language in ("ar", "fr") else user.get("language", "ar")
         mailer.queue(user["email"], "password_reset", lang,
@@ -506,11 +507,11 @@ def reset(token: str, body: ResetBody) -> dict:
     _strong(body.password)
     with db.session() as s:
         row = s.scalar(select(PasswordReset).where(PasswordReset.token_hash == authmod.hash_secret(token)))
-        if not row or row.used_at or row.expires_at < dt.datetime.utcnow():
+        if not row or row.used_at or row.expires_at < clock.utcnow():
             raise HTTPException(status_code=404, detail="This link is no longer valid")
         u = s.get(db.User, row.user_id)
         u.password_hash = authmod.hash_password(body.password)
-        row.used_at = dt.datetime.utcnow()
+        row.used_at = clock.utcnow()
         uid, email = u.id, u.email
         s.commit()
     end_sessions(uid, "password reset")

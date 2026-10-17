@@ -40,6 +40,7 @@ from pathlib import Path
 
 from sqlalchemy import and_, func, select, update
 
+import clock
 import db
 import headnotes
 import settings
@@ -311,7 +312,7 @@ def run(*, limit: int = 0, workers: int = 8, batch: int = 100, vocab_size: int =
                         stats["abstract"] += 1
                 if not args.dry_run:
                     # asked, whatever came back: never paid for twice by the worker
-                    s.execute(update(D).where(D.doc_id.in_(chunk)).values(enriched_at=dt.datetime.utcnow()))
+                    s.execute(update(D).where(D.doc_id.in_(chunk)).values(enriched_at=clock.utcnow()))
                     s.commit()
 
             if stats["locked"] and stats["locked"] == done:

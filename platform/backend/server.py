@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +42,13 @@ import settings
 import storage
 import support
 
-app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _startup()                     # checks the settings, brings the database up to date, seeds
+    yield
+
+
+app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0", lifespan=_lifespan)
 _origins = [o.strip() for o in settings.S.allow_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -95,7 +102,6 @@ def configure() -> None:
     _startup()
 
 
-@app.on_event("startup")
 def _startup() -> None:
     settings.check()
     db.init_db()

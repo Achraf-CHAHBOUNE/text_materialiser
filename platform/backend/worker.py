@@ -27,6 +27,7 @@ import time
 
 from sqlalchemy import select
 
+import clock
 import accounts
 import billing
 import db
@@ -79,7 +80,7 @@ def _get(key: str) -> str:
 def _set(key: str, value: str) -> None:
     with db.session() as s:
         row = s.get(db.WorkerState, key) or db.WorkerState(key=key)
-        row.value, row.updated_at = value, dt.datetime.utcnow()
+        row.value, row.updated_at = value, clock.utcnow()
         s.add(row)
         s.commit()
 
@@ -188,7 +189,7 @@ def daily(force: bool = False) -> dict:
         if not mine or (not force and _get("daily") == today.isoformat()):
             return {}
         out = {"expired": expire_subscriptions(today), "overdue": mark_overdue(today),
-               "reminders": renewal_reminders(today), "alerts": run_alerts(dt.datetime.utcnow()),
+               "reminders": renewal_reminders(today), "alerts": run_alerts(clock.utcnow()),
                "admin_digest": admin_digest(today), "limits_pruned": limits.prune()}
         _set("daily", today.isoformat())
         return out

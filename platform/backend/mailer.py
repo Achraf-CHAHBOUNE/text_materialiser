@@ -21,6 +21,7 @@ from sqlalchemy import DateTime, Integer, String, Text, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import db
 
 
@@ -38,7 +39,7 @@ class EmailOutbox(db.Base):
     # A reminder must go once, however often the worker looks: the key names it
     # ("renewal:42:15") and is unique, so a second copy is refused by the database.
     dedupe_key: Mapped[Optional[str]] = mapped_column(String, unique=True, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     sent_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
@@ -184,7 +185,7 @@ def send_pending(limit: int = 50) -> dict:
             m.attempts += 1
             try:
                 server.send_message(msg)
-                m.status, m.sent_at, m.error = "sent", dt.datetime.utcnow(), ""
+                m.status, m.sent_at, m.error = "sent", clock.utcnow(), ""
                 sent += 1
             except Exception as e:
                 m.error = f"{type(e).__name__}: {e}"[:300]

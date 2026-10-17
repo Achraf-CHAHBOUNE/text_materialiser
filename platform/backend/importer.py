@@ -37,6 +37,7 @@ from typing import Callable, Iterator, Optional
 from sqlalchemy import DateTime, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import db
 import extract
 
@@ -245,7 +246,7 @@ class ImportJob(db.Base):
     result: Mapped[str] = mapped_column(Text, default="")           # JSON: counts and lists
     error: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
     started_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -277,18 +278,18 @@ def run_job(job_id: int, *, publish: bool, store=None) -> dict:
     with db.session() as s:
         j = s.get(ImportJob, job_id)
         key, actor = j.file_key, j.created_by
-    _save(job_id, status="running", started_at=dt.datetime.utcnow(), error="")
+    _save(job_id, status="running", started_at=clock.utcnow(), error="")
     fd, tmp = tempfile.mkstemp(suffix=".zip")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(store.get(key))
         out = run(Path(tmp), publish=publish, actor=actor, store=store,
                   progress=lambda c: _save(job_id, result=json.dumps(c, ensure_ascii=False)))
-        _save(job_id, status="done", finished_at=dt.datetime.utcnow(),
+        _save(job_id, status="done", finished_at=clock.utcnow(),
               result=json.dumps(out, ensure_ascii=False))
         store.delete(key)                              # imported: the upload is not kept
     except Exception as e:                             # kept, so it can be run again
-        _save(job_id, status="failed", finished_at=dt.datetime.utcnow(), error=f"{type(e).__name__}: {e}"[:2000])
+        _save(job_id, status="failed", finished_at=clock.utcnow(), error=f"{type(e).__name__}: {e}"[:2000])
     finally:
         os.unlink(tmp)
     with db.session() as s:

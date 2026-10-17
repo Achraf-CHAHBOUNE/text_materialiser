@@ -33,14 +33,14 @@ class _FixedToken(Creds):
 
 def test_expiry_tracks_the_real_token_life_not_a_fixed_guess():
     c = _FixedToken(life_minutes=58)
-    left = (c.expiry - _dt.datetime.utcnow()).total_seconds() / 60
+    left = (c.expiry - _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)).total_seconds() / 60
     assert 50 < left < 55, f"expected ~53min (58 - 5 safety), got {left:.1f}"
 
 
 def test_refreshing_a_recycled_token_cannot_extend_it_past_its_death():
     """The actual regression: refresh must not re-stamp a full lifetime."""
     c = _FixedToken(life_minutes=58)
-    death = _dt.datetime.utcnow() + _dt.timedelta(minutes=58)
+    death = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None) + _dt.timedelta(minutes=58)
 
     # Simulate the run: token now has 13 minutes left, google-auth calls refresh,
     # gcloud returns the SAME token. Expiry must stay inside the real death.
@@ -56,7 +56,7 @@ def test_refreshing_a_recycled_token_cannot_extend_it_past_its_death():
 def test_expiry_is_never_stamped_in_the_past():
     """A past expiry would make google-auth refresh-loop on every request."""
     c = _FixedToken(life_minutes=1)          # less than the 5-minute safety margin
-    assert c.expiry > _dt.datetime.utcnow()
+    assert c.expiry > _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
 
 
 def test_a_failed_gcloud_call_raises_instead_of_installing_a_junk_token():

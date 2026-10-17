@@ -21,6 +21,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
+import clock  # noqa: E402
 import accounts  # noqa: E402
 import auth as authmod  # noqa: E402
 import billing  # noqa: E402
@@ -85,7 +86,7 @@ def _ruling(doc_id, created=None):
                             body_text="وحيث إن عقد الكراء صحيح",
                             search_text=textnorm.normalize("وحيث إن عقد الكراء صحيح"),
                             sort_key=f"20200201{doc_id[-3:]}",
-                            created_at=created or dt.datetime.utcnow()))
+                            created_at=created or clock.utcnow()))
         s.commit()
 
 
@@ -283,14 +284,14 @@ def test_an_alert_emails_only_what_is_new(customer):
     a = client.post("/api/me/alerts", headers=boss, json={"query": "الكراء", "lang": "fr",
                                                           "frequency": "daily"}).json()
     with db.session() as s:
-        s.get(library.Alert, a["id"]).last_sent_at = dt.datetime.utcnow() - dt.timedelta(days=2)
+        s.get(library.Alert, a["id"]).last_sent_at = clock.utcnow() - dt.timedelta(days=2)
         s.commit()
     _ruling("new_001")
-    _ruling("old_001", created=dt.datetime.utcnow() - dt.timedelta(days=30))
-    assert worker.run_alerts(dt.datetime.utcnow()) == 1
+    _ruling("old_001", created=clock.utcnow() - dt.timedelta(days=30))
+    assert worker.run_alerts(clock.utcnow()) == 1
     body = _last_mail("boss@firm.ma", "alert")[1]
     assert "/fr/ruling/new_001" in body and "old_001" not in body
-    assert worker.run_alerts(dt.datetime.utcnow()) == 0                 # not twice the same day
+    assert worker.run_alerts(clock.utcnow()) == 0                 # not twice the same day
 
 
 def test_renewal_reminders_go_once(customer):

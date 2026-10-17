@@ -21,6 +21,7 @@ os.environ.update(
 os.environ.pop("DATABASE_URL", None)
 os.environ.pop("MINIO_ENDPOINT", None)
 
+import clock  # noqa: E402
 import db  # noqa: E402
 import versions  # noqa: E402
 import importer  # noqa: E402
@@ -229,7 +230,7 @@ def test_the_worker_asks_the_model_once_for_a_new_ruling(tmp_path, monkeypatch):
     with db.session() as s:      # what the corpus was already: asked long ago
         from sqlalchemy import update
         s.execute(update(db.Decision).where(db.Decision.doc_id != "enrich_new")
-                  .values(enriched_at=db.dt.datetime.utcnow()))
+                  .values(enriched_at=clock.utcnow()))
         s.commit()
     asked = []
 

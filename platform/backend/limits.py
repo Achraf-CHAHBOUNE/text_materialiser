@@ -17,6 +17,7 @@ from typing import List
 from sqlalchemy import DateTime, Integer, String, delete, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import db
 
 KEEP = dt.timedelta(days=1)           # no window is longer than this
@@ -27,7 +28,7 @@ class RateEvent(db.Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     bucket: Mapped[str] = mapped_column(String(32), index=True)
     key: Mapped[str] = mapped_column(String(320), index=True)
-    at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow, index=True)
 
 
 def add(bucket: str, key: str) -> None:
@@ -38,7 +39,7 @@ def add(bucket: str, key: str) -> None:
 
 def recent(bucket: str, key: str, seconds: int) -> List[dt.datetime]:
     """When each event inside the window happened, oldest first."""
-    since = dt.datetime.utcnow() - dt.timedelta(seconds=seconds)
+    since = clock.utcnow() - dt.timedelta(seconds=seconds)
     with db.session() as s:
         return list(s.scalars(select(RateEvent.at).where(
             RateEvent.bucket == bucket, RateEvent.key == key[:320], RateEvent.at >= since)
@@ -53,6 +54,6 @@ def clear(bucket: str, key: str) -> None:
 
 def prune() -> int:
     with db.session() as s:
-        n = s.execute(delete(RateEvent).where(RateEvent.at < dt.datetime.utcnow() - KEEP)).rowcount
+        n = s.execute(delete(RateEvent).where(RateEvent.at < clock.utcnow() - KEEP)).rowcount
         s.commit()
     return n or 0

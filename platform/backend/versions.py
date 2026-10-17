@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from sqlalchemy import func, or_, select, update
 
+import clock
 import db
 import textnorm
 
@@ -38,7 +39,7 @@ def apply_version(doc_id: str, *, base_version: int, current_file: bytes, new_fi
     """
     from sqlalchemy.exc import IntegrityError
 
-    now = dt.datetime.utcnow()
+    now = clock.utcnow()
     with db.session() as s:
         d = s.get(db.Decision, doc_id)
         if d is None:
@@ -141,7 +142,7 @@ def discard_draft(row_id: int, actor: str) -> bool:
         v = s.get(db.DecisionVersion, row_id)
         if v is None or v.status != "draft":
             return False
-        v.status, v.decided_by, v.decided_at = "discarded", actor, dt.datetime.utcnow()
+        v.status, v.decided_by, v.decided_at = "discarded", actor, clock.utcnow()
         v.body_text = ""                     # a refused edit may carry a name: keep nothing
         s.add(db.AuditLog(actor=actor, action="discard", entity="decision", entity_id=v.doc_id,
                        field="text", new_value=v.summary))
@@ -220,7 +221,7 @@ def resolve_report(report_id: int, status: str, actor: str) -> bool:
         r = s.get(db.Report, report_id)
         if r is None:
             return False
-        r.status, r.resolved_by, r.resolved_at = status, actor, dt.datetime.utcnow()
+        r.status, r.resolved_by, r.resolved_at = status, actor, clock.utcnow()
         r.quote = ""                          # the quoted text is usually the name itself
         s.add(db.AuditLog(actor=actor, action=f"report_{status}", entity="decision",
                        entity_id=r.doc_id, field="report", new_value=str(report_id)))

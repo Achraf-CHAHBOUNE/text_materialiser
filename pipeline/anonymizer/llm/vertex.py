@@ -90,7 +90,7 @@ class _GcloudSessionCredentials(_OAuthCredentials):
         left = self._remaining()
         window = (left - self._SAFETY) if left else self._BLIND
         # Never stamp an expiry in the past, or google-auth refresh-loops.
-        self.expiry = _dt.datetime.utcnow() + max(window, _dt.timedelta(minutes=1))
+        self.expiry = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None) + max(window, _dt.timedelta(minutes=1))
 
     def refresh(self, request=None) -> None:  # noqa: ARG002 - signature fixed by google-auth
         self.token = self._fetch()

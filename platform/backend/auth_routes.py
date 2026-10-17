@@ -6,6 +6,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
+import clock
 import accounts
 import auth as authmod
 import billing
@@ -50,7 +51,7 @@ def _locked_for(key: tuple) -> int:
         return 0
     # locked until the lockout has run from the failure that reached the limit
     reached = fails[-tries]
-    return max(0, int((reached - dt.datetime.utcnow()).total_seconds()) + lockout)
+    return max(0, int((reached - clock.utcnow()).total_seconds()) + lockout)
 
 
 def _note_failure(key: tuple) -> None:

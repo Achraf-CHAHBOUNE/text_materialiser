@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, mapped_column
 
+import clock
 import accounts
 import db
 import mailer
@@ -28,8 +29,8 @@ class Ticket(db.Base):
     status: Mapped[str] = mapped_column(String, default="open", index=True)   # open|pending|closed
     priority: Mapped[str] = mapped_column(String, default="normal")           # normal|high
     assigned_to: Mapped[str] = mapped_column(String, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
-    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 class TicketMessage(db.Base):
@@ -39,7 +40,7 @@ class TicketMessage(db.Base):
     author: Mapped[str] = mapped_column(String, default="")
     staff: Mapped[int] = mapped_column(Integer, default=0)
     body: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=clock.utcnow)
 
 
 def _t(x: Ticket, org_name: str = "") -> dict:
@@ -139,7 +140,7 @@ def reply(ticket_id: int, body: ReplyBody, user: dict = Depends(current_user)) -
             raise HTTPException(status_code=404, detail="Not found")
         s.add(TicketMessage(ticket_id=ticket_id, author=user["email"], staff=int(staff),
                             body=body.body.strip()[:5000]))
-        x.updated_at = dt.datetime.utcnow()
+        x.updated_at = clock.utcnow()
         # the team answered: the customer's turn; the customer answered: open again
         x.status = "pending" if staff else "open"
         if staff and not x.assigned_to:
@@ -168,6 +169,6 @@ def update_ticket(ticket_id: int, body: TicketPatch, user: dict = Depends(curren
             x.priority = body.priority
         if staff and body.assigned_to is not None:
             x.assigned_to = body.assigned_to
-        x.updated_at = dt.datetime.utcnow()
+        x.updated_at = clock.utcnow()
         s.commit()
     return ticket(ticket_id, user)
