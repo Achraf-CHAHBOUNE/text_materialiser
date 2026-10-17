@@ -6,6 +6,7 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
@@ -13,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppStoreProvider } from "../lib/app-store";
 import { LanguageProvider } from "../lib/i18n";
+import { langFromPath } from "../lib/lang-url";
 import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
@@ -151,10 +153,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Runs before the first paint, so a reader who chose dark (or whose system is dark)
+// never sees the light page flash first. Same rule as the theme toggle in app-store.
+const THEME_BOOT = `try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";var e=document.documentElement;if(t==="dark")e.classList.add("dark");e.style.colorScheme=t}catch(_){}`;
+
 function RootShell({ children }: { children: ReactNode }) {
+  // the language from this request's own address (/fr/…), so the server sends the
+  // right lang and direction instead of Arabic corrected after the page loads
+  const href = useRouterState({ select: (st) => st.location.publicHref });
+  const lang = langFromPath(new URL(href, "http://x").pathname) ?? "ar";
   return (
-    <html lang="ar" dir="rtl">
+    <html lang={lang} dir={lang === "ar" ? "rtl" : "ltr"} suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <HeadContent />
       </head>
       <body>
