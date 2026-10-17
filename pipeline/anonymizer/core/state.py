@@ -61,7 +61,10 @@ class State:
         self._lock = threading.Lock()
         self._records: Dict[str, DocRecord] = {}
         self._save_interval = save_interval
-        self._last_save = 0.0
+        # None until the first write: time.monotonic() counts from boot on Linux, so
+        # comparing with 0.0 held back the first write on a machine up for less than
+        # the interval (a fresh CI runner) -- exactly the write that must happen.
+        self._last_save: Optional[float] = None
         self._dirty = False
         self._load()
 
@@ -109,7 +112,7 @@ class State:
         with self._lock:
             self._records[doc_id] = record
             self._dirty = True
-            if time.monotonic() - self._last_save >= self._save_interval:
+            if self._last_save is None or time.monotonic() - self._last_save >= self._save_interval:
                 self._save_unlocked()
 
     def flush(self) -> None:

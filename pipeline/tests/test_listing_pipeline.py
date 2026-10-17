@@ -461,3 +461,14 @@ def test_the_page_break_survives_inside_a_redacted_name():
     assert out.count(PAGE_BREAK) == 1 and "البوعزاوي" not in out
     first, second = out.split(PAGE_BREAK)
     assert first.startswith("صفحة أولى") and second.endswith("الصفحة الثانية")
+
+
+def test_the_first_state_write_happens_on_a_machine_just_booted(tmp_path, monkeypatch):
+    """time.monotonic() counts from boot on Linux: on a CI runner up for a minute, a
+    'last save at 0' looked recent and the first write was held back."""
+    import time
+    from anonymizer.core.state import DocRecord, State
+    monkeypatch.setattr(time, "monotonic", lambda: 5.0)       # booted five seconds ago
+    st = State(tmp_path / "s.json", save_interval=3600)
+    st.update("d0", DocRecord(status="done"))
+    assert (tmp_path / "s.json").exists(), "the first update is written at once"
