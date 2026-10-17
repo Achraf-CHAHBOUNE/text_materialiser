@@ -51,7 +51,7 @@ and the anonymized Word files (the pipeline's `results/` folder). There is one i
 
 | who | how | when |
 |---|---|---|
-| an admin | *Administration › Import*: choose a **.zip** of the delivery | a new batch, any size |
+| an admin | *Administration › Import*: choose a **.zip** of the delivery -- `run.bat <folder>` writes it, ready: `results/upload/<folder>.zip` | a new batch, any size |
 | the server operator | `docker compose exec backend python -m importer /path/to/results` (or a .zip) | a large delivery already on the server |
 | the operator, with summaries | `python scripts/ingest.py ../../results` | the import, then a model writes a subject and a summary for the rulings that print none |
 
@@ -61,7 +61,9 @@ livraison.zip
 └── documents/…/*.docx    the anonymized files (any folders; matched by file name)
 ```
 
-Up to 200 rulings (`IMPORT_INLINE_MAX`) are imported during the upload and the answer
+Zipping `results/` by hand works as well (with or without its top folder, from Windows,
+7-Zip or WinRAR), but it holds every batch ever processed; the batch zip holds only the
+new one. Up to 200 rulings (`IMPORT_INLINE_MAX`) are imported during the upload and the answer
 comes back at once. A larger .zip is kept in the object store and imported by the
 worker; the page shows its progress, and *Imports récents* keeps the history.
 

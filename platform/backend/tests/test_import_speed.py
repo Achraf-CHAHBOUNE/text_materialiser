@@ -244,3 +244,20 @@ def test_the_worker_asks_the_model_once_for_a_new_ruling(tmp_path, monkeypatch):
     assert first["processed"] == 1 and first["abstract"] == 1 and len(asked) == 1
     assert db.get_decision("enrich_new", body=True)["abstract"].startswith("لا يقبل")
     assert worker.enrich_new() == {} and len(asked) == 1, "never asked twice"
+
+
+def test_a_zip_with_windows_backslash_paths_imports(tmp_path):
+    """Older Windows zip tools separate folders with backslashes; the upload reads it all the same."""
+    import io
+    import zipfile
+    from fastapi.testclient import TestClient
+    folder = _folder(tmp_path, [("up_backslash", RULING_WITH_AN_OUTCOME)])
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for p in folder.rglob("*"):
+            if p.is_file():
+                z.writestr("results" + chr(92) + str(p.relative_to(folder)).replace("/", chr(92)), p.read_bytes())
+    with TestClient(server.app) as client:
+        out = _upload(client, buf.getvalue()).json()
+    assert out["status"] == "done" and out["imported"] == 1, out
+    assert db.get_decision("up_backslash")["outcome"] == "رفض الطلب"

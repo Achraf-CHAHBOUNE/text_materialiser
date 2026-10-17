@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--corpus", help="Label for this input folder in a shared case database "
                    "(default: the input folder name)")
     p.add_argument("--log-level", help="DEBUG/INFO/WARNING/ERROR (default from .env)")
+    # the help is partly Arabic: a Windows console in its default code page cannot print it
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     return p.parse_args()
 
 

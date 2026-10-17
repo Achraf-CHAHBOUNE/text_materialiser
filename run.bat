@@ -6,6 +6,9 @@ REM    run.bat 01_civile                 everything left to do
 REM    run.bat 01_civile --limit 500     only the next 500
 REM    run.bat 01_civile --sample 200    a random 200, as a test
 REM
+REM  At the end, results\upload\<folder>.zip holds this folder's rulings, ready
+REM  for the site: Administration > Import > Choisir un .zip
+REM
 REM  The folder must sit in data\corpus\. Safe to stop and run again:
 REM  finished rulings are skipped and nothing is paid for twice.
 REM ==================================================================
@@ -23,8 +26,10 @@ set "STATE_FILE=../data/work/%NAME%/.state.json"
 set "DB_PATH=../data/work/cases.db"
 
 python -m anonymizer --input "../data/corpus/%NAME%" --output "../data/work/%NAME%" --corpus %NAME% --workers 16 --budget 15 %1 %2 %3 %4 %5 %6
-python -m anonymizer.assemble --work ../data/work --out ../results
+python -m anonymizer.assemble --work ../data/work --out ../results --zip %NAME%
 
 echo.
 echo  Done. The client hand-off is in the results folder.
+echo  To put this batch on the site: Administration ^> Import ^> Choisir un .zip
+echo  and choose  results\upload\%NAME%.zip
 pause

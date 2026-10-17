@@ -58,6 +58,8 @@ skipped and nothing is paid for twice. Byte-identical copies — within a folder
 across folders — are processed once.
 
 `results/` holds `listing.csv`, `records.json` / `.xlsx`, and `documents/<chamber>/`.
+`results/upload/01_civile.zip` holds just that folder's rulings, ready for the platform:
+*Administration › Import › Choisir un .zip*.
 Anything the leak check held back stays in `data/work/<folder>/_quarantine/` and never
 reaches `results/`.
 

@@ -15,5 +15,6 @@ cd "$here/pipeline"
 export PYTHONUTF8=1 STATE_FILE="../data/work/$name/.state.json" DB_PATH="../data/work/cases.db"
 python -m anonymizer --input "../data/corpus/$name" --output "../data/work/$name" \
   --corpus "$name" --workers 16 --budget 15 "$@"
-python -m anonymizer.assemble --work ../data/work --out ../results
+python -m anonymizer.assemble --work ../data/work --out ../results --zip "$name"
 echo "Done. The client hand-off is in results/."
+echo "To put this batch on the site: Administration > Import > Choisir un .zip -> results/upload/$name.zip"

@@ -92,10 +92,15 @@ class Zip:
     def __init__(self, path: Path) -> None:
         self.zf = zipfile.ZipFile(path)
         names = self.zf.namelist()
-        self.rec_name = next((n for n in names if n.rsplit("/", 1)[-1] == "records.json"), "")
+
+        def base(n: str) -> str:
+            # older Windows zip tools write "results\\documents\\x.docx"; zip wants "/"
+            return n.replace(chr(92), "/").rsplit("/", 1)[-1]
+
+        self.rec_name = next((n for n in names if base(n) == "records.json"), "")
         if not self.rec_name:
             raise ValueError("records.json not found in the archive")
-        self.by_base = {n.rsplit("/", 1)[-1]: n for n in names if not n.endswith("/")}
+        self.by_base = {base(n): n for n in names if not n.replace(chr(92), "/").endswith("/")}
 
     def records(self) -> list:
         return json.loads(self.zf.read(self.rec_name).decode("utf-8"))

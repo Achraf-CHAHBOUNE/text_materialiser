@@ -11,6 +11,8 @@ working folders on demand, so it is always complete and never stale:
       records.json    the full record per ruling (what the platform imports)
       records.xlsx    the same, as a spreadsheet
       documents/<chamber>/<ruling>.docx
+      upload/<folder>.zip   one input folder's rulings, ready for the platform's
+                            Import page (with --zip <folder>; run.bat does it)
 
 Only delivered rulings are included. Documents are hard-linked where the disk
 allows it (no second copy of the data), copied otherwise.
@@ -161,6 +163,25 @@ def assemble(work: Path, out: Path,
     return counts
 
 
+def write_upload_zip(out: Path, folder: str) -> Tuple[Path, int]:
+    """One input folder's delivered rulings as the zip the platform's Import page takes:
+    records.json (those rulings only) and their documents, nothing else. Built from
+    `out` after assemble(), so it carries the same records and the same hand edits."""
+    records = [r for r in json.loads((out / "records.json").read_text(encoding="utf-8"))
+               if r.get("corpus") == folder]
+    if not records:
+        raise SystemExit(f"No delivered ruling from the folder {folder!r} in {out}")
+    target = out / "upload" / f"{folder}.zip"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_suffix(".zip.part")
+    with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("records.json", json.dumps(records, ensure_ascii=False, indent=1))
+        for r in records:
+            z.write(out / r["file_path"], r["file_path"])          # forward slashes, as zip wants
+    partial.replace(target)                                         # never a half-written zip
+    return target, len(records)
+
+
 def _write_readme(records: List[dict], folders: List[Path], out: Path) -> dict:
     n = len(records)
     by_chamber = Counter((r.get("category") or {}).get("value", "") for r in records)
@@ -216,6 +237,9 @@ def main() -> int:
     ap.add_argument("--work", default="../data/work", help="Folder holding one working folder per input")
     ap.add_argument("--out", default="../results", help="The results folder to (re)build")
     ap.add_argument("--edits", default="", help="The platform's edits export (edits.zip) to apply")
+    ap.add_argument("--zip", action="append", default=[], metavar="FOLDER",
+                    help="Also write upload/FOLDER.zip: that input folder's rulings, ready for "
+                         "the platform's Import page (repeatable)")
     args = ap.parse_args()
     edits = load_edits(Path(args.edits)) if args.edits else None
     counts = assemble(Path(args.work), Path(args.out), edits)
@@ -226,6 +250,10 @@ def main() -> int:
             print(f"  ! edit for {doc_id} matches no delivered ruling -- not applied")
     for c, k in sorted(counts["folders"].items()):
         print(f"  {c}: {k:,}")
+    for folder in args.zip:
+        path, n = write_upload_zip(Path(args.out), folder)
+        print(f"ready to upload: {path}  ({n:,} rulings, {path.stat().st_size / 1e6:.1f} MB)")
+        print("  -> platform: Administration > Import > Choisir un .zip")
     return 0
 
 

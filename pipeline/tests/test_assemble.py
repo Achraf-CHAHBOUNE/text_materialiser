@@ -85,3 +85,23 @@ def test_hand_edits_from_the_platform_are_applied_and_never_reach_the_work_folde
     rec = next(r for r in recs if r["doc_id"] == "a")
     assert rec["fields"]["رقم القرار"]["value"] == "901" and rec["city"] == "فاس"
     assert rec["edited"]["version"] == 3
+
+
+def test_a_batch_zip_holds_that_folder_only_ready_for_the_platform(tmp_path):
+    """run.bat ends with results/upload/<folder>.zip: the rulings of that one input folder,
+    records.json and their documents, nothing held back -- what the Import page takes."""
+    from anonymizer.assemble import write_upload_zip
+    _process(tmp_path, "02_statut", "a", "b", blank=["held"])
+    _process(tmp_path, "01_civile", "c")
+    assemble(tmp_path / "work", tmp_path / "results")
+    path, n = write_upload_zip(tmp_path / "results", "02_statut")
+
+    assert path == tmp_path / "results" / "upload" / "02_statut.zip" and n == 2
+    z = zipfile.ZipFile(path)
+    names = set(z.namelist())
+    recs = json.loads(z.read("records.json").decode("utf-8"))
+    assert {r["doc_id"] for r in recs} == {"a", "b"}, "only this folder's rulings"
+    assert all(r["file_path"] in names for r in recs), "every record has its document in the zip"
+    assert not any("held" in n for n in names) and not any("\\\\" in n for n in names)
+    with pytest.raises(SystemExit):
+        write_upload_zip(tmp_path / "results", "no_such_folder")
