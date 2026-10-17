@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 import accounts
@@ -12,7 +12,7 @@ import billing
 import db
 import limits
 import settings
-from deps import STAFF
+from deps import STAFF, current_user, set_session_cookie
 
 router = APIRouter()
 
@@ -58,7 +58,7 @@ def _note_failure(key: tuple) -> None:
 
 
 @router.post("/api/auth/login")
-def login(body: LoginBody, request: Request) -> dict:
+def login(body: LoginBody, request: Request, response: Response) -> dict:
     key = _login_key(body.email, request)
     wait = _locked_for(key)
     if wait:
@@ -85,6 +85,21 @@ def login(body: LoginBody, request: Request) -> dict:
     db.touch_login(user["email"])
     sid = accounts.open_session(user, key[1], request.headers.get("user-agent", ""))
     db.log_activity(user["email"], "login", "")
-    return {"token": authmod.make_token(user["email"], sid), "email": user["email"],
+    token = authmod.make_token(user["email"], sid)
+    set_session_cookie(response, request, token)
+    # the token is still in the answer for scripts and older pages; the site uses the cookie
+    return {"token": token, "email": user["email"],
             "role": user["role"], "language": user.get("language", "ar"),
             "access": billing.access_state(user.get("org_id")) if user["role"] not in STAFF else "ok"}
+
+
+@router.post("/api/auth/session")
+def adopt_session(request: Request, response: Response, user: dict = Depends(current_user)) -> dict:
+    """A page that still holds its token from before the cookie existed hands it over
+    once (in the Authorization header) and gets the cookie for the same session, then
+    forgets the token: nobody is signed out by the change."""
+    token = (request.headers.get("authorization") or "").split(" ", 1)[-1]
+    if not token or not request.headers.get("authorization", "").startswith("Bearer "):
+        raise HTTPException(status_code=400, detail="Send the token in the Authorization header")
+    set_session_cookie(response, request, token)
+    return {"email": user["email"], "role": user["role"], "language": user.get("language", "ar")}

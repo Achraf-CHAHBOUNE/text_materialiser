@@ -180,8 +180,8 @@ export const uploadContractFile = (id: number, file: File) => upload(`/api/crm/c
 export const uploadProof = (id: number, file: File) => upload(`/api/crm/transfers/${id}/proof`, file);
 /** Files behind the session: fetched with the token, then saved. */
 export async function downloadWithSession(path: string, name: string) {
-  const { apiBase, getToken } = await import("./api");
-  const r = await fetch(`${apiBase}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  const { apiBase } = await import("./api");
+  const r = await fetch(`${apiBase}${path}`, { credentials: "include" });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(await r.blob());
@@ -261,9 +261,9 @@ export const readerDetail = (email: string, days = 30) =>
 export const forceLogout = (email: string) => post<{ ended: number }>(`/api/crm/users/${encodeURIComponent(email)}/logout`);
 export const usage = (days = 30) => j<Usage>(`/api/crm/usage?days=${days}`);
 export async function exportActivity(days: number, email = "") {
-  const { apiBase, getToken } = await import("./api");
+  const { apiBase } = await import("./api");
   const r = await fetch(`${apiBase}/api/crm/activity/export?${qs({ days, email })}`,
-                        { headers: { Authorization: `Bearer ${getToken()}` } });
+                        { credentials: "include" });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(await r.blob());

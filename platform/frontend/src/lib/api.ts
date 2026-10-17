@@ -5,22 +5,54 @@
 import type { Lang } from "./lang-url";
 
 const BASE = (import.meta.env["VITE_API_URL"] ?? "http://localhost:8000").replace(/\/$/, "");
-const TOKEN_KEY = "anon-token";
+// The session is an HttpOnly cookie the server sets at sign-in: no script on the page
+// can read it, and file links need no token in their address. What is kept here is
+// only who is signed in -- a hint for the interface; the cookie decides.
+const LEGACY_TOKEN_KEY = "anon-token";   // pages before the cookie kept the token here
 const EMAIL_KEY = "anon-email";
 const ROLE_KEY = "anon-role";
 
-export const getToken = () =>
-  (typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null) || "";
-export const getEmail = () =>
-  (typeof window !== "undefined" ? window.localStorage.getItem(EMAIL_KEY) : null) || "";
-export const getRole = () =>
-  (typeof window !== "undefined" ? window.localStorage.getItem(ROLE_KEY) : null) || "";
-export const isAuthed = () => !!getToken();
+function readStore(key: string): string {
+  try {
+    return (typeof window !== "undefined" ? window.localStorage.getItem(key) : null) || "";
+  } catch {
+    return "";                           // storage blocked: treated as signed out
+  }
+}
+function writeStore(key: string, value: string | null) {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {
+    /* storage blocked: the cookie still holds the session */
+  }
+}
+
+export const getEmail = () => readStore(EMAIL_KEY);
+export const getRole = () => readStore(ROLE_KEY);
+export const isAuthed = () => !!getEmail();
 export const isAdmin = () => getRole() === "admin";
 export function clearAuth() {
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(EMAIL_KEY);
-  window.localStorage.removeItem(ROLE_KEY);
+  writeStore(LEGACY_TOKEN_KEY, null);
+  writeStore(EMAIL_KEY, null);
+  writeStore(ROLE_KEY, null);
+}
+
+/** A browser signed in before the cookie existed still holds its token: hand it to the
+ *  server once for the cookie of the same session, then forget it. Nobody is signed out. */
+export async function adoptLegacySession(): Promise<void> {
+  const token = readStore(LEGACY_TOKEN_KEY);
+  if (!token) return;
+  try {
+    const r = await fetch(BASE + "/api/auth/session", {
+      method: "POST", credentials: "include", headers: { Authorization: `Bearer ${token}` },
+    });
+    if (r.status === 401 || r.status === 403) clearAuth();
+  } catch {
+    /* offline: tried again next time */
+    return;
+  }
+  writeStore(LEGACY_TOKEN_KEY, null);
 }
 
 export type Level = "ابتدائي" | "استئناف" | "نقض" | "";
@@ -73,10 +105,8 @@ export type Decision = {
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
-  const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const r = await fetch(BASE + path, { ...init, headers });
-  if (r.status === 401 && token) {
+  const r = await fetch(BASE + path, { ...init, headers, credentials: "include" });
+  if (r.status === 401 && isAuthed()) {
     // signed out elsewhere, or the session ended: back to the sign-in page
     clearAuth();
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("session-ended"));
@@ -122,6 +152,7 @@ export class NeedsCode extends Error {
 export async function login(email: string, password: string, code = "") {
   const r = await fetch(BASE + "/api/auth/login", {
     method: "POST",
+    credentials: "include",            // the answer sets the session cookie
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, code }),
   });
@@ -132,14 +163,12 @@ export async function login(email: string, password: string, code = "") {
     }
     throw new Error(typeof detail === "string" ? detail : "Invalid email or password");
   }
-  const data = (await r.json()) as { token: string; email: string; role: string; language?: string };
-  window.localStorage.setItem(TOKEN_KEY, data.token);
-  window.localStorage.setItem(EMAIL_KEY, data.email);
-  window.localStorage.setItem(ROLE_KEY, data.role);
+  const data = (await r.json()) as { email: string; role: string; language?: string };
+  writeStore(LEGACY_TOKEN_KEY, null);
+  writeStore(EMAIL_KEY, data.email);
+  writeStore(ROLE_KEY, data.role);
   return data;
 }
-
-const tokenQ = () => `token=${encodeURIComponent(getToken())}`;
 
 export const apiBase = BASE;
 
@@ -173,7 +202,7 @@ export function searchDecisions(query: string, p: { category?: string; level?: s
 export const getDecision = (id: string, lang: Lang = "ar") =>
   j<Decision>(`/api/decisions/${encodeURIComponent(id)}?lang=${lang}`);
 export const decisionFileUrl = (id: string) =>
-  `${BASE}/api/decisions/${encodeURIComponent(id)}/file?${tokenQ()}`;
+  `${BASE}/api/decisions/${encodeURIComponent(id)}/file`;
 
 // ---------- admin ----------
 /** An uploaded delivery: imported during the upload when small, by the worker when large. */
@@ -211,7 +240,7 @@ export const setDecisionState = (id: string, state: PubState) =>
     body: JSON.stringify({ state }),
   });
 export const adminFileUrl = (id: string) =>
-  `${BASE}/api/admin/decisions/${encodeURIComponent(id)}/file?${tokenQ()}`;
+  `${BASE}/api/admin/decisions/${encodeURIComponent(id)}/file`;
 
 // ---------- browse: court > chamber > year > ruling ----------
 // Mirrors how a court portal is read (the JURISMAROC layout the client asked for).
@@ -364,7 +393,7 @@ export const listReports = (status = "open") =>
   j<ReportRow[]>(`/api/admin/reports?status=${encodeURIComponent(status)}`);
 export const resolveReport = (reportId: number, status: "resolved" | "dismissed") =>
   post<{ ok: boolean }>(`/api/admin/reports/${reportId}`, { status });
-export const editsExportUrl = () => `${BASE}/api/admin/edits/export?${tokenQ()}`;
+export const editsExportUrl = () => `${BASE}/api/admin/edits/export`;
 
 // ---------- reading a ruling in French ----------
 // Translated once, then stored: the first reader waits a few seconds, everyone after

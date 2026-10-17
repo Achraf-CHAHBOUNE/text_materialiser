@@ -14,12 +14,14 @@ open when it has lapsed.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Optional, Tuple
+from urllib.parse import urlparse
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Response
 
 import auth as authmod
 import db
+import settings
 
 STAFF = ("admin", "editor", "sales")
 CLIENTS = ("client_admin", "client")
@@ -50,17 +52,61 @@ def _user_from_token(token: str, path: str = "") -> dict:
     return user
 
 
-def current_user(request: Request, authorization: Optional[str] = Header(None)) -> dict:
-    if not authorization or not authorization.startswith("Bearer "):
+# ---------------- the session cookie ----------------
+# The browser keeps the session in an HttpOnly cookie: page scripts never see it, so
+# a script slipped into a page cannot carry the session away, and file links need no
+# token in their address (where logs, history and copied links would keep it). The
+# Authorization header still works -- scripts, tests, a page loaded before this change.
+COOKIE = "tok_session"
+_SAFE = ("GET", "HEAD", "OPTIONS")
+
+
+def set_session_cookie(response: Response, request: Request, token: str) -> None:
+    response.set_cookie(COOKIE, token, max_age=settings.S.auth_ttl_seconds, path="/",
+                        httponly=True, samesite="lax", secure=request.url.scheme == "https")
+
+
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(COOKIE, path="/")
+
+
+def _same_origin(request: Request) -> bool:
+    """A change made with the cookie must come from the site itself (or an origin the
+    settings allow): another site's page cannot make the reader's browser act."""
+    source = request.headers.get("origin") or request.headers.get("referer") or ""
+    host = urlparse(source).netloc
+    allowed = {request.headers.get("host", "")} | {
+        urlparse(o.strip()).netloc for o in settings.S.allow_origins.split(",") if o.strip() not in ("", "*")}
+    return bool(host) and host in allowed
+
+
+def _credentials(request: Request, authorization: Optional[str]) -> Tuple[str, str]:
+    """(token, where it came from): the header first, then the cookie."""
+    if authorization and authorization.startswith("Bearer "):
+        return authorization.split(" ", 1)[1], "header"
+    cookie = request.cookies.get(COOKIE, "")
+    return (cookie, "cookie") if cookie else ("", "")
+
+
+def _authenticate(request: Request, token: str, source: str) -> dict:
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return _user_from_token(authorization.split(" ", 1)[1], request.url.path)
+    if source == "cookie" and request.method not in _SAFE and not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Cross-site request refused")
+    return _user_from_token(token, request.url.path)
+
+
+def current_user(request: Request, authorization: Optional[str] = Header(None)) -> dict:
+    return _authenticate(request, *_credentials(request, authorization))
 
 
 def flex_user(request: Request, authorization: Optional[str], token: str) -> dict:
-    """Auth for browser file links: Bearer header OR ?token= query."""
-    tok = (authorization.split(" ", 1)[1]
-           if authorization and authorization.startswith("Bearer ") else token)
-    return _user_from_token(tok, request.url.path)
+    """Auth for browser file links: the header, the cookie, or -- for a link made before
+    the cookie existed -- ?token= in the address."""
+    found, source = _credentials(request, authorization)
+    if not found and token:
+        found, source = token, "query"
+    return _authenticate(request, found, source)
 
 
 def require(*roles: str):

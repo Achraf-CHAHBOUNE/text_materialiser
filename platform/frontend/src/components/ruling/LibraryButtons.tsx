@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { decisionFileUrl, getToken } from "@/lib/api";
+import { decisionFileUrl } from "@/lib/api";
 import { addToFolder, createFolder, folders, rulingFolders } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
@@ -18,7 +18,7 @@ export function DownloadButton({ docId, fileName }: { docId: string; fileName: s
   const run = async () => {
     setBusy(true);
     try {
-      const r = await fetch(decisionFileUrl(docId), { headers: { Authorization: `Bearer ${getToken()}` } });
+      const r = await fetch(decisionFileUrl(docId), { credentials: "include" });
       if (r.status === 429) {
         const d = (await r.json().catch(() => ({}))).detail ?? {};
         toast.error(d.quota !== undefined ? `${t("dl.quota")} (${num(d.quota)})` : t("dl.pace"));

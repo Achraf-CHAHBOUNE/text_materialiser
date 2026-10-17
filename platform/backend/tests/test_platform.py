@@ -109,6 +109,7 @@ def test_import_gate_quarantines_pii():
 
 
 def test_unauthenticated_blocked():
+    client.cookies.clear()                 # signed in earlier: forget the session cookie
     assert client.get("/api/decisions").status_code == 401
     assert client.get("/api/admin/decisions").status_code == 401
 

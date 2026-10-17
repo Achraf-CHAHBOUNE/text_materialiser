@@ -42,9 +42,13 @@ import storage
 import support
 
 app = FastAPI(title="Anonymized Decisions Platform", version="2.0.0")
+_origins = [o.strip() for o in settings.S.allow_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.S.allow_origins.split(","),
+    allow_origins=_origins,
+    # the session cookie may cross origins only towards origins named in ALLOW_ORIGINS
+    # (a separate site address in development); never with "*"
+    allow_credentials="*" not in _origins,
     allow_methods=["*"], allow_headers=["*"],
 )
 

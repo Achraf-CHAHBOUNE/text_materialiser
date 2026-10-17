@@ -15,6 +15,9 @@ WEB_PORT=5199
 export DB_DIR="$ROOT/data/platform"
 export FILESTORE_DIR="$ROOT/data/platform/files"
 export AUTH_SECRET="${AUTH_SECRET:-local-dev-secret-change-me}"
+# the site (5199) and the API (8099) are two origins here: the session cookie may cross
+# between them only because they are named
+export ALLOW_ORIGINS="${ALLOW_ORIGINS:-http://127.0.0.1:5199,http://localhost:5199}"
 export SEED_EMAIL="${SEED_EMAIL:-admin@local}"
 export SEED_PASSWORD="${SEED_PASSWORD:-dev-password-1234}"
 

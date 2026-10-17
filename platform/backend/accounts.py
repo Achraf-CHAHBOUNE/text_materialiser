@@ -14,7 +14,7 @@ import datetime as dt
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, func, select
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 import auth as authmod
 import db
 import mailer
-from deps import CLIENTS, ROLES, STAFF, current_user, require_admin, require_sales
+from deps import CLIENTS, ROLES, STAFF, clear_session_cookie, current_user, require_admin, require_sales
 
 
 # ---------------- tables ----------------
@@ -352,8 +352,9 @@ def change_password(body: PasswordBody, user: dict = Depends(current_user)) -> d
 
 
 @router.post("/api/auth/logout")
-def logout(user: dict = Depends(current_user)) -> dict:
+def logout(response: Response, user: dict = Depends(current_user)) -> dict:
     end_session(user.get("sid", ""))
+    clear_session_cookie(response)
     return {"ok": True}
 
 

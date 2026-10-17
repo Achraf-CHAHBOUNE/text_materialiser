@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  adoptLegacySession,
   clearAuth,
   getCategories,
   getEmail,
@@ -59,6 +60,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setRole(getRole());
     setAuthed(apiIsAuthed());
     setReady(true);
+    void adoptLegacySession();          // a token kept from before the cookie: moved, then forgotten
   }, []);
 
   useEffect(() => {

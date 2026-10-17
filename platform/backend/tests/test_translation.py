@@ -180,6 +180,7 @@ def test_an_unpublished_ruling_cannot_be_translated(monkeypatch):
 
 
 def test_signing_in_is_required():
+    client.cookies.clear()                 # signed in earlier: forget the session cookie
     assert client.post("/api/decisions/tr_once/translation").status_code == 401
     assert client.get("/api/decisions/tr_once/translation").status_code == 401
 
