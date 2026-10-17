@@ -87,8 +87,16 @@ function NavList({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed
             )}
             aria-current={active ? "page" : undefined}
           >
-            {active && <span aria-hidden className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-teal" />}
-            <item.icon className={cn("size-4.5 shrink-0", active ? "text-teal" : "group-hover:text-foreground")} aria-hidden />
+            {active && (
+              <span aria-hidden className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-teal" />
+            )}
+            <item.icon
+              className={cn(
+                "size-4.5 shrink-0",
+                active ? "text-teal" : "group-hover:text-foreground",
+              )}
+              aria-hidden
+            />
             {!collapsed && item.label}
           </Link>
         );
@@ -111,13 +119,19 @@ function ThemeToggle() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={toggleTheme}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
           aria-label={theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}
-          className="min-h-11 min-w-11 rounded-xl">
+          className="min-h-11 min-w-11 rounded-xl"
+        >
           {theme === "dark" ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}</TooltipContent>
+      <TooltipContent>
+        {theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -141,7 +155,6 @@ function LanguageToggle() {
   );
 }
 
-
 function AvatarMenu() {
   const navigate = useNavigate();
   const { email, role, logout } = useStore();
@@ -150,22 +163,33 @@ function AvatarMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label={t("shell.accountMenu")}
-          className="grid size-10 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-transform duration-200 hover:scale-105">
+        <button
+          type="button"
+          aria-label={t("shell.accountMenu")}
+          className="grid size-10 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-transform duration-200 hover:scale-105"
+        >
           {initials}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span className="text-sm font-medium">{email || "—"}</span>
-          <span className="text-xs font-normal text-muted-foreground">{role ? t(`role.${role}` as "role.client") : ""}</span>
+          <span className="text-xs font-normal text-muted-foreground">
+            {role ? t(`role.${role}` as "role.client") : ""}
+          </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/account"><User className="size-4" />{t("nav.account")}</Link>
+          <Link to="/account">
+            <User className="size-4" />
+            {t("nav.account")}
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/settings"><Sun className="size-4" />{t("settings.appearance")}</Link>
+          <Link to="/settings">
+            <Sun className="size-4" />
+            {t("settings.appearance")}
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -196,10 +220,12 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
   const navigate = useNavigate();
-  const { authed, ready, refreshCategories } = useStore();
+  const { authed, ready, refreshCategories, role } = useStore();
   const [lapsed, setLapsed] = useState(false);
+  const home =
+    role === "admin" || role === "editor" ? "/dashboard" : role === "sales" ? "/crm" : "/browse";
 
   // a 402 anywhere means the organization's subscription has lapsed: say so once,
   // with the way to put it right, instead of a page of failed requests
@@ -210,7 +236,7 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    if (!ready) return;                    // the saved session has not been read yet
+    if (!ready) return; // the saved session has not been read yet
     if (!authed) {
       navigate({ to: "/" });
       return;
@@ -220,7 +246,20 @@ export function AppShell({
 
   // Nothing is known about the reader until the session is read: showing a
   // signed-out page for one frame would flicker on every load.
-  if (!ready) return <div className="min-h-screen bg-background" />;
+  if (!ready) {
+    return (
+      <div
+        className="grid min-h-screen place-items-center bg-background"
+        role="status"
+        aria-label={t("common.loading")}
+      >
+        <span
+          className="size-8 animate-spin rounded-full border-2 border-muted border-t-teal"
+          aria-hidden
+        />
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -231,19 +270,36 @@ export function AppShell({
             collapsed ? "w-[76px] items-center" : "w-[268px]",
           )}
         >
-          <div className={cn("mb-8 flex items-center", collapsed ? "justify-center" : "justify-between px-1")}>
-            <Link to="/dashboard" aria-label={t("shell.home")}><Wordmark compact={collapsed} /></Link>
+          <div
+            className={cn(
+              "mb-8 flex items-center",
+              collapsed ? "justify-center" : "justify-between px-1",
+            )}
+          >
+            <Link to={home} aria-label={t("shell.home")}>
+              <Wordmark compact={collapsed} />
+            </Link>
             {!collapsed && (
-              <Button variant="ghost" size="icon" aria-label={t("shell.collapse")}
-                className="size-8 rounded-lg text-muted-foreground" onClick={() => setCollapsed(true)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("shell.collapse")}
+                className="size-8 rounded-lg text-muted-foreground"
+                onClick={() => setCollapsed(true)}
+              >
                 <PanelLeftClose className="size-4" />
               </Button>
             )}
           </div>
 
           {collapsed && (
-            <Button variant="ghost" size="icon" aria-label={t("shell.expand")}
-              className="mb-4 size-9 rounded-lg text-muted-foreground" onClick={() => setCollapsed(false)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("shell.expand")}
+              className="mb-4 size-9 rounded-lg text-muted-foreground"
+              onClick={() => setCollapsed(false)}
+            >
               <PanelLeftOpen className="size-4" />
             </Button>
           )}
@@ -257,26 +313,42 @@ export function AppShell({
               <div className="flex min-w-0 items-center gap-3">
                 <Sheet open={open} onOpenChange={setOpen}>
                   <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label={t("shell.openNav")}
-                      className="min-h-11 min-w-11 rounded-xl lg:hidden">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("shell.openNav")}
+                      className="min-h-11 min-w-11 rounded-xl lg:hidden"
+                    >
                       <Menu className="size-5" />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="w-72 bg-sidebar p-4">
+                  <SheetContent
+                    side={dir === "rtl" ? "right" : "left"}
+                    className="w-72 bg-sidebar p-4"
+                  >
                     <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>
-                    <Link to="/dashboard" className="mb-8 block" onClick={() => setOpen(false)}><Wordmark /></Link>
+                    <Link to={home} className="mb-8 block" onClick={() => setOpen(false)}>
+                      <Wordmark />
+                    </Link>
                     <NavList onNavigate={() => setOpen(false)} />
                   </SheetContent>
                 </Sheet>
                 {title && (
                   <div className="min-w-0">
-                    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Link to="/browse" className="transition-colors hover:text-foreground">{t("browse.title")}</Link>
+                    <nav
+                      aria-label="Breadcrumb"
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <Link to="/browse" className="transition-colors hover:text-foreground">
+                        {t("browse.title")}
+                      </Link>
                       <span aria-hidden>/</span>
                       <span className="truncate text-foreground/70">{title}</span>
                     </nav>
                     <h1 className="mt-0.5 truncate text-h2 font-semibold sm:text-h1">{title}</h1>
-                    {description && <p className="truncate text-sm text-muted-foreground">{description}</p>}
+                    {description && (
+                      <p className="truncate text-sm text-muted-foreground">{description}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -292,11 +364,18 @@ export function AppShell({
           <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-6xl animate-fade-in">
               {lapsed && (
-                <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <div
+                  role="alert"
+                  className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                >
                   <span>{t("acc.lapsed")}</span>
                   <span className="flex gap-3">
-                    <Link to="/account" className="font-medium underline">{t("nav.account")}</Link>
-                    <Link to="/support" className="font-medium underline">{t("nav.support")}</Link>
+                    <Link to="/account" className="font-medium underline">
+                      {t("nav.account")}
+                    </Link>
+                    <Link to="/support" className="font-medium underline">
+                      {t("nav.support")}
+                    </Link>
                   </span>
                 </div>
               )}

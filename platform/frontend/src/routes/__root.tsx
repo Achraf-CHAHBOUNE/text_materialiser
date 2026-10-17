@@ -22,8 +22,19 @@ function NotFoundComponent() {
       <div className="relative max-w-md rounded-2xl border bg-card p-10 text-center shadow-lg">
         <span className="grad-brand mx-auto mb-6 grid size-12 place-items-center rounded-xl text-primary-foreground shadow-md">
           <svg viewBox="0 0 24 24" className="size-6" fill="none" aria-hidden>
-            <path d="M12 2.6 4.8 5.4v6.2c0 4.6 3 8.1 7.2 9.8 4.2-1.7 7.2-5.2 7.2-9.8V5.4L12 2.6Z" stroke="currentColor" strokeWidth="1.4" opacity="0.5" />
-            <path d="M9.1 16.1 12 8.4l2.9 7.7M10.3 13.6h3.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M12 2.6 4.8 5.4v6.2c0 4.6 3 8.1 7.2 9.8 4.2-1.7 7.2-5.2 7.2-9.8V5.4L12 2.6Z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              opacity="0.5"
+            />
+            <path
+              d="M9.1 16.1 12 8.4l2.9 7.7M10.3 13.6h3.4"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </span>
         <h1 className="text-display font-semibold tabular-nums text-foreground">404</h1>
@@ -44,11 +55,12 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    const caught = error instanceof Error ? error : new Error(String(error));
+    reportLovableError(caught, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -100,14 +112,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "Anonymize — PII redaction for Arabic court rulings" },
       {
         property: "og:description",
-        content: "Sign in to Anonymize: automatic PII redaction for Arabic court rulings and case-trajectory linking across first instance, appeal and cassation.",
+        content:
+          "Sign in to Anonymize: automatic PII redaction for Arabic court rulings and case-trajectory linking across first instance, appeal and cassation.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Anonymize — PII redaction for Arabic court rulings" },
-      { name: "twitter:description", content: "Sign in to Anonymize: automatic PII redaction for Arabic court rulings and case-trajectory linking across first instance, appeal and cassation." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/89766d91-7052-4e3a-a18c-b62e0b68f1e4/id-preview-c4bd9bf2--48a42f76-ecc5-4273-853c-f2b1401f025f.lovable.app-1785949009650.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/89766d91-7052-4e3a-a18c-b62e0b68f1e4/id-preview-c4bd9bf2--48a42f76-ecc5-4273-853c-f2b1401f025f.lovable.app-1785949009650.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Sign in to Anonymize: automatic PII redaction for Arabic court rulings and case-trajectory linking across first instance, appeal and cassation.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/89766d91-7052-4e3a-a18c-b62e0b68f1e4/id-preview-c4bd9bf2--48a42f76-ecc5-4273-853c-f2b1401f025f.lovable.app-1785949009650.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/89766d91-7052-4e3a-a18c-b62e0b68f1e4/id-preview-c4bd9bf2--48a42f76-ecc5-4273-853c-f2b1401f025f.lovable.app-1785949009650.png",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -155,4 +180,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { KeyRound, Lock, Mail } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useStore();
+  const { login, authed, ready, role } = useStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -36,6 +36,29 @@ function LoginPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { t, dir, lang, setLang } = useI18n();
+
+  useEffect(() => {
+    if (!ready || !authed) return;
+    void navigate({
+      to: role === "admin" || role === "editor" ? "/admin" : role === "sales" ? "/crm" : "/browse",
+      replace: true,
+    });
+  }, [authed, navigate, ready, role]);
+
+  if (!ready || authed) {
+    return (
+      <div
+        className="grid min-h-screen place-items-center bg-background"
+        role="status"
+        aria-label={t("common.loading")}
+      >
+        <span
+          className="size-8 animate-spin rounded-full border-2 border-muted border-t-teal"
+          aria-hidden
+        />
+      </div>
+    );
+  }
 
   return (
     <div dir={dir} className="grid min-h-screen lg:grid-cols-2">
@@ -68,8 +91,14 @@ function LoginPage() {
                 }
                 const role = await login(email, password, code);
                 toast.success(t("login.welcome"), { description: email });
-                navigate({ to: role === "admin" || role === "editor" ? "/admin"
-                  : role === "sales" ? "/crm" : "/browse" });
+                navigate({
+                  to:
+                    role === "admin" || role === "editor"
+                      ? "/admin"
+                      : role === "sales"
+                        ? "/crm"
+                        : "/browse",
+                });
               } catch (ex) {
                 if (ex instanceof NeedsCode) {
                   setNeedCode(true);
@@ -101,34 +130,45 @@ function LoginPage() {
               </div>
             </div>
             {!forgot && (
-            <div className="space-y-2">
-              <Label htmlFor="password">{t("login.password")}</Label>
-              <div className="relative">
-                <Lock
-                  className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  id="password"
-                  type="password"
-                  required={!forgot}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-11 ps-9"
-                  placeholder="••••••••"
-                />
+              <div className="space-y-2">
+                <Label htmlFor="password">{t("login.password")}</Label>
+                <div className="relative">
+                  <Lock
+                    className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    id="password"
+                    type="password"
+                    required={!forgot}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="h-11 ps-9"
+                    placeholder="••••••••"
+                  />
+                </div>
               </div>
-            </div>
             )}
 
             {needCode && !forgot && (
               <div className="space-y-2">
                 <Label htmlFor="code">{t("login.code")}</Label>
                 <div className="relative">
-                  <KeyRound className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-                  <Input id="code" inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6}
-                         value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                         className="h-11 ps-9 tracking-widest" dir="ltr" />
+                  <KeyRound
+                    className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    id="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                    className="h-11 ps-9 tracking-widest"
+                    dir="ltr"
+                  />
                 </div>
               </div>
             )}
@@ -143,11 +183,19 @@ function LoginPage() {
               {busy ? t("login.busy") : forgot ? t("login.sendReset") : t("login.submit")}
             </Button>
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <button type="button" className="text-muted-foreground underline-offset-4 hover:underline"
-                      onClick={() => { setForgot(!forgot); setErr(null); }}>
+              <button
+                type="button"
+                className="text-muted-foreground underline-offset-4 hover:underline"
+                onClick={() => {
+                  setForgot(!forgot);
+                  setErr(null);
+                }}
+              >
                 {forgot ? t("login.backToSignIn") : t("login.forgot")}
               </button>
-              <Link to="/pricing" className="text-teal underline-offset-4 hover:underline">{t("login.noAccount")}</Link>
+              <Link to="/pricing" className="text-teal underline-offset-4 hover:underline">
+                {t("login.noAccount")}
+              </Link>
             </div>
           </form>
         </div>
@@ -162,13 +210,12 @@ function LoginPage() {
         <div dir="rtl" className="relative m-10 max-w-md rounded-2xl border bg-card p-7 shadow-lg">
           <p className="font-ar text-xs font-medium text-teal">{t("login.preview")}</p>
           <p className="font-ar mt-4 text-[15px] leading-loose">
-            ينوب عنها الأساتذة{" "}
+            ينوب عنها الأساتذة <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> و
             <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> و
-            <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> و
-            <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark>. المحامون بهيئة
-            الدار البيضاء بواسطة الأستاذ{" "}
-            <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> المقبول للترافع
-            أمام محكمة النقض.
+            <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark>. المحامون بهيئة الدار
+            البيضاء بواسطة الأستاذ{" "}
+            <mark className="rounded bg-teal/15 px-1 text-teal">XXXXXXX</mark> المقبول للترافع أمام
+            محكمة النقض.
           </p>
           <div className="font-ar mt-6 flex flex-wrap gap-2 text-xs">
             <span className="rounded-full bg-muted px-3 py-1">ابتدائي</span>

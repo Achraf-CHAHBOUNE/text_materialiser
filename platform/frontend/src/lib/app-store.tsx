@@ -30,10 +30,10 @@ type Store = {
   ready: boolean;
   /** the rulings' tools: import, correct, publish (admin and editor) */
   isAdmin: boolean;
-  isSuper: boolean;          // admin
-  isSales: boolean;          // admin or sales: the CRM
-  isStaff: boolean;          // admin, editor or sales
-  isClientAdmin: boolean;    // a customer's account holder
+  isSuper: boolean; // admin
+  isSales: boolean; // admin or sales: the CRM
+  isStaff: boolean; // admin, editor or sales
+  isClientAdmin: boolean; // a customer's account holder
   login: (email: string, password: string, code?: string) => Promise<string>; // resolves to role
   logout: () => void;
   // reference data
@@ -62,13 +62,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const stored = (typeof window !== "undefined" && localStorage.getItem("theme")) as Theme | null;
-    if (stored) setTheme(stored);
+    let stored: Theme | null = null;
+    try {
+      stored = window.localStorage.getItem("theme") as Theme | null;  // may throw: private mode, blocked storage
+    } catch {
+      stored = null;
+    }
+    const preferred =
+      stored ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setTheme(preferred);
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset["theme"] = theme;
-    if (typeof window !== "undefined") localStorage.setItem("theme", theme);
+    // The design tokens use Tailwind's `.dark` selector. Keeping the DOM class and
+    // color-scheme in sync also gives native controls the correct appearance.
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.style.colorScheme = theme;
+    try {
+      window.localStorage.setItem("theme", theme);
+    } catch {
+      /* not remembered: the page still works */
+    }
   }, [theme]);
 
   const toggleTheme = useCallback(() => setTheme((t) => (t === "light" ? "dark" : "light")), []);
@@ -81,16 +95,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(
-    async (mail: string, password: string, code = "") => {
-      const data = await apiLogin(mail, password, code);
-      setEmail(data.email);
-      setRole(data.role);
-      setAuthed(true);
-      return data.role;
-    },
-    [],
-  );
+  const login = useCallback(async (mail: string, password: string, code = "") => {
+    const data = await apiLogin(mail, password, code);
+    setEmail(data.email);
+    setRole(data.role);
+    setAuthed(true);
+    return data.role;
+  }, []);
 
   // A session ended elsewhere (signed in on another device, suspended, password
   // reset) arrives as a 401: forget it here too.

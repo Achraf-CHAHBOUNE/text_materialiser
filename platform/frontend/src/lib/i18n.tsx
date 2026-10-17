@@ -9,13 +9,24 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { STORAGE_KEY, getActiveLang, langFromPath, setActiveLang, swapLang, type Lang } from "./lang-url";
+import {
+  STORAGE_KEY,
+  getActiveLang,
+  langFromPath,
+  setActiveLang,
+  swapLang,
+  type Lang,
+} from "./lang-url";
 
 export type { Lang } from "./lang-url";
 
 type Entry = { ar: string; fr: string };
 
 const STRINGS = {
+  // common actions and states
+  "common.clear": { ar: "مسح", fr: "Effacer" },
+  "common.loading": { ar: "جارٍ التحميل", fr: "Chargement" },
+
   // shell / navigation
   "nav.browse": { ar: "الاجتهادات", fr: "Jurisprudence" },
   "nav.dashboard": { ar: "لوحة القيادة", fr: "Tableau de bord" },
@@ -52,7 +63,10 @@ const STRINGS = {
   // dashboard / decisions
   "dash.title": { ar: "لوحة القيادة", fr: "Tableau de bord" },
   "dash.overview": { ar: "نظرة عامة على المنصة", fr: "Vue d'ensemble de la plateforme" },
-  "dash.forClient": { ar: "تصفّح القرارات بعد إزالة البيانات الشخصية", fr: "Consulter les décisions anonymisées" },
+  "dash.forClient": {
+    ar: "تصفّح القرارات بعد إزالة البيانات الشخصية",
+    fr: "Consulter les décisions anonymisées",
+  },
   "dash.decisions": { ar: "القرارات", fr: "Décisions" },
   "dash.published": { ar: "المنشورة", fr: "Publiées" },
   "dash.pending": { ar: "في انتظار المراجعة", fr: "En attente de revue" },
@@ -68,6 +82,13 @@ const STRINGS = {
   "results.filterLevel": { ar: "تصفية حسب الدرجة", fr: "Filtrer par degré" },
   "results.allChambers": { ar: "كل الغرف", fr: "Toutes les chambres" },
   "results.allLevels": { ar: "كل الدرجات", fr: "Tous les degrés" },
+  "results.count": { ar: "قرار مطابق", fr: "décision trouvée" },
+  "results.countPlural": { ar: "قرارا مطابقا", fr: "décisions trouvées" },
+  "results.loadError": {
+    ar: "تعذّر تحميل القرارات. تحقق من الاتصال ثم أعد المحاولة.",
+    fr: "Impossible de charger les décisions. Vérifiez la connexion puis réessayez.",
+  },
+  "results.retry": { ar: "إعادة المحاولة", fr: "Réessayer" },
 
   // browse: menu
   "browse.title": { ar: "الاجتهادات القضائية", fr: "Jurisprudence" },
@@ -266,9 +287,11 @@ const STRINGS = {
   "report.send": { ar: "إرسال", fr: "Envoyer" },
   "report.sent": { ar: "شكرًا، وصل البلاغ.", fr: "Merci, signalement envoyé." },
 
-
   // the French site
-  "fr.ruleTranslated": { ar: "ترجمة آلية لقاعدة المحكمة", fr: "Traduction automatique de la règle de la Cour" },
+  "fr.ruleTranslated": {
+    ar: "ترجمة آلية لقاعدة المحكمة",
+    fr: "Traduction automatique de la règle de la Cour",
+  },
   "fr.machineSummary": { ar: "ملخص آلي مترجم", fr: "Résumé automatique traduit" },
   "fr.notTranslated": { ar: "غير مترجم بعد", fr: "Pas encore traduit — texte arabe" },
   "fr.textMissing": {
@@ -289,7 +312,6 @@ const STRINGS = {
   "results.noneYet": { ar: "لا قرارات منشورة بعد", fr: "Aucune décision publiée pour l'instant" },
   "col.level": { ar: "المستوى", fr: "Niveau" },
 
-
   // dashboard
   "dash.adminHint": {
     ar: "استيراد دفعة من المعالجة، ومراجعة القائمة، ونشر القرارات، وإدارة حسابات العملاء.",
@@ -297,7 +319,10 @@ const STRINGS = {
   },
   "dash.openAdmin": { ar: "فتح لوحة الإدارة", fr: "Ouvrir la console d'administration" },
   "dash.signedInAs": { ar: "متصل باسم", fr: "Connecté en tant que" },
-  "dash.byChamber": { ar: "تصفح القرارات المنشورة حسب الغرفة.", fr: "Parcourez les décisions publiées par chambre." },
+  "dash.byChamber": {
+    ar: "تصفح القرارات المنشورة حسب الغرفة.",
+    fr: "Parcourez les décisions publiées par chambre.",
+  },
   "dash.browseAll": { ar: "تصفح كل القرارات", fr: "Parcourir toutes les décisions" },
 
   // the business side: accounts, CRM, billing, support, library
@@ -353,12 +378,24 @@ const STRINGS = {
   "login.forgot": { ar: "نسيت كلمة المرور؟", fr: "Mot de passe oublié ?" },
   "login.backToSignIn": { ar: "العودة إلى الدخول", fr: "Retour à la connexion" },
   "login.sendReset": { ar: "إرسال رابط إعادة التعيين", fr: "Envoyer le lien" },
-  "login.resetSent": { ar: "إن كان الحساب موجودا، فقد أرسلنا رابطا إلى بريده.", fr: "Si ce compte existe, un lien lui a été envoyé." },
+  "login.resetSent": {
+    ar: "إن كان الحساب موجودا، فقد أرسلنا رابطا إلى بريده.",
+    fr: "Si ce compte existe, un lien lui a été envoyé.",
+  },
   "login.noAccount": { ar: "لا تملك حسابا؟ اطلب عرضا", fr: "Pas de compte ? Demandez une démo" },
   "pub.plans": { ar: "العروض", fr: "Offres" },
-  "pub.footer": { ar: "الاجتهاد القضائي المغربي، بعد إزالة البيانات الشخصية.", fr: "La jurisprudence marocaine, données personnelles supprimées." },
-  "pub.title": { ar: "الاجتهاد القضائي لمحكمة النقض، بالعربية والفرنسية", fr: "La jurisprudence de la Cour de cassation, en arabe et en français" },
-  "pub.subtitle": { ar: "قرارات منشورة بعد إخفاء الأسماء، مع ملخص لكل قرار، وبحث وتنبيهات وملفات عمل لمكتبك.", fr: "Des décisions publiées sans les noms, un résumé pour chacune, la recherche, les alertes et des dossiers de travail pour votre cabinet." },
+  "pub.footer": {
+    ar: "الاجتهاد القضائي المغربي، بعد إزالة البيانات الشخصية.",
+    fr: "La jurisprudence marocaine, données personnelles supprimées.",
+  },
+  "pub.title": {
+    ar: "الاجتهاد القضائي لمحكمة النقض، بالعربية والفرنسية",
+    fr: "La jurisprudence de la Cour de cassation, en arabe et en français",
+  },
+  "pub.subtitle": {
+    ar: "قرارات منشورة بعد إخفاء الأسماء، مع ملخص لكل قرار، وبحث وتنبيهات وملفات عمل لمكتبك.",
+    fr: "Des décisions publiées sans les noms, un résumé pour chacune, la recherche, les alertes et des dossiers de travail pour votre cabinet.",
+  },
   "pub.onQuote": { ar: "على عرض سعر", fr: "Sur devis" },
   "pub.free": { ar: "مجانا", fr: "Gratuit" },
   "pub.perMonth": { ar: "/ شهر", fr: "/ mois" },
@@ -370,8 +407,14 @@ const STRINGS = {
   "pub.startTrial": { ar: "ابدأ التجربة", fr: "Commencer l'essai" },
   "pub.askDemo": { ar: "اطلب عرضا", fr: "Demander une démo" },
   "pub.demoTitle": { ar: "اطلب عرضا تجريبيا", fr: "Demander une démonstration" },
-  "pub.demoSubtitle": { ar: "نتصل بك لعرض المنصة وفتح تجربة مجانية لمدة 14 يوما.", fr: "Nous vous contactons pour présenter la plateforme et ouvrir un essai gratuit de 14 jours." },
-  "pub.demoThanks": { ar: "شكرا، توصلنا بطلبك. سنتصل بك قريبا.", fr: "Merci, votre demande est bien reçue. Nous vous contactons rapidement." },
+  "pub.demoSubtitle": {
+    ar: "نتصل بك لعرض المنصة وفتح تجربة مجانية لمدة 14 يوما.",
+    fr: "Nous vous contactons pour présenter la plateforme et ouvrir un essai gratuit de 14 jours.",
+  },
+  "pub.demoThanks": {
+    ar: "شكرا، توصلنا بطلبك. سنتصل بك قريبا.",
+    fr: "Merci, votre demande est bien reçue. Nous vous contactons rapidement.",
+  },
   "pub.name": { ar: "الاسم الكامل", fr: "Nom complet" },
   "pub.phone": { ar: "الهاتف", fr: "Téléphone" },
   "pub.company": { ar: "المكتب أو المؤسسة", fr: "Cabinet ou organisme" },
@@ -379,7 +422,10 @@ const STRINGS = {
   "pub.send": { ar: "إرسال", fr: "Envoyer" },
   "inv.title": { ar: "الانضمام إلى", fr: "Rejoindre" },
   "inv.accept": { ar: "إنشاء حسابي", fr: "Créer mon accès" },
-  "inv.invalid": { ar: "هذه الدعوة لم تعد صالحة. اطلب دعوة جديدة.", fr: "Cette invitation n'est plus valable. Demandez-en une nouvelle." },
+  "inv.invalid": {
+    ar: "هذه الدعوة لم تعد صالحة. اطلب دعوة جديدة.",
+    fr: "Cette invitation n'est plus valable. Demandez-en une nouvelle.",
+  },
   "reset.title": { ar: "كلمة مرور جديدة", fr: "Nouveau mot de passe" },
   "reset.submit": { ar: "حفظ", fr: "Enregistrer" },
   "reset.done": { ar: "تم تغيير كلمة المرور.", fr: "Mot de passe modifié." },
@@ -387,7 +433,10 @@ const STRINGS = {
   "acc.subscription": { ar: "الاشتراك", fr: "Abonnement" },
   "acc.until": { ar: "إلى غاية", fr: "jusqu'au" },
   "acc.noSubscription": { ar: "لا يوجد اشتراك.", fr: "Aucun abonnement." },
-  "acc.lapsed": { ar: "انتهى اشتراك مؤسستك، فلا يمكن الاطلاع على القرارات. لتجديده، تواصل معنا.", fr: "L'abonnement de votre organisation a pris fin : les décisions ne sont plus accessibles. Contactez-nous pour le renouveler." },
+  "acc.lapsed": {
+    ar: "انتهى اشتراك مؤسستك، فلا يمكن الاطلاع على القرارات. لتجديده، تواصل معنا.",
+    fr: "L'abonnement de votre organisation a pris fin : les décisions ne sont plus accessibles. Contactez-nous pour le renouveler.",
+  },
   "acc.profile": { ar: "الملف الشخصي", fr: "Profil" },
   "acc.emailLanguage": { ar: "لغة الرسائل", fr: "Langue des e-mails" },
   "acc.password": { ar: "كلمة المرور", fr: "Mot de passe" },
@@ -395,17 +444,32 @@ const STRINGS = {
   "acc.newPassword": { ar: "كلمة المرور الجديدة", fr: "Nouveau mot de passe" },
   "acc.confirmPassword": { ar: "تأكيد كلمة المرور", fr: "Confirmer le mot de passe" },
   "acc.pwRule": { ar: "10 أحرف على الأقل.", fr: "10 caractères minimum." },
-  "acc.pwOthers": { ar: "ستُغلق جلساتك على الأجهزة الأخرى.", fr: "Vos sessions sur les autres appareils seront fermées." },
-  "acc.pwMismatch": { ar: "كلمتا المرور غير متطابقتين", fr: "Les mots de passe ne correspondent pas" },
+  "acc.pwOthers": {
+    ar: "ستُغلق جلساتك على الأجهزة الأخرى.",
+    fr: "Vos sessions sur les autres appareils seront fermées.",
+  },
+  "acc.pwMismatch": {
+    ar: "كلمتا المرور غير متطابقتين",
+    fr: "Les mots de passe ne correspondent pas",
+  },
   "acc.pwChanged": { ar: "تم تغيير كلمة المرور", fr: "Mot de passe modifié" },
   "mfa.title": { ar: "التحقق بخطوتين", fr: "Double authentification" },
-  "mfa.explain": { ar: "رمز من تطبيق على هاتفك يُطلب عند كل دخول، إضافة إلى كلمة المرور.", fr: "Un code de votre téléphone est demandé à chaque connexion, en plus du mot de passe." },
-  "mfa.isOn": { ar: "مفعّل: يُطلب رمز من هاتفك عند كل دخول.", fr: "Activée : un code de votre téléphone est demandé à chaque connexion." },
+  "mfa.explain": {
+    ar: "رمز من تطبيق على هاتفك يُطلب عند كل دخول، إضافة إلى كلمة المرور.",
+    fr: "Un code de votre téléphone est demandé à chaque connexion, en plus du mot de passe.",
+  },
+  "mfa.isOn": {
+    ar: "مفعّل: يُطلب رمز من هاتفك عند كل دخول.",
+    fr: "Activée : un code de votre téléphone est demandé à chaque connexion.",
+  },
   "mfa.required": { ar: "مطلوب لحسابات الفريق.", fr: "Obligatoire pour les comptes de l'équipe." },
   "mfa.enable": { ar: "تفعيل", fr: "Activer" },
   "mfa.disable": { ar: "إلغاء التفعيل", fr: "Désactiver" },
   "mfa.confirm": { ar: "تأكيد", fr: "Confirmer" },
-  "mfa.scan": { ar: "أضف هذا المفتاح في تطبيق المصادقة (Google Authenticator أو Microsoft Authenticator)، ثم أدخل الرمز الظاهر:", fr: "Ajoutez cette clé dans votre application d'authentification (Google Authenticator, Microsoft Authenticator), puis saisissez le code affiché :" },
+  "mfa.scan": {
+    ar: "أضف هذا المفتاح في تطبيق المصادقة (Google Authenticator أو Microsoft Authenticator)، ثم أدخل الرمز الظاهر:",
+    fr: "Ajoutez cette clé dans votre application d'authentification (Google Authenticator, Microsoft Authenticator), puis saisissez le code affiché :",
+  },
   "mfa.openApp": { ar: "فتح في التطبيق", fr: "Ouvrir dans l'application" },
   "mfa.on": { ar: "تم التفعيل", fr: "Activée" },
   "mfa.off": { ar: "تم إلغاء التفعيل", fr: "Désactivée" },
@@ -414,7 +478,10 @@ const STRINGS = {
   "team.title": { ar: "فريق المكتب", fr: "L'équipe du cabinet" },
   "team.invite": { ar: "دعوة", fr: "Inviter" },
   "team.invited": { ar: "أُرسلت الدعوة", fr: "Invitation envoyée" },
-  "team.noSeat": { ar: "لا مقاعد متاحة في اشتراككم", fr: "Plus d'accès disponible dans votre abonnement" },
+  "team.noSeat": {
+    ar: "لا مقاعد متاحة في اشتراككم",
+    fr: "Plus d'accès disponible dans votre abonnement",
+  },
   "team.pending": { ar: "دعوة مرسلة", fr: "Invitation envoyée" },
   "team.until": { ar: "صالحة إلى", fr: "valable jusqu'au" },
   "team.cancel": { ar: "إلغاء", fr: "Annuler" },
@@ -425,10 +492,16 @@ const STRINGS = {
   "lib.create": { ar: "إنشاء", fr: "Créer" },
   "lib.shareFirm": { ar: "مشترك مع المكتب", fr: "Partagé avec le cabinet" },
   "lib.shared": { ar: "مشترك", fr: "partagé" },
-  "lib.empty": { ar: "لا ملفات بعد. احفظ قرارا من صفحته.", fr: "Aucun dossier. Enregistrez une décision depuis sa page." },
+  "lib.empty": {
+    ar: "لا ملفات بعد. احفظ قرارا من صفحته.",
+    fr: "Aucun dossier. Enregistrez une décision depuis sa page.",
+  },
   "lib.folderEmpty": { ar: "هذا الملف فارغ.", fr: "Ce dossier est vide." },
   "lib.delete": { ar: "حذف", fr: "Supprimer" },
-  "lib.confirmDelete": { ar: "حذف هذا الملف وملاحظاته؟", fr: "Supprimer ce dossier et ses notes ?" },
+  "lib.confirmDelete": {
+    ar: "حذف هذا الملف وملاحظاته؟",
+    fr: "Supprimer ce dossier et ses notes ?",
+  },
   "lib.note": { ar: "ملاحظتك", fr: "Votre note" },
   "lib.remove": { ar: "إزالة من الملف", fr: "Retirer du dossier" },
   "lib.addedBy": { ar: "أضافه", fr: "Ajouté par" },
@@ -437,10 +510,16 @@ const STRINGS = {
   "lib.saved": { ar: "حُفظ في الملف", fr: "Enregistré dans le dossier" },
   "lib.chooseFolder": { ar: "اختر ملفا", fr: "Choisir un dossier" },
   "dl.quota": { ar: "بلغت حد التحميل اليومي", fr: "Limite de téléchargements du jour atteinte" },
-  "dl.pace": { ar: "قراءة بوتيرة غير معتادة؛ أعد المحاولة لاحقا", fr: "Rythme de lecture inhabituel ; réessayez plus tard" },
+  "dl.pace": {
+    ar: "قراءة بوتيرة غير معتادة؛ أعد المحاولة لاحقا",
+    fr: "Rythme de lecture inhabituel ; réessayez plus tard",
+  },
   "alert.title": { ar: "تنبيهاتي", fr: "Mes alertes" },
   "alert.subtitle": { ar: "قرارات جديدة تصلك بالبريد", fr: "Les nouvelles décisions, par e-mail" },
-  "alert.how": { ar: "أنشئ تنبيها من صفحة البحث: زر «إنشاء تنبيه» بعد البحث أو اختيار الموضوع.", fr: "Créez une alerte depuis la recherche : bouton « Créer une alerte » après une recherche ou un choix de sujet." },
+  "alert.how": {
+    ar: "أنشئ تنبيها من صفحة البحث: زر «إنشاء تنبيه» بعد البحث أو اختيار الموضوع.",
+    fr: "Créez une alerte depuis la recherche : bouton « Créer une alerte » après une recherche ou un choix de sujet.",
+  },
   "alert.empty": { ar: "لا تنبيهات بعد.", fr: "Aucune alerte." },
   "alert.name": { ar: "التنبيه", fr: "Alerte" },
   "alert.criteria": { ar: "المعايير", fr: "Critères" },
@@ -506,15 +585,24 @@ const STRINGS = {
   "adm.tabPlans": { ar: "العروض والأسعار", fr: "Offres et prix" },
   "adm.tabMail": { ar: "الرسائل", fr: "E-mails" },
   "staff.new": { ar: "حساب فريق جديد", fr: "Nouveau compte d'équipe" },
-  "staff.rolesHint": { ar: "محرر: القرارات وتصحيحها. مبيعات: إدارة العملاء والفواتير. مسؤول: كل شيء.", fr: "Éditeur : les décisions et leurs corrections. Commercial : CRM et factures. Administrateur : tout." },
-  "plans.hint": { ar: "الأسعار هنا أمثلة يجب تحديدها قبل الإطلاق. التغيير يسري على الاشتراكات الجديدة.", fr: "Les prix sont des exemples à fixer avant le lancement. Un changement vaut pour les nouveaux abonnements." },
+  "staff.rolesHint": {
+    ar: "محرر: القرارات وتصحيحها. مبيعات: إدارة العملاء والفواتير. مسؤول: كل شيء.",
+    fr: "Éditeur : les décisions et leurs corrections. Commercial : CRM et factures. Administrateur : tout.",
+  },
+  "plans.hint": {
+    ar: "الأسعار هنا أمثلة يجب تحديدها قبل الإطلاق. التغيير يسري على الاشتراكات الجديدة.",
+    fr: "Les prix sont des exemples à fixer avant le lancement. Un changement vaut pour les nouveaux abonnements.",
+  },
   "plans.name": { ar: "الاسم", fr: "Nom" },
   "plans.price": { ar: "السعر دون ضريبة", fr: "Prix HT" },
   "plans.period": { ar: "المدة", fr: "Période" },
   "plans.blurb": { ar: "الوصف", fr: "Description" },
   "plans.public": { ar: "يظهر في صفحة العروض", fr: "Visible sur la page Offres" },
   "plans.active": { ar: "متاح", fr: "Disponible" },
-  "mail.hint": { ar: "كل الرسائل التي أرسلتها المنصة أو تنتظر الإرسال. بدون إعداد SMTP تبقى في الانتظار.", fr: "Tous les e-mails envoyés ou en attente. Sans réglage SMTP, ils restent en attente." },
+  "mail.hint": {
+    ar: "كل الرسائل التي أرسلتها المنصة أو تنتظر الإرسال. بدون إعداد SMTP تبقى في الانتظار.",
+    fr: "Tous les e-mails envoyés ou en attente. Sans réglage SMTP, ils restent en attente.",
+  },
   "mail.empty": { ar: "لا رسائل.", fr: "Aucun e-mail." },
   "mail.to": { ar: "إلى", fr: "À" },
   "mail.created": { ar: "التاريخ", fr: "Créé le" },
@@ -527,8 +615,14 @@ const STRINGS = {
   // the readers, as the admin sees them
   "trk.users": { ar: "المستخدمون", fr: "Utilisateurs" },
   "trk.usage": { ar: "الاستعمال", fr: "Usage" },
-  "trk.usersSubtitle": { ar: "كل القراء: ما يؤدونه وما يقرؤونه ويحملونه", fr: "Tous les lecteurs : ce qu'ils paient, lisent et téléchargent" },
-  "trk.usageSubtitle": { ar: "ما يُقرأ ويُحمَّل ويُبحث عنه في المنصة", fr: "Ce qui est lu, téléchargé et cherché sur la plateforme" },
+  "trk.usersSubtitle": {
+    ar: "كل القراء: ما يؤدونه وما يقرؤونه ويحملونه",
+    fr: "Tous les lecteurs : ce qu'ils paient, lisent et téléchargent",
+  },
+  "trk.usageSubtitle": {
+    ar: "ما يُقرأ ويُحمَّل ويُبحث عنه في المنصة",
+    fr: "Ce qui est lu, téléchargé et cherché sur la plateforme",
+  },
   "trk.readers": { ar: "القراء", fr: "Lecteurs" },
   "trk.active30": { ar: "نشطون خلال 30 يوما", fr: "Actifs sur 30 jours" },
   "trk.reads30": { ar: "قراءات خلال 30 يوما", fr: "Lectures sur 30 jours" },
@@ -577,7 +671,10 @@ const STRINGS = {
   "trk.ended": { ar: "منتهية", fr: "Terminée" },
   "trk.downloadsList": { ar: "التحميلات ومراجعها", fr: "Téléchargements et leurs références" },
   "trk.ref": { ar: "المرجع", fr: "Réf." },
-  "trk.refHint": { ar: "المرجع مطبوع أسفل كل صفحة من الملف المحمَّل: ملف متداول يعود إلى صاحبه.", fr: "La référence est imprimée en pied de chaque page du fichier : un fichier qui circule ramène à qui l'a téléchargé." },
+  "trk.refHint": {
+    ar: "المرجع مطبوع أسفل كل صفحة من الملف المحمَّل: ملف متداول يعود إلى صاحبه.",
+    fr: "La référence est imprimée en pied de chaque page du fichier : un fichier qui circule ramène à qui l'a téléchargé.",
+  },
   "trk.activeReaders": { ar: "قراء نشطون", fr: "Lecteurs actifs" },
   "trk.activeUsers": { ar: "مستخدمون نشطون", fr: "utilisateurs actifs" },
   "trk.topRead": { ar: "القرارات الأكثر قراءة", fr: "Décisions les plus lues" },
@@ -586,8 +683,14 @@ const STRINGS = {
   "trk.readersShort": { ar: "قراء", fr: "Lecteurs" },
   "trk.topSearches": { ar: "عمليات البحث الأكثر تكرارا", fr: "Recherches les plus fréquentes" },
   "trk.emptySearches": { ar: "عمليات بحث بلا نتيجة", fr: "Recherches sans résultat" },
-  "trk.emptyHint": { ar: "ما يبحث عنه القراء ولا يجدونه: ما ينقص قاعدة القرارات.", fr: "Ce que les lecteurs cherchent sans le trouver : ce qui manque au corpus." },
-  "trk.noEmpty": { ar: "كل عمليات البحث وجدت نتائج.", fr: "Toutes les recherches ont trouvé quelque chose." },
+  "trk.emptyHint": {
+    ar: "ما يبحث عنه القراء ولا يجدونه: ما ينقص قاعدة القرارات.",
+    fr: "Ce que les lecteurs cherchent sans le trouver : ce qui manque au corpus.",
+  },
+  "trk.noEmpty": {
+    ar: "كل عمليات البحث وجدت نتائج.",
+    fr: "Toutes les recherches ont trouvé quelque chose.",
+  },
   "trk.topUsers": { ar: "القراء الأكثر نشاطا", fr: "Lecteurs les plus actifs" },
 
   "trk.downloadedOn": { ar: "تاريخ التحميل", fr: "Téléchargé le" },
@@ -606,11 +709,20 @@ const STRINGS = {
 
   // admin console
   "adm.title": { ar: "لوحة الإدارة", fr: "Console d'administration" },
-  "adm.subtitle": { ar: "الاستيراد والمراجعة والنشر وحسابات العملاء", fr: "Import, révision, publication et comptes clients" },
+  "adm.subtitle": {
+    ar: "الاستيراد والمراجعة والنشر وحسابات العملاء",
+    fr: "Import, révision, publication et comptes clients",
+  },
   "adm.tabImport": { ar: "استيراد", fr: "Import" },
   "adm.tabQueue": { ar: "قائمة المراجعة", fr: "File de révision" },
-  "adm.importTitle": { ar: "استيراد دفعة من المعالجة (.zip)", fr: "Importer un lot du pipeline (.zip)" },
-  "adm.importHint": { ar: "ضع في أرشيف .zip ما يسلّمه مسار إخفاء الهوية: records.json والملفات. يُعاد فحص كل ملف ويُرفض ما يبدو أنه ما زال يحمل بيانات شخصية؛ ويُقرأ الموضوع والمنطوق من الملف نفسه. إعادة استيراد قرار تحدّثه ولا تمسّ قرارا صُحّح على الموقع.", fr: "Mettez dans un .zip ce que livre le pipeline d'anonymisation : records.json et les fichiers. Chaque fichier est revérifié et refusé s'il semble encore personnel ; le sujet et le dispositif sont lus dans le fichier. Réimporter un arrêt le met à jour, sans toucher un arrêt corrigé sur le site." },
+  "adm.importTitle": {
+    ar: "استيراد دفعة من المعالجة (.zip)",
+    fr: "Importer un lot du pipeline (.zip)",
+  },
+  "adm.importHint": {
+    ar: "ضع في أرشيف .zip ما يسلّمه مسار إخفاء الهوية: records.json والملفات. يُعاد فحص كل ملف ويُرفض ما يبدو أنه ما زال يحمل بيانات شخصية؛ ويُقرأ الموضوع والمنطوق من الملف نفسه. إعادة استيراد قرار تحدّثه ولا تمسّ قرارا صُحّح على الموقع.",
+    fr: "Mettez dans un .zip ce que livre le pipeline d'anonymisation : records.json et les fichiers. Chaque fichier est revérifié et refusé s'il semble encore personnel ; le sujet et le dispositif sont lus dans le fichier. Réimporter un arrêt le met à jour, sans toucher un arrêt corrigé sur le site.",
+  },
   "adm.importing": { ar: "جارٍ الاستيراد…", fr: "Import en cours…" },
   "adm.choose": { ar: "اختيار ملف .zip", fr: "Choisir un .zip" },
   "adm.importDone": { ar: "تم الاستيراد", fr: "Import terminé" },
@@ -619,7 +731,10 @@ const STRINGS = {
   "adm.updated": { ar: "محدَّث", fr: "Mis à jour" },
   "adm.rejected": { ar: "مرفوض (بلا ملف)", fr: "Refusés (sans fichier)" },
   "adm.quarantined": { ar: "محجوز (بيانات شخصية)", fr: "En quarantaine (données personnelles)" },
-  "adm.quarantinedList": { ar: "محجوز — ما زال يحمل أنماط بيانات شخصية:", fr: "En quarantaine — contient encore des données personnelles :" },
+  "adm.quarantinedList": {
+    ar: "محجوز — ما زال يحمل أنماط بيانات شخصية:",
+    fr: "En quarantaine — contient encore des données personnelles :",
+  },
   "adm.colDecision": { ar: "القرار", fr: "Décision" },
   "adm.colAttention": { ar: "يحتاج إلى انتباه", fr: "À vérifier" },
   "adm.colAction": { ar: "إجراء", fr: "Action" },
@@ -633,7 +748,10 @@ const STRINGS = {
   "adm.loading": { ar: "جارٍ التحميل…", fr: "Chargement…" },
   "adm.openFile": { ar: "فتح الملف (.docx)", fr: "Ouvrir le fichier (.docx)" },
   "adm.verify": { ar: "للتحقق:", fr: "À vérifier :" },
-  "adm.anonText": { ar: "النص المجهول — الأسماء مستبدلة بـ", fr: "Texte anonymisé — noms remplacés par" },
+  "adm.anonText": {
+    ar: "النص المجهول — الأسماء مستبدلة بـ",
+    fr: "Texte anonymisé — noms remplacés par",
+  },
   "adm.noText": { ar: "لا معاينة للنص.", fr: "Pas d'aperçu du texte." },
   "adm.password": { ar: "كلمة المرور", fr: "mot de passe" },
   "adm.create": { ar: "إنشاء", fr: "Créer" },
@@ -656,9 +774,15 @@ const STRINGS = {
   },
   "review.noReports": { ar: "لا توجد بلاغات مفتوحة.", fr: "Aucun signalement ouvert." },
   "review.noDrafts": { ar: "لا توجد مسودات.", fr: "Aucun brouillon." },
-  "crm.subtitleAdmin": { ar: "القراء والأموال والعقود — للإدارة وحدها", fr: "Les lecteurs, l'argent et les contrats — pour l'équipe seule" },
+  "crm.subtitleAdmin": {
+    ar: "القراء والأموال والعقود — للإدارة وحدها",
+    fr: "Les lecteurs, l'argent et les contrats — pour l'équipe seule",
+  },
   "crm.clients": { ar: "العملاء", fr: "Clients" },
-  "crm.clientsSubtitle": { ar: "كل عميل: عقده، حساباته، ما دفعه وما بقي عليه", fr: "Chaque client : son contrat, ses comptes, ce qu'il a payé et ce qu'il doit" },
+  "crm.clientsSubtitle": {
+    ar: "كل عميل: عقده، حساباته، ما دفعه وما بقي عليه",
+    fr: "Chaque client : son contrat, ses comptes, ce qu'il a payé et ce qu'il doit",
+  },
   "crm.client": { ar: "العميل", fr: "Client" },
   "crm.alerts": { ar: "التنبيهات", fr: "Alertes" },
   "dash.readers": { ar: "القراء", fr: "Lecteurs" },
@@ -675,7 +799,10 @@ const STRINGS = {
   "dash.alerts": { ar: "تنبيهات", fr: "alertes" },
   "dash.serious": { ar: "خطيرة", fr: "sérieuses" },
   "dash.requests": { ar: "الطلبات الواردة", fr: "Demandes reçues" },
-  "dash.requestsHint": { ar: "طلبات الاطلاع المرسلة من الصفحة العامة", fr: "Les demandes envoyées depuis la page publique" },
+  "dash.requestsHint": {
+    ar: "طلبات الاطلاع المرسلة من الصفحة العامة",
+    fr: "Les demandes envoyées depuis la page publique",
+  },
   "dash.noRequests": { ar: "لا طلبات جديدة.", fr: "Aucune nouvelle demande." },
   "dash.makeClient": { ar: "إنشاء العميل", fr: "Créer le client" },
   "dash.contacted": { ar: "تم الاتصال", fr: "Contacté" },
@@ -686,13 +813,19 @@ const STRINGS = {
   "con.transfers": { ar: "التحويلات", fr: "Virements" },
   "con.contract": { ar: "العقد", fr: "Contrat" },
   "con.newClient": { ar: "عميل جديد", fr: "Nouveau client" },
-  "con.newClientSubtitle": { ar: "العميل، ثم العقد الموقع، ثم التحويل، ثم الحسابات", fr: "Le client, puis le contrat signé, puis le virement, puis les comptes" },
+  "con.newClientSubtitle": {
+    ar: "العميل، ثم العقد الموقع، ثم التحويل، ثم الحسابات",
+    fr: "Le client, puis le contrat signé, puis le virement, puis les comptes",
+  },
   "con.stepClient": { ar: "العميل", fr: "Le client" },
   "con.stepContract": { ar: "العقد", fr: "Le contrat" },
   "con.stepTransfer": { ar: "التحويل", fr: "Le virement" },
   "con.stepAccounts": { ar: "الحسابات", fr: "Les comptes" },
   "con.accounts": { ar: "الحسابات", fr: "Comptes" },
-  "con.accountsHint": { ar: "يتلقى كل حساب رسالة لاختيار كلمة المرور.", fr: "Chaque compte reçoit un e-mail pour choisir son mot de passe." },
+  "con.accountsHint": {
+    ar: "يتلقى كل حساب رسالة لاختيار كلمة المرور.",
+    fr: "Chaque compte reçoit un e-mail pour choisir son mot de passe.",
+  },
   "con.addAccount": { ar: "إضافة حساب", fr: "Ajouter un compte" },
   "con.priceHt": { ar: "الثمن دون احتساب الرسوم", fr: "Prix HT" },
   "con.price": { ar: "الثمن", fr: "Prix TTC" },
@@ -702,10 +835,16 @@ const STRINGS = {
   "con.transferReceived": { ar: "تم استلام التحويل", fr: "Virement reçu" },
   "con.noTransferYet": { ar: "لم يصل التحويل بعد", fr: "Pas encore de virement" },
   "con.willOpen": { ar: "ستفتح الحسابات فورا.", fr: "Les comptes s'ouvriront tout de suite." },
-  "con.willWait": { ar: "ستنتظر الحسابات تسجيل التحويل.", fr: "Les comptes attendront que le virement soit enregistré." },
+  "con.willWait": {
+    ar: "ستنتظر الحسابات تسجيل التحويل.",
+    fr: "Les comptes attendront que le virement soit enregistré.",
+  },
   "con.create": { ar: "إنشاء العميل", fr: "Créer le client" },
   "con.createdActive": { ar: "تم إنشاء العميل وفتح الحسابات", fr: "Client créé, comptes ouverts" },
-  "con.createdWaiting": { ar: "تم إنشاء العميل، الحسابات تنتظر التحويل", fr: "Client créé, comptes en attente du virement" },
+  "con.createdWaiting": {
+    ar: "تم إنشاء العميل، الحسابات تنتظر التحويل",
+    fr: "Client créé, comptes en attente du virement",
+  },
   "con.signedContract": { ar: "العقد الموقع", fr: "Contrat signé" },
   "con.attachContract": { ar: "إرفاق العقد الموقع", fr: "Joindre le contrat signé" },
   "con.noFile": { ar: "دون عقد موقع", fr: "Sans contrat signé" },
@@ -726,11 +865,17 @@ const STRINGS = {
   "con.none": { ar: "لا عقود.", fr: "Aucun contrat." },
   "con.noTransfers": { ar: "لا تحويلات.", fr: "Aucun virement." },
   "con.renew": { ar: "تجديد بعقد جديد", fr: "Renouveler par un nouveau contrat" },
-  "con.renewHint": { ar: "يبدأ العقد الجديد غداة انتهاء الحالي، ويفتح الحسابات عند تسجيل تحويله.", fr: "Le nouveau contrat commence le lendemain de la fin de l'actuel ; il ouvre l'accès quand son virement est enregistré." },
+  "con.renewHint": {
+    ar: "يبدأ العقد الجديد غداة انتهاء الحالي، ويفتح الحسابات عند تسجيل تحويله.",
+    fr: "Le nouveau contrat commence le lendemain de la fin de l'actuel ; il ouvre l'accès quand son virement est enregistré.",
+  },
   "con.renewalCreated": { ar: "تم إنشاء العقد الجديد", fr: "Nouveau contrat créé" },
   "con.accessOpen": { ar: "الولوج مفتوح", fr: "Accès ouvert" },
   "con.accessClosed": { ar: "الولوج مغلق", fr: "Accès fermé" },
-  "con.closedUntilPaid": { ar: "تبقى الحسابات مغلقة إلى حين تسجيل تحويل.", fr: "Les comptes restent fermés jusqu'à l'enregistrement d'un virement." },
+  "con.closedUntilPaid": {
+    ar: "تبقى الحسابات مغلقة إلى حين تسجيل تحويل.",
+    fr: "Les comptes restent fermés jusqu'à l'enregistrement d'un virement.",
+  },
   "con.showActive": { ar: "ولوج مفتوح", fr: "Accès ouvert" },
   "con.showEnding": { ar: "تنتهي قريبا", fr: "Finissent bientôt" },
   "con.showEnded": { ar: "منتهية", fr: "Terminés" },
@@ -740,9 +885,15 @@ const STRINGS = {
   "con.st.ended": { ar: "منته", fr: "Terminé" },
   "con.st.cancelled": { ar: "ملغى", fr: "Annulé" },
   "con.st.unassigned": { ar: "دون عقد", fr: "Sans contrat" },
-  "al.subtitle": { ar: "ما يستحق نظرة، الأخطر أولا", fr: "Ce qui mérite un regard, le plus sérieux d'abord" },
+  "al.subtitle": {
+    ar: "ما يستحق نظرة، الأخطر أولا",
+    fr: "Ce qui mérite un regard, le plus sérieux d'abord",
+  },
   "al.none": { ar: "لا شيء يستحق الانتباه.", fr: "Rien à signaler." },
-  "al.sharedIps": { ar: "حساب مستعمل من عدة عناوين في يوم واحد", fr: "Compte utilisé depuis plusieurs adresses le même jour" },
+  "al.sharedIps": {
+    ar: "حساب مستعمل من عدة عناوين في يوم واحد",
+    fr: "Compte utilisé depuis plusieurs adresses le même jour",
+  },
   "al.manyDevices": { ar: "عدة أجهزة في أسبوع", fr: "Plusieurs appareils en une semaine" },
   "al.quotaHit": { ar: "بلغ حد التحميل", fr: "Limite de téléchargement atteinte" },
   "al.tooFast": { ar: "قراءة أسرع من إنسان", fr: "Lecture plus rapide qu'une personne" },
@@ -768,15 +919,24 @@ const STRINGS = {
   "trk.writeEmail": { ar: "مراسلة القارئ", fr: "Écrire au lecteur" },
   "trk.send": { ar: "إرسال", fr: "Envoyer" },
   "trk.emailQueued": { ar: "ستُرسل الرسالة", fr: "Le message part" },
-  "adm.importQueued": { ar: "الملف كبير: يُستورد في الخلفية، يمكنك متابعته هنا", fr: "Archive volumineuse : l'import se fait en arrière-plan, suivez-le ici" },
+  "adm.importQueued": {
+    ar: "الملف كبير: يُستورد في الخلفية، يمكنك متابعته هنا",
+    fr: "Archive volumineuse : l'import se fait en arrière-plan, suivez-le ici",
+  },
   "adm.uploading": { ar: "جارٍ الإرسال…", fr: "Envoi en cours…" },
-  "adm.importRecords": { ar: "ما يعرفه المسار عن كل قرار", fr: "ce que le pipeline sait de chaque arrêt" },
+  "adm.importRecords": {
+    ar: "ما يعرفه المسار عن كل قرار",
+    fr: "ce que le pipeline sait de chaque arrêt",
+  },
   "adm.importFiles": { ar: "الملفات المجهولة", fr: "les fichiers anonymisés" },
   "adm.importRulings": { ar: "قرارا في الأرشيف", fr: "arrêts dans l'archive" },
   "adm.importRead": { ar: "مقروء من الملفات", fr: "Lu dans les fichiers" },
   "adm.withSubject": { ar: "بموضوع", fr: "avec sujet" },
   "adm.withOutcome": { ar: "بمنطوق", fr: "avec dispositif" },
-  "adm.keptEdited": { ar: "مصحَّح على الموقع، تُرك كما هو", fr: "corrigés sur le site, laissés tels quels" },
+  "adm.keptEdited": {
+    ar: "مصحَّح على الموقع، تُرك كما هو",
+    fr: "corrigés sur le site, laissés tels quels",
+  },
   "adm.importHistory": { ar: "الاستيرادات الأخيرة", fr: "Imports récents" },
   "adm.job.queued": { ar: "في الانتظار", fr: "En attente" },
   "adm.job.running": { ar: "جارٍ", fr: "En cours" },
@@ -788,12 +948,12 @@ export type StringKey = keyof typeof STRINGS;
 
 const CHAMBERS: Record<string, Entry> = {
   "أحوال شخصية": { ar: "غرفة الأحوال الشخصية", fr: "Chambre du statut personnel" },
-  "تجارية": { ar: "الغرفة التجارية", fr: "Chambre commerciale" },
-  "اجتماعية": { ar: "الغرفة الاجتماعية", fr: "Chambre sociale" },
-  "عقارية": { ar: "الغرفة العقارية", fr: "Chambre foncière" },
-  "جنائية": { ar: "الغرفة الجنائية", fr: "Chambre pénale" },
-  "مدنية": { ar: "الغرفة المدنية", fr: "Chambre civile" },
-  "إدارية": { ar: "الغرفة الإدارية", fr: "Chambre administrative" },
+  تجارية: { ar: "الغرفة التجارية", fr: "Chambre commerciale" },
+  اجتماعية: { ar: "الغرفة الاجتماعية", fr: "Chambre sociale" },
+  عقارية: { ar: "الغرفة العقارية", fr: "Chambre foncière" },
+  جنائية: { ar: "الغرفة الجنائية", fr: "Chambre pénale" },
+  مدنية: { ar: "الغرفة المدنية", fr: "Chambre civile" },
+  إدارية: { ar: "الغرفة الإدارية", fr: "Chambre administrative" },
   "غير محدد": { ar: "غير محدد", fr: "Non déterminée" },
 };
 
@@ -806,9 +966,9 @@ const COURTS: Record<string, Entry> = {
 };
 
 const LEVELS: Record<string, Entry> = {
-  "ابتدائي": { ar: "ابتدائي", fr: "Première instance" },
-  "استئناف": { ar: "استئناف", fr: "Appel" },
-  "نقض": { ar: "نقض", fr: "Cassation" },
+  ابتدائي: { ar: "ابتدائي", fr: "Première instance" },
+  استئناف: { ar: "استئناف", fr: "Appel" },
+  نقض: { ar: "نقض", fr: "Cassation" },
 };
 
 /** What the court decided, as French rulings word it. */
@@ -826,27 +986,82 @@ const OUTCOMES: Record<string, Entry> = {
 
 /** Court seats, in the spelling each language uses. */
 const CITIES: Record<string, string> = {
-  "الرباط": "Rabat", "الدار البيضاء": "Casablanca", "فاس": "Fès", "مكناس": "Meknès",
-  "مراكش": "Marrakech", "أكادير": "Agadir", "طنجة": "Tanger", "تطوان": "Tétouan",
-  "وجدة": "Oujda", "القنيطرة": "Kénitra", "الجديدة": "El Jadida", "سطات": "Settat",
-  "بني ملال": "Béni Mellal", "خريبكة": "Khouribga", "آسفي": "Safi", "ورزازات": "Ouarzazate",
-  "الرشيدية": "Errachidia", "تازة": "Taza", "الحسيمة": "Al Hoceïma", "الناظور": "Nador",
-  "العيون": "Laâyoune", "كلميم": "Guelmim", "العرائش": "Larache", "سلا": "Salé",
-  "تمارة": "Témara", "الخميسات": "Khémisset", "المحمدية": "Mohammédia",
-  "بن سليمان": "Benslimane", "برشيد": "Berrechid", "سيدي بنور": "Sidi Bennour",
-  "اليوسفية": "Youssoufia", "الصويرة": "Essaouira", "شيشاوة": "Chichaoua",
-  "قلعة السراغنة": "Kelaa des Sraghna", "ابن جرير": "Benguerir", "إنزكان": "Inezgane",
-  "تارودانت": "Taroudant", "تزنيت": "Tiznit", "طاطا": "Tata", "طانطان": "Tan-Tan",
-  "السمارة": "Smara", "الداخلة": "Dakhla", "بوجدور": "Boujdour", "صفرو": "Sefrou",
-  "بولمان": "Boulemane", "تاونات": "Taounate", "الحاجب": "El Hajeb", "إفران": "Ifrane",
-  "ميدلت": "Midelt", "خنيفرة": "Khénifra", "أزرو": "Azrou",
-  "الفقيه بن صالح": "Fquih Ben Salah", "قصبة تادلة": "Kasba Tadla", "أزيلال": "Azilal",
-  "وادي زم": "Oued Zem", "أبي الجعد": "Abi Jaad", "زاكورة": "Zagora", "تنغير": "Tinghir",
-  "بوعرفة": "Bouarfa", "فجيج": "Figuig", "جرادة": "Jerada", "تاوريرت": "Taourirt",
-  "بركان": "Berkane", "الدريوش": "Driouch", "القصر الكبير": "Ksar El Kébir",
-  "أصيلة": "Asilah", "شفشاون": "Chefchaouen", "وزان": "Ouezzane", "سيدي قاسم": "Sidi Kacem",
-  "سيدي سليمان": "Sidi Slimane", "سوق أربعاء الغرب": "Souk El Arbaa", "تيفلت": "Tiflet",
-  "الرماني": "Rommani", "سيدي إفني": "Sidi Ifni", "الصخيرات": "Skhirat", "جرسيف": "Guercif",
+  الرباط: "Rabat",
+  "الدار البيضاء": "Casablanca",
+  فاس: "Fès",
+  مكناس: "Meknès",
+  مراكش: "Marrakech",
+  أكادير: "Agadir",
+  طنجة: "Tanger",
+  تطوان: "Tétouan",
+  وجدة: "Oujda",
+  القنيطرة: "Kénitra",
+  الجديدة: "El Jadida",
+  سطات: "Settat",
+  "بني ملال": "Béni Mellal",
+  خريبكة: "Khouribga",
+  آسفي: "Safi",
+  ورزازات: "Ouarzazate",
+  الرشيدية: "Errachidia",
+  تازة: "Taza",
+  الحسيمة: "Al Hoceïma",
+  الناظور: "Nador",
+  العيون: "Laâyoune",
+  كلميم: "Guelmim",
+  العرائش: "Larache",
+  سلا: "Salé",
+  تمارة: "Témara",
+  الخميسات: "Khémisset",
+  المحمدية: "Mohammédia",
+  "بن سليمان": "Benslimane",
+  برشيد: "Berrechid",
+  "سيدي بنور": "Sidi Bennour",
+  اليوسفية: "Youssoufia",
+  الصويرة: "Essaouira",
+  شيشاوة: "Chichaoua",
+  "قلعة السراغنة": "Kelaa des Sraghna",
+  "ابن جرير": "Benguerir",
+  إنزكان: "Inezgane",
+  تارودانت: "Taroudant",
+  تزنيت: "Tiznit",
+  طاطا: "Tata",
+  طانطان: "Tan-Tan",
+  السمارة: "Smara",
+  الداخلة: "Dakhla",
+  بوجدور: "Boujdour",
+  صفرو: "Sefrou",
+  بولمان: "Boulemane",
+  تاونات: "Taounate",
+  الحاجب: "El Hajeb",
+  إفران: "Ifrane",
+  ميدلت: "Midelt",
+  خنيفرة: "Khénifra",
+  أزرو: "Azrou",
+  "الفقيه بن صالح": "Fquih Ben Salah",
+  "قصبة تادلة": "Kasba Tadla",
+  أزيلال: "Azilal",
+  "وادي زم": "Oued Zem",
+  "أبي الجعد": "Abi Jaad",
+  زاكورة: "Zagora",
+  تنغير: "Tinghir",
+  بوعرفة: "Bouarfa",
+  فجيج: "Figuig",
+  جرادة: "Jerada",
+  تاوريرت: "Taourirt",
+  بركان: "Berkane",
+  الدريوش: "Driouch",
+  "القصر الكبير": "Ksar El Kébir",
+  أصيلة: "Asilah",
+  شفشاون: "Chefchaouen",
+  وزان: "Ouezzane",
+  "سيدي قاسم": "Sidi Kacem",
+  "سيدي سليمان": "Sidi Slimane",
+  "سوق أربعاء الغرب": "Souk El Arbaa",
+  تيفلت: "Tiflet",
+  الرماني: "Rommani",
+  "سيدي إفني": "Sidi Ifni",
+  الصخيرات: "Skhirat",
+  جرسيف: "Guercif",
 };
 
 type Ctx = {
@@ -888,15 +1103,18 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (!langFromPath(publicHref)) router.history.replace(swapLang(publicHref, lang));
   }, [publicHref, lang, router]);
 
-  const setLang = useCallback((l: Lang) => {
-    setActiveLang(l);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, l);
-    } catch {
-      /* private browsing: the choice just does not persist */
-    }
-    router.history.push(swapLang(router.state.location.publicHref, l));
-  }, [router]);
+  const setLang = useCallback(
+    (l: Lang) => {
+      setActiveLang(l);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, l);
+      } catch {
+        /* private browsing: the choice just does not persist */
+      }
+      router.history.push(swapLang(router.state.location.publicHref, l));
+    },
+    [router],
+  );
 
   const dir = lang === "ar" ? "rtl" : "ltr";
 
@@ -905,19 +1123,22 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     document.documentElement.dir = dir;
   }, [lang, dir]);
 
-  const value = useMemo<Ctx>(() => ({
-    lang,
-    dir,
-    setLang,
-    t: (key) => STRINGS[key][lang],
-    chamber: (v) => CHAMBERS[v]?.[lang] ?? v,
-    court: (v) => COURTS[v]?.[lang] ?? v,
-    city: (v) => (lang === "fr" ? (CITIES[v] ?? v) : v),
-    level: (v) => LEVELS[v]?.[lang] ?? v,
-    outcome: (v) => OUTCOMES[v]?.[lang] ?? v,
-    status: (v) => (STRINGS as Record<string, Entry>)[`st.${v}`]?.[lang] ?? v,
-    num: asRead,
-  }), [lang, dir, setLang]);
+  const value = useMemo<Ctx>(
+    () => ({
+      lang,
+      dir,
+      setLang,
+      t: (key) => STRINGS[key][lang],
+      chamber: (v) => CHAMBERS[v]?.[lang] ?? v,
+      court: (v) => COURTS[v]?.[lang] ?? v,
+      city: (v) => (lang === "fr" ? (CITIES[v] ?? v) : v),
+      level: (v) => LEVELS[v]?.[lang] ?? v,
+      outcome: (v) => OUTCOMES[v]?.[lang] ?? v,
+      status: (v) => (STRINGS as Record<string, Entry>)[`st.${v}`]?.[lang] ?? v,
+      num: asRead,
+    }),
+    [lang, dir, setLang],
+  );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
