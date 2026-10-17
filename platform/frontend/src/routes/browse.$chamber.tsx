@@ -1,6 +1,14 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { BellPlus, ChevronRight, ChevronsLeft, ChevronsRight, FileText, Search, X } from "lucide-react";
+import {
+  BellPlus,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  FileText,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Fragment, useEffect, useState } from "react";
 
@@ -71,9 +79,17 @@ function ChamberListing() {
   });
   const listQuery = (p: number) => ({
     queryKey: ["browse", "rulings", filterChamber, year, city, theme, q, p, perPage, lang] as const,
-    queryFn: () => browseRulings({
-      chamber: filterChamber, year, city, theme, q, limit: perPage, offset: (p - 1) * perPage, lang,
-    }),
+    queryFn: () =>
+      browseRulings({
+        chamber: filterChamber,
+        year,
+        city,
+        theme,
+        q,
+        limit: perPage,
+        offset: (p - 1) * perPage,
+        lang,
+      }),
   });
   const rulings = useQuery({ ...listQuery(page), placeholderData: keepPreviousData });
 
@@ -90,12 +106,16 @@ function ChamberListing() {
     <AppShell>
       <div dir={dir} className="font-arabic mx-auto w-full max-w-6xl">
         <nav className="mb-3 flex items-center gap-1 text-sm text-muted-foreground">
-          <Link to="/browse" className="hover:text-foreground">{t("browse.title")}</Link>
+          <Link to="/browse" className="hover:text-foreground">
+            {t("browse.title")}
+          </Link>
           <ChevronRight className={`size-4 ${lang === "ar" ? "rotate-180" : ""}`} aria-hidden />
           <span className="text-foreground">{title}</span>
         </nav>
 
-        <div className={`flex flex-col gap-3 rounded-2xl px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${style.solid}`}>
+        <div
+          className={`flex flex-col gap-3 rounded-2xl px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${style.solid}`}
+        >
           <div>
             <h1 className="text-lg font-semibold sm:text-xl">{title}</h1>
             <p className="mt-0.5 text-xs opacity-90">
@@ -104,9 +124,15 @@ function ChamberListing() {
           </div>
           <form
             className="relative sm:w-72"
-            onSubmit={(e) => { e.preventDefault(); setSearch({ q: draft.trim() || undefined }); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSearch({ q: draft.trim() || undefined });
+            }}
           >
-            <Search className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-70" aria-hidden />
+            <Search
+              className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-70"
+              aria-hidden
+            />
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -127,7 +153,11 @@ function ChamberListing() {
             allLabel={t("listing.allThemes")}
             searchPlaceholder={t("listing.findTheme")}
             width="22rem"
-            options={(themes.data ?? []).map((x) => ({ key: x.key, label: x.label, count: x.count }))}
+            options={(themes.data ?? []).map((x) => ({
+              key: x.key,
+              label: x.label,
+              count: x.count,
+            }))}
             onChange={(k) => setSearch({ theme: k })}
           />
           <FilterMenu
@@ -136,7 +166,11 @@ function ChamberListing() {
             allLabel={t("listing.allYears")}
             searchPlaceholder={t("listing.findYear")}
             width="13rem"
-            options={(years.data ?? []).map((y) => ({ key: y.year, label: num(y.year), count: y.count }))}
+            options={(years.data ?? []).map((y) => ({
+              key: y.year,
+              label: num(y.year),
+              count: y.count,
+            }))}
             onChange={(k) => setSearch({ year: k })}
           />
           <FilterMenu
@@ -145,17 +179,40 @@ function ChamberListing() {
             allLabel={t("listing.all")}
             searchPlaceholder={t("listing.findCity")}
             width="16rem"
-            options={(cities.data ?? []).map((c) => ({ key: c.city, label: cityName(c.city), count: c.count }))}
+            options={(cities.data ?? []).map((c) => ({
+              key: c.city,
+              label: cityName(c.city),
+              count: c.count,
+            }))}
             onChange={(k) => setSearch({ city: k })}
           />
           {(q || theme || filterChamber) && (
-            <Button variant="outline" size="sm" className="h-10"
-                    onClick={() => createAlert({ query: q ?? "", chamber: filterChamber, theme: theme ?? "",
-                      year: year ?? "", city: city ?? "", lang,
-                      name: [q, theme ? themes.data?.find((x) => x.key === theme)?.label : "", filterChamber ? chamberName(filterChamber) : ""].filter(Boolean).join(" · ") })
-                      .then(() => toast.success(t("alert.created")))
-                      .catch((e) => toast.error(e instanceof Error ? e.message : t("adm.failed")))}>
-              <BellPlus className="size-4" />{t("alert.create")}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10"
+              onClick={() =>
+                createAlert({
+                  query: q ?? "",
+                  chamber: filterChamber,
+                  theme: theme ?? "",
+                  year: year ?? "",
+                  city: city ?? "",
+                  lang,
+                  name: [
+                    q,
+                    theme ? themes.data?.find((x) => x.key === theme)?.label : "",
+                    filterChamber ? chamberName(filterChamber) : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                })
+                  .then(() => toast.success(t("alert.created")))
+                  .catch((e) => toast.error(e instanceof Error ? e.message : t("adm.failed")))
+              }
+            >
+              <BellPlus className="size-4" />
+              {t("alert.create")}
             </Button>
           )}
           <p className="ms-auto hidden text-xs text-muted-foreground sm:block">
@@ -166,44 +223,60 @@ function ChamberListing() {
         {q && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t("listing.filters")}</span>
-            <Pill onClear={() => { setDraft(""); setSearch({ q: undefined }); }} label={t("listing.clear")}>
+            <Pill
+              onClear={() => {
+                setDraft("");
+                setSearch({ q: undefined });
+              }}
+              label={t("listing.clear")}
+            >
               {t("listing.filterSearch")}: {q}
             </Pill>
           </div>
         )}
 
         <div className="mt-4">
-        <div className="min-w-0">
-          {rulings.isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}
-            </div>
-          ) : total === 0 ? (
-            <p className="rounded-2xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
-              {t("listing.none")}
-            </p>
-          ) : (
-            <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} q={q} />
-          )}
+          <div className="min-w-0">
+            {rulings.isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-11 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : total === 0 ? (
+              <p className="rounded-2xl border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
+                {t("listing.none")}
+              </p>
+            ) : (
+              <RulingTable rows={rulings.data?.items ?? []} chamber={chamber} q={q} />
+            )}
 
-          {total > 0 && (
-            <Pager
-              page={page}
-              pages={pages}
-              total={total}
-              perPage={perPage}
-              onPage={(p) => navigate({ search: (o) => ({ ...o, page: p > 1 ? p : undefined }) })}
-              onSize={(n) => navigate({ search: (o) => ({ ...o, page: undefined, size: n }) })}
-            />
-          )}
-        </div>
+            {total > 0 && (
+              <Pager
+                page={page}
+                pages={pages}
+                total={total}
+                perPage={perPage}
+                onPage={(p) => navigate({ search: (o) => ({ ...o, page: p > 1 ? p : undefined }) })}
+                onSize={(n) => navigate({ search: (o) => ({ ...o, page: undefined, size: n }) })}
+              />
+            )}
+          </div>
         </div>
       </div>
     </AppShell>
   );
 }
 
-function RulingTable({ rows, chamber, q }: { rows: ListingRow[]; chamber: string; q?: string | undefined }) {
+function RulingTable({
+  rows,
+  chamber,
+  q,
+}: {
+  rows: ListingRow[];
+  chamber: string;
+  q?: string | undefined;
+}) {
   const { t, num, chamber: chamberName, city: cityName } = useI18n();
   const style = chamberStyle(chamber);
   return (
@@ -223,13 +296,28 @@ function RulingTable({ rows, chamber, q }: { rows: ListingRow[]; chamber: string
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.doc_id} className={`border-t align-top transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap"><FileNumber value={r.file_no} /></td>
-                <td className="px-3 py-2.5 font-semibold tabular-nums whitespace-nowrap">{r.decision_no ? num(r.decision_no) : "—"}</td>
-                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap">{r.date ? num(r.date) : "—"}</td>
-                <td className="max-w-xl px-3 py-2.5"><KeysCell row={r} q={q} /></td>
-                <td className="px-3 py-2.5 whitespace-nowrap">{r.city ? cityName(r.city) : <span className="text-muted-foreground">—</span>}</td>
-                <td className={`px-3 py-2.5 whitespace-nowrap ${chamberStyle(r.chamber).text}`}>{chamberName(r.chamber)}</td>
+              <tr
+                key={r.doc_id}
+                className={`border-t align-top transition-colors hover:bg-accent ${i % 2 ? "" : style.soft}`}
+              >
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap">
+                  <FileNumber value={r.file_no} />
+                </td>
+                <td className="px-3 py-2.5 font-semibold tabular-nums whitespace-nowrap">
+                  {r.decision_no ? num(r.decision_no) : "—"}
+                </td>
+                <td className="px-3 py-2.5 tabular-nums text-muted-foreground whitespace-nowrap">
+                  {r.date ? num(r.date) : "—"}
+                </td>
+                <td className="max-w-xl px-3 py-2.5">
+                  <KeysCell row={r} q={q} />
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {r.city ? cityName(r.city) : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className={`px-3 py-2.5 whitespace-nowrap ${chamberStyle(r.chamber).text}`}>
+                  {chamberName(r.chamber)}
+                </td>
                 <td className="px-2 py-2.5">
                   <Link
                     to="/ruling/$docId"
@@ -303,20 +391,28 @@ function KeysCellFr({ row, q }: { row: ListingRow; q?: string | undefined }) {
   return (
     <div className="space-y-1 leading-relaxed">
       {headingFr ? (
-        <p className="font-medium"><Highlight text={headingFr} q={q} /></p>
+        <p className="font-medium">
+          <Highlight text={headingFr} q={q} />
+        </p>
       ) : headingAr ? (
-        <p className="font-medium font-arabic" dir="rtl" lang="ar">{headingAr}</p>
+        <p className="font-medium font-arabic" dir="rtl" lang="ar">
+          {headingAr}
+        </p>
       ) : null}
       {summaryFr ? (
         <>
-          <p className="line-clamp-3 text-xs text-muted-foreground"><Highlight text={summaryFr} q={q} /></p>
+          <p className="line-clamp-3 text-xs text-muted-foreground">
+            <Highlight text={summaryFr} q={q} />
+          </p>
           <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
             {row.abstract_fr_of === "rule" ? t("fr.ruleTranslated") : t("fr.machineSummary")}
           </span>
         </>
       ) : summaryAr ? (
         <>
-          <p className="line-clamp-3 text-xs text-muted-foreground font-arabic" dir="rtl" lang="ar">{summaryAr}</p>
+          <p className="line-clamp-3 text-xs text-muted-foreground font-arabic" dir="rtl" lang="ar">
+            {summaryAr}
+          </p>
           <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
             {t("fr.notTranslated")}
           </span>
@@ -340,7 +436,9 @@ function Highlight({ text, q }: { text: string; q?: string | undefined }) {
         <Fragment key={i}>
           {part}
           {i < parts.length - 1 && (
-            <mark className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-500/40">{needle}</mark>
+            <mark className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-500/40">
+              {needle}
+            </mark>
           )}
         </Fragment>
       ))}
@@ -349,11 +447,19 @@ function Highlight({ text, q }: { text: string; q?: string | undefined }) {
 }
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2.5 text-start text-xs font-semibold ${className}`}>{children}</th>;
+  return (
+    <th className={`px-3 py-2.5 text-start text-xs font-semibold ${className}`}>{children}</th>
+  );
 }
 
-function Pill({ children, onClear, label }: {
-  children: React.ReactNode; onClear: () => void; label: string;
+function Pill({
+  children,
+  onClear,
+  label,
+}: {
+  children: React.ReactNode;
+  onClear: () => void;
+  label: string;
 }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
@@ -365,11 +471,21 @@ function Pill({ children, onClear, label }: {
   );
 }
 
-
 /** Page numbers with a sliding window, both ends always reachable, and a page size. */
-function Pager({ page, pages, total, perPage, onPage, onSize }: {
-  page: number; pages: number; total: number; perPage: number;
-  onPage: (p: number) => void; onSize: (n: number) => void;
+function Pager({
+  page,
+  pages,
+  total,
+  perPage,
+  onPage,
+  onSize,
+}: {
+  page: number;
+  pages: number;
+  total: number;
+  perPage: number;
+  onPage: (p: number) => void;
+  onSize: (n: number) => void;
 }) {
   const { t, num } = useI18n();
   const from = (page - 1) * perPage + 1;
@@ -383,12 +499,19 @@ function Pager({ page, pages, total, perPage, onPage, onSize }: {
   return (
     <div className="mt-4 flex flex-col items-center gap-3">
       <p className="text-xs text-muted-foreground">
-        {t("listing.showing")} {num(from)} {t("listing.to")} {num(to)} {t("listing.results")} {num(total)}
+        {t("listing.showing")} {num(from)} {t("listing.to")} {num(to)} {t("listing.results")}{" "}
+        {num(total)}
       </p>
       {pages > 1 && (
         <div className="flex flex-wrap items-center justify-center gap-1">
-          <Button variant="ghost" size="icon" aria-label={t("listing.first")}
-                  disabled={page <= 1} onClick={() => onPage(1)} className="size-9">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("listing.first")}
+            disabled={page <= 1}
+            onClick={() => onPage(1)}
+            className="size-9"
+          >
             <ChevronsRight className="size-4 rtl:hidden" aria-hidden />
             <ChevronsLeft className="hidden size-4 rtl:block" aria-hidden />
           </Button>
@@ -397,7 +520,9 @@ function Pager({ page, pages, total, perPage, onPage, onSize }: {
           </Button>
           {numbers.map((n, i) =>
             n === "gap" ? (
-              <span key={`gap${i}`} className="px-1 text-muted-foreground">…</span>
+              <span key={`gap${i}`} className="px-1 text-muted-foreground">
+                …
+              </span>
             ) : (
               <Button
                 key={n}
@@ -411,11 +536,22 @@ function Pager({ page, pages, total, perPage, onPage, onSize }: {
               </Button>
             ),
           )}
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => onPage(page + 1)}
+          >
             {t("listing.next")}
           </Button>
-          <Button variant="ghost" size="icon" aria-label={t("listing.last")}
-                  disabled={page >= pages} onClick={() => onPage(pages)} className="size-9">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("listing.last")}
+            disabled={page >= pages}
+            onClick={() => onPage(pages)}
+            className="size-9"
+          >
             <ChevronsLeft className="size-4 rtl:hidden" aria-hidden />
             <ChevronsRight className="hidden size-4 rtl:block" aria-hidden />
           </Button>

@@ -16,7 +16,8 @@ export const Route = createFileRoute("/browse/")({
       { title: "الاجتهادات القضائية — Jurisprudence" },
       {
         name: "description",
-        content: "تصفح الاجتهادات القضائية حسب المحكمة والغرفة والسنة · Jurisprudence par cour, chambre et année.",
+        content:
+          "تصفح الاجتهادات القضائية حسب المحكمة والغرفة والسنة · Jurisprudence par cour, chambre et année.",
       },
     ],
   }),
@@ -44,11 +45,18 @@ function BrowsePage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (q.trim()) {
-                navigate({ to: "/browse/$chamber", params: { chamber: "الكل" }, search: { q: q.trim() } });
+                navigate({
+                  to: "/browse/$chamber",
+                  params: { chamber: "الكل" },
+                  search: { q: q.trim() },
+                });
               }
             }}
           >
-            <Search className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-70" aria-hidden />
+            <Search
+              className="absolute end-3 top-1/2 size-4 -translate-y-1/2 opacity-70"
+              aria-hidden
+            />
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -67,7 +75,9 @@ function BrowsePage() {
 
         {courts.isLoading && (
           <div className="mt-6 space-y-3">
-            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 w-full rounded-2xl" />)}
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-2xl" />
+            ))}
           </div>
         )}
 
@@ -76,7 +86,9 @@ function BrowsePage() {
         )}
 
         <div className="mt-6 space-y-6">
-          {(courts.data ?? []).map((court) => <CourtSection key={court.court} court={court} />)}
+          {(courts.data ?? []).map((court) => (
+            <CourtSection key={court.court} court={court} />
+          ))}
         </div>
 
         {courts.data?.length === 0 && (

@@ -60,13 +60,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setRole(getRole());
     setAuthed(apiIsAuthed());
     setReady(true);
-    void adoptLegacySession();          // a token kept from before the cookie: moved, then forgotten
+    void adoptLegacySession(); // a token kept from before the cookie: moved, then forgotten
   }, []);
 
   useEffect(() => {
     let stored: Theme | null = null;
     try {
-      stored = window.localStorage.getItem("theme") as Theme | null;  // may throw: private mode, blocked storage
+      stored = window.localStorage.getItem("theme") as Theme | null; // may throw: private mode, blocked storage
     } catch {
       stored = null;
     }

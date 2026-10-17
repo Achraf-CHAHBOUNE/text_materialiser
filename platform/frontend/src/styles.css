@@ -257,7 +257,8 @@
 }
 
 @utility glow-teal {
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-teal) 30%, transparent),
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--color-teal) 30%, transparent),
     0 0 32px color-mix(in oklab, var(--color-teal) 18%, transparent);
 }
 

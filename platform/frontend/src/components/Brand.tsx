@@ -30,13 +30,7 @@ export function BrandMark({ className }: { className?: string }) {
   );
 }
 
-export function Wordmark({
-  className,
-  compact,
-}: {
-  className?: string;
-  compact?: boolean;
-}) {
+export function Wordmark({ className, compact }: { className?: string; compact?: boolean }) {
   return (
     <span className={cn("flex items-center gap-2.5", className)}>
       <BrandMark />

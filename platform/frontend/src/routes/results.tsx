@@ -17,8 +17,7 @@ import {
 import { useStore } from "@/lib/app-store";
 import { listDecisions, searchDecisions } from "@/lib/api";
 
-
-const PAGE = 50;                          // rulings per page
+const PAGE = 50; // rulings per page
 export const Route = createFileRoute("/results")({
   head: () => ({ meta: [{ title: "القرارات · Décisions" }] }),
   component: Decisions,
@@ -52,7 +51,7 @@ function Decisions() {
     placeholderData: (previous) => previous,
   });
   const rows = decisions.data ?? [];
-  const hasNext = rows.length === PAGE;      // a full page: there may be more
+  const hasNext = rows.length === PAGE; // a full page: there may be more
   const isSearching = query.trim() !== debouncedQuery || decisions.isFetching;
 
   return (
@@ -203,23 +202,23 @@ function Decisions() {
                     <td className="px-4 py-4 tabular-nums">{d.date || "—"}</td>
                   </tr>
                   {d.snippets?.length ? (
-                  <tr className="border-b bg-muted/20 last:border-0">
-                    <td colSpan={5} className="px-4 py-2 font-ar text-xs text-muted-foreground">
-                      {d.snippets?.map((s, i) => (
-                        <span key={i} className="me-3">
-                          {s.split(/(«[^»]*»)/g).map((c, k) =>
-                            c.startsWith("«") ? (
-                              <mark key={k} className="rounded bg-teal/20 px-0.5 text-teal">
-                                {c.slice(1, -1)}
-                              </mark>
-                            ) : (
-                              <span key={k}>{c}</span>
-                            ),
-                          )}
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
+                    <tr className="border-b bg-muted/20 last:border-0">
+                      <td colSpan={5} className="px-4 py-2 font-ar text-xs text-muted-foreground">
+                        {d.snippets?.map((s, i) => (
+                          <span key={i} className="me-3">
+                            {s.split(/(«[^»]*»)/g).map((c, k) =>
+                              c.startsWith("«") ? (
+                                <mark key={k} className="rounded bg-teal/20 px-0.5 text-teal">
+                                  {c.slice(1, -1)}
+                                </mark>
+                              ) : (
+                                <span key={k}>{c}</span>
+                              ),
+                            )}
+                          </span>
+                        ))}
+                      </td>
+                    </tr>
                   ) : null}
                 </Fragment>
               ))}
@@ -236,14 +235,27 @@ function Decisions() {
       )}
 
       {(page > 0 || hasNext) && (
-        <nav className="mt-4 flex items-center justify-center gap-3" aria-label={t("results.pages")}>
-          <Button variant="outline" size="sm" disabled={page === 0 || decisions.isFetching}
-                  onClick={() => setPage((n) => Math.max(0, n - 1))}>
+        <nav
+          className="mt-4 flex items-center justify-center gap-3"
+          aria-label={t("results.pages")}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 0 || decisions.isFetching}
+            onClick={() => setPage((n) => Math.max(0, n - 1))}
+          >
             {t("results.prev")}
           </Button>
-          <span className="text-sm tabular-nums text-muted-foreground">{t("results.page")} {page + 1}</span>
-          <Button variant="outline" size="sm" disabled={!hasNext || decisions.isFetching}
-                  onClick={() => setPage((n) => n + 1)}>
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {t("results.page")} {page + 1}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasNext || decisions.isFetching}
+            onClick={() => setPage((n) => n + 1)}
+          >
             {t("results.next")}
           </Button>
         </nav>

@@ -39,7 +39,12 @@ export function DownloadButton({ docId, fileName }: { docId: string; fileName: s
   };
   return (
     <Button size="sm" onClick={run} disabled={busy}>
-      {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" aria-hidden />} {t("ruling.download")}
+      {busy ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <Download className="size-4" aria-hidden />
+      )}{" "}
+      {t("ruling.download")}
     </Button>
   );
 }
@@ -51,14 +56,20 @@ export function SaveToFolder({ docId }: { docId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const list = useQuery({ queryKey: ["folders"], queryFn: folders, enabled: open });
-  const inside = useQuery({ queryKey: ["ruling-folders", docId], queryFn: () => rulingFolders(docId) });
+  const inside = useQuery({
+    queryKey: ["ruling-folders", docId],
+    queryFn: () => rulingFolders(docId),
+  });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["ruling-folders", docId] });
     void qc.invalidateQueries({ queryKey: ["folders"] });
   };
   const add = useMutation({
     mutationFn: (folderId: number) => addToFolder(folderId, docId),
-    onSuccess: () => { toast.success(t("lib.saved")); refresh(); },
+    onSuccess: () => {
+      toast.success(t("lib.saved"));
+      refresh();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")),
   });
   const create = useMutation({
@@ -66,7 +77,11 @@ export function SaveToFolder({ docId }: { docId: string }) {
       const f = await createFolder(name, false);
       await addToFolder(f.id, docId);
     },
-    onSuccess: () => { setName(""); toast.success(t("lib.saved")); refresh(); },
+    onSuccess: () => {
+      setName("");
+      toast.success(t("lib.saved"));
+      refresh();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")),
   });
   const saved = (inside.data ?? []).length > 0;
@@ -85,18 +100,37 @@ export function SaveToFolder({ docId }: { docId: string }) {
             const has = (inside.data ?? []).includes(f.id);
             return (
               <li key={f.id}>
-                <button type="button" disabled={has || add.isPending} onClick={() => add.mutate(f.id)}
-                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-start text-sm hover:bg-accent disabled:opacity-60">
-                  <span>{f.name}</span>{has && <BookmarkCheck className="size-4 text-teal" />}
+                <button
+                  type="button"
+                  disabled={has || add.isPending}
+                  onClick={() => add.mutate(f.id)}
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-start text-sm hover:bg-accent disabled:opacity-60"
+                >
+                  <span>{f.name}</span>
+                  {has && <BookmarkCheck className="size-4 text-teal" />}
                 </button>
               </li>
             );
           })}
         </ul>
-        <form className="mt-2 flex gap-1 border-t pt-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder={t("lib.newName")}
-                 className="h-8 text-sm" aria-label={t("lib.newName")} />
-          <Button size="sm" type="submit" disabled={create.isPending} aria-label={t("lib.create")}><FolderPlus className="size-4" /></Button>
+        <form
+          className="mt-2 flex gap-1 border-t pt-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder={t("lib.newName")}
+            className="h-8 text-sm"
+            aria-label={t("lib.newName")}
+          />
+          <Button size="sm" type="submit" disabled={create.isPending} aria-label={t("lib.create")}>
+            <FolderPlus className="size-4" />
+          </Button>
         </form>
       </PopoverContent>
     </Popover>

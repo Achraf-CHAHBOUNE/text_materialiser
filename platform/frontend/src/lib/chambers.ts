@@ -22,37 +22,37 @@ const STYLES: Record<string, ChamberStyle> = {
     solid: "bg-rose-600 text-white",
     ring: "ring-rose-400",
   },
-  "تجارية": {
+  تجارية: {
     text: "text-amber-700 dark:text-amber-300",
     soft: "bg-amber-50 dark:bg-amber-950/40",
     solid: "bg-amber-600 text-white",
     ring: "ring-amber-400",
   },
-  "اجتماعية": {
+  اجتماعية: {
     text: "text-teal-700 dark:text-teal-300",
     soft: "bg-teal-50 dark:bg-teal-950/40",
     solid: "bg-teal-600 text-white",
     ring: "ring-teal-400",
   },
-  "عقارية": {
+  عقارية: {
     text: "text-fuchsia-700 dark:text-fuchsia-300",
     soft: "bg-fuchsia-50 dark:bg-fuchsia-950/40",
     solid: "bg-fuchsia-600 text-white",
     ring: "ring-fuchsia-400",
   },
-  "جنائية": {
+  جنائية: {
     text: "text-slate-700 dark:text-slate-300",
     soft: "bg-slate-100 dark:bg-slate-900/60",
     solid: "bg-slate-700 text-white",
     ring: "ring-slate-400",
   },
-  "مدنية": {
+  مدنية: {
     text: "text-violet-700 dark:text-violet-300",
     soft: "bg-violet-50 dark:bg-violet-950/40",
     solid: "bg-violet-600 text-white",
     ring: "ring-violet-400",
   },
-  "إدارية": {
+  إدارية: {
     text: "text-sky-700 dark:text-sky-300",
     soft: "bg-sky-50 dark:bg-sky-950/40",
     solid: "bg-sky-600 text-white",
@@ -73,7 +73,13 @@ export const chamberStyle = (chamber: string): ChamberStyle => STYLES[chamber] ?
 
 /** Display order: the portal's own order, then anything unexpected. */
 export const CHAMBER_ORDER = [
-  "أحوال شخصية", "تجارية", "اجتماعية", "عقارية", "جنائية", "مدنية", "إدارية",
+  "أحوال شخصية",
+  "تجارية",
+  "اجتماعية",
+  "عقارية",
+  "جنائية",
+  "مدنية",
+  "إدارية",
 ];
 
 export function byChamberOrder<T extends { chamber: string }>(a: T, b: T): number {

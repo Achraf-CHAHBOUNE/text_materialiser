@@ -12,7 +12,11 @@ import { HistoryPanel } from "@/components/ruling/HistoryPanel";
 import { DownloadButton, SaveToFolder } from "@/components/ruling/LibraryButtons";
 import { useReadingTime } from "@/lib/use-reading-time";
 import { RulingText, type Selected } from "@/components/ruling/RulingText";
-import { FrenchRuling, TranslateButton, TranslationView } from "@/components/ruling/TranslationView";
+import {
+  FrenchRuling,
+  TranslateButton,
+  TranslationView,
+} from "@/components/ruling/TranslationView";
 import { rulingKey, useEdits } from "@/components/ruling/useEdits";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,7 +37,7 @@ function RulingPage() {
   const ruling = useQuery({
     queryKey: rulingKey(docId, isAdmin),
     queryFn: () => (isAdmin ? adminGetDecision(docId) : getDecision(docId)),
-    enabled: ready,          // which route to use depends on who is reading
+    enabled: ready, // which route to use depends on who is reading
   });
   const d = ruling.data;
   const { isStaff } = useStore();
@@ -49,20 +53,30 @@ function RulingPage() {
   const [french, setFrench] = useState(false);
 
   const hide = useMutation({
-    mutationFn: (s: Selected) => hideText(docId, { value: s.value, occurrence: s.occurrence ?? 0, base_version: version }),
+    mutationFn: (s: Selected) =>
+      hideText(docId, { value: s.value, occurrence: s.occurrence ?? 0, base_version: version }),
     onSuccess: (out) => applyOutcome(out, "hide"),
     onError: fail,
   });
 
   return (
     <AppShell>
-      <div dir={dir} className={`font-arabic mx-auto w-full ${isAdmin ? "max-w-6xl" : "max-w-4xl"}`}>
+      <div
+        dir={dir}
+        className={`font-arabic mx-auto w-full ${isAdmin ? "max-w-6xl" : "max-w-4xl"}`}
+      >
         <nav className="mb-3 flex items-center gap-1 text-sm text-muted-foreground">
-          <Link to="/browse" className="hover:text-foreground">{t("browse.title")}</Link>
+          <Link to="/browse" className="hover:text-foreground">
+            {t("browse.title")}
+          </Link>
           {d && (
             <>
               <ChevronRight className={`size-4 ${lang === "ar" ? "rotate-180" : ""}`} aria-hidden />
-              <Link to="/browse/$chamber" params={{ chamber: d.category }} className="hover:text-foreground">
+              <Link
+                to="/browse/$chamber"
+                params={{ chamber: d.category }}
+                className="hover:text-foreground"
+              >
                 {chamberName(d.category)}
               </Link>
             </>
@@ -81,7 +95,8 @@ function RulingPage() {
             <div className="min-w-0">
               <header className={`rounded-2xl px-5 py-4 shadow-sm ${style.solid}`}>
                 <h1 className="text-lg font-semibold sm:text-xl">
-                  {courtName(d.court || "محكمة النقض")} — {t("ruling.decisionOf")} {d.decision_no ? num(d.decision_no) : "—"}
+                  {courtName(d.court || "محكمة النقض")} — {t("ruling.decisionOf")}{" "}
+                  {d.decision_no ? num(d.decision_no) : "—"}
                 </h1>
                 <p className="mt-0.5 text-xs opacity-90">
                   {chamberName(d.category)} · {d.date ? num(d.date) : t("ruling.noDate")}
@@ -91,7 +106,11 @@ function RulingPage() {
               </header>
 
               {details && isAdmin ? (
-                <DetailsForm key={`${d.doc_id}:${d.updated_at}`} d={d} onDone={() => setDetails(false)} />
+                <DetailsForm
+                  key={`${d.doc_id}:${d.updated_at}`}
+                  d={d}
+                  onDone={() => setDetails(false)}
+                />
               ) : (
                 <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <Field label={t("col.number")} value={d.decision_no ? num(d.decision_no) : ""} />
@@ -118,12 +137,21 @@ function RulingPage() {
                   <Printer className="size-4" aria-hidden /> {t("ruling.print")}
                 </Button>
                 {d.body_text && lang === "ar" && (
-                  <TranslateButton docId={d.doc_id} shown={french}
-                                   onShow={() => setFrench(true)} onHide={() => setFrench(false)} />
+                  <TranslateButton
+                    docId={d.doc_id}
+                    shown={french}
+                    onShow={() => setFrench(true)}
+                    onHide={() => setFrench(false)}
+                  />
                 )}
                 {isAdmin ? (
                   <>
-                    <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={!d.body_text}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditing(true)}
+                      disabled={!d.body_text}
+                    >
                       <PencilLine className="size-4" aria-hidden /> {t("edit.editText")}
                     </Button>
                     {!details && (
@@ -145,16 +173,20 @@ function RulingPage() {
               {/* The court's own words. A translation sits beside them, never in place
                   of them: the Arabic is the ruling, the French is a reading aid. */}
               {d.body_text && lang === "fr" ? (
-                <FrenchRuling docId={d.doc_id} arabic={d.body_text} arabicView={
-                  <RulingText
-                    text={d.body_text}
-                    canEdit={isAdmin}
-                    busy={hide.isPending}
-                    onHide={(s) => hide.mutate(s)}
-                    onHideAll={setHideAllValue}
-                    onReport={setReport}
-                  />
-                } />
+                <FrenchRuling
+                  docId={d.doc_id}
+                  arabic={d.body_text}
+                  arabicView={
+                    <RulingText
+                      text={d.body_text}
+                      canEdit={isAdmin}
+                      busy={hide.isPending}
+                      onHide={(s) => hide.mutate(s)}
+                      onHideAll={setHideAllValue}
+                      onReport={setReport}
+                    />
+                  }
+                />
               ) : d.body_text && french ? (
                 <TranslationView docId={d.doc_id} arabic={d.body_text} />
               ) : d.body_text ? (
@@ -180,13 +212,28 @@ function RulingPage() {
 
       {d && isAdmin && (
         <>
-          <HideAllDialog docId={d.doc_id} version={version} value={hideAllValue} onClose={() => setHideAllValue(null)} />
-          <TextEditorDialog docId={d.doc_id} version={version} text={d.body_text ?? ""} open={editing}
-                            onClose={() => setEditing(false)} />
+          <HideAllDialog
+            docId={d.doc_id}
+            version={version}
+            value={hideAllValue}
+            onClose={() => setHideAllValue(null)}
+          />
+          <TextEditorDialog
+            docId={d.doc_id}
+            version={version}
+            text={d.body_text ?? ""}
+            open={editing}
+            onClose={() => setEditing(false)}
+          />
         </>
       )}
       {d && !isAdmin && (
-        <ReportDialog docId={d.doc_id} quote={report ?? ""} open={report !== null} onClose={() => setReport(null)} />
+        <ReportDialog
+          docId={d.doc_id}
+          quote={report ?? ""}
+          open={report !== null}
+          onClose={() => setReport(null)}
+        />
       )}
     </AppShell>
   );

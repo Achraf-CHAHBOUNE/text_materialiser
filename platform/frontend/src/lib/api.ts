@@ -8,7 +8,7 @@ const BASE = (import.meta.env["VITE_API_URL"] ?? "http://localhost:8000").replac
 // The session is an HttpOnly cookie the server sets at sign-in: no script on the page
 // can read it, and file links need no token in their address. What is kept here is
 // only who is signed in -- a hint for the interface; the cookie decides.
-const LEGACY_TOKEN_KEY = "anon-token";   // pages before the cookie kept the token here
+const LEGACY_TOKEN_KEY = "anon-token"; // pages before the cookie kept the token here
 const EMAIL_KEY = "anon-email";
 const ROLE_KEY = "anon-role";
 
@@ -16,7 +16,7 @@ function readStore(key: string): string {
   try {
     return (typeof window !== "undefined" ? window.localStorage.getItem(key) : null) || "";
   } catch {
-    return "";                           // storage blocked: treated as signed out
+    return ""; // storage blocked: treated as signed out
   }
 }
 function writeStore(key: string, value: string | null) {
@@ -45,7 +45,9 @@ export async function adoptLegacySession(): Promise<void> {
   if (!token) return;
   try {
     const r = await fetch(BASE + "/api/auth/session", {
-      method: "POST", credentials: "include", headers: { Authorization: `Bearer ${token}` },
+      method: "POST",
+      credentials: "include",
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (r.status === 401 || r.status === 403) clearAuth();
   } catch {
@@ -123,7 +125,11 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 const j = request;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public detail?: unknown) {
+  constructor(
+    public status: number,
+    message: string,
+    public detail?: unknown,
+  ) {
     super(message);
   }
 }
@@ -133,9 +139,12 @@ function detailText(detail: unknown, status: number): string {
   if (typeof detail === "string") return detail;
   if (detail && typeof detail === "object") {
     const d = detail as Record<string, unknown>;
-    if (Array.isArray(d["gate"])) return `Personal data found: ${(d["gate"] as string[]).join(" · ")}`;
+    if (Array.isArray(d["gate"]))
+      return `Personal data found: ${(d["gate"] as string[]).join(" · ")}`;
     if (d["fields"] && typeof d["fields"] === "object") {
-      return Object.entries(d["fields"] as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(" · ");
+      return Object.entries(d["fields"] as Record<string, string>)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ");
     }
   }
   return `HTTP ${status}`;
@@ -152,7 +161,7 @@ export class NeedsCode extends Error {
 export async function login(email: string, password: string, code = "") {
   const r = await fetch(BASE + "/api/auth/login", {
     method: "POST",
-    credentials: "include",            // the answer sets the session cookie
+    credentials: "include", // the answer sets the session cookie
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, code }),
   });
@@ -212,12 +221,27 @@ export const decisionFileUrl = (id: string) =>
 // ---------- admin ----------
 /** An uploaded delivery: imported during the upload when small, by the worker when large. */
 export type ImportJob = {
-  id: number; file_name: string; size: number; status: "queued" | "running" | "done" | "failed";
-  error: string; created_by: string; created_at: string; finished_at: string;
-  total_records?: number; read?: number; to_read?: number;
-  imported?: number; updated?: number; kept_edited?: number; held_by_pipeline?: number;
-  no_file?: number; gate_quarantined?: number; unreadable?: number;
-  with_subject?: number; with_rule?: number; with_outcome?: number;
+  id: number;
+  file_name: string;
+  size: number;
+  status: "queued" | "running" | "done" | "failed";
+  error: string;
+  created_by: string;
+  created_at: string;
+  finished_at: string;
+  total_records?: number;
+  read?: number;
+  to_read?: number;
+  imported?: number;
+  updated?: number;
+  kept_edited?: number;
+  held_by_pipeline?: number;
+  no_file?: number;
+  gate_quarantined?: number;
+  unreadable?: number;
+  with_subject?: number;
+  with_rule?: number;
+  with_outcome?: number;
   rejected?: { doc_id: string; reason: string }[];
   quarantined?: { doc_id: string; findings: string[] }[];
 };
@@ -236,12 +260,14 @@ export const adminGetDecision = (id: string) =>
   j<Decision>(`/api/admin/decisions/${encodeURIComponent(id)}`);
 export const correctDecision = (id: string, changes: Record<string, string>) =>
   j<Decision>(`/api/admin/decisions/${encodeURIComponent(id)}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json" },
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ changes }),
   });
 export const setDecisionState = (id: string, state: PubState) =>
   j<Decision>(`/api/admin/decisions/${encodeURIComponent(id)}/state`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state }),
   });
 export const adminFileUrl = (id: string) =>
@@ -259,7 +285,7 @@ export type CityCount = { city: string; count: number };
 export type ListingRow = {
   doc_id: string;
   decision_no: string;
-  date: string;      // DD/MM/YYYY
+  date: string; // DD/MM/YYYY
   city: string;
   chamber: string;
   court: string;
@@ -272,7 +298,7 @@ export type ListingRow = {
   theme: string;
   theme_key: string;
   keywords: string;
-  rule: string;      // an opening excerpt, cut server-side
+  rule: string; // an opening excerpt, cut server-side
   // "court" when the subject was printed on the ruling, "model" when it was written
   // for us. `rule` is only ever the court's; `abstract` is only ever ours.
   theme_source: string;
@@ -299,12 +325,18 @@ export const browseCities = (chamber = "") =>
 export const browseThemes = (chamber = "", lang: Lang = "ar") =>
   j<ThemeCount[]>(`/api/browse/themes?chamber=${encodeURIComponent(chamber)}&lang=${lang}`);
 
-export function browseRulings(p: {
-  chamber?: string | undefined; year?: string | undefined;
-  city?: string | undefined; q?: string | undefined;
-  theme?: string | undefined;
-  limit?: number; offset?: number; lang?: Lang;
-} = {}) {
+export function browseRulings(
+  p: {
+    chamber?: string | undefined;
+    year?: string | undefined;
+    city?: string | undefined;
+    q?: string | undefined;
+    theme?: string | undefined;
+    limit?: number;
+    offset?: number;
+    lang?: Lang;
+  } = {},
+) {
   const q = new URLSearchParams();
   if (p.chamber) q.set("chamber", p.chamber);
   if (p.year) q.set("year", p.year);
@@ -358,7 +390,7 @@ export type EditOutcome = {
   history: History;
 };
 
-const post = <T,>(path: string, body?: unknown) =>
+const post = <T>(path: string, body?: unknown) =>
   j<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -368,17 +400,26 @@ const dec = (id: string) => `/api/admin/decisions/${encodeURIComponent(id)}`;
 
 export const rulingHistory = (id: string) => j<History>(`${dec(id)}/history`);
 
-export const hideText = (id: string, p: { value: string; base_version: number; occurrence?: number }) =>
-  post<EditOutcome>(`${dec(id)}/hide`, p);
+export const hideText = (
+  id: string,
+  p: { value: string; base_version: number; occurrence?: number },
+) => post<EditOutcome>(`${dec(id)}/hide`, p);
 export const previewHideAll = (id: string, value: string, base_version: number) =>
-  post<{ count: number; snippets: string[] }>(`${dec(id)}/hide`,
-    { value, base_version, everywhere: true, dry_run: true });
+  post<{ count: number; snippets: string[] }>(`${dec(id)}/hide`, {
+    value,
+    base_version,
+    everywhere: true,
+    dry_run: true,
+  });
 export const hideAll = (id: string, value: string, base_version: number) =>
   post<EditOutcome>(`${dec(id)}/hide`, { value, base_version, everywhere: true });
 
 export const previewText = (id: string, text: string, base_version: number) =>
-  post<{ removal: boolean; summary: string; diff: DiffHunk[]; gate: string[] }>(
-    `${dec(id)}/text`, { text, base_version, dry_run: true });
+  post<{ removal: boolean; summary: string; diff: DiffHunk[]; gate: string[] }>(`${dec(id)}/text`, {
+    text,
+    base_version,
+    dry_run: true,
+  });
 export const saveText = (id: string, text: string, base_version: number) =>
   post<EditOutcome>(`${dec(id)}/text`, { text, base_version });
 
@@ -390,9 +431,13 @@ export const purgeHistory = (id: string) => post<EditOutcome>(`${dec(id)}/purge-
 
 export const listDrafts = () => j<VersionRow[]>("/api/admin/drafts");
 export const getDraft = (draftId: number) =>
-  j<VersionRow & { stale: boolean; diff: DiffHunk[]; gate: string[] }>(`/api/admin/drafts/${draftId}`);
-export const approveDraft = (draftId: number) => post<EditOutcome>(`/api/admin/drafts/${draftId}/approve`);
-export const discardDraft = (draftId: number) => post<EditOutcome>(`/api/admin/drafts/${draftId}/discard`);
+  j<VersionRow & { stale: boolean; diff: DiffHunk[]; gate: string[] }>(
+    `/api/admin/drafts/${draftId}`,
+  );
+export const approveDraft = (draftId: number) =>
+  post<EditOutcome>(`/api/admin/drafts/${draftId}/approve`);
+export const discardDraft = (draftId: number) =>
+  post<EditOutcome>(`/api/admin/drafts/${draftId}/discard`);
 
 export const listReports = (status = "open") =>
   j<ReportRow[]>(`/api/admin/reports?status=${encodeURIComponent(status)}`);

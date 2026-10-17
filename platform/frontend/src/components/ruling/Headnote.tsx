@@ -77,7 +77,10 @@ export function Source({ court }: { court: boolean }) {
  *  French at all, the Arabic headnote is shown as it is. */
 export function HeadnoteFr({ d }: { d: Decision }) {
   const { t } = useI18n();
-  const tr = useQuery({ queryKey: translationKey(d.doc_id), queryFn: () => getTranslation(d.doc_id) });
+  const tr = useQuery({
+    queryKey: translationKey(d.doc_id),
+    queryFn: () => getTranslation(d.doc_id),
+  });
   const headingFr = tr.data?.keywords_fr || tr.data?.theme_fr || "";
   const summaryFr = tr.data?.abstract_fr || "";
   if (tr.isLoading) return null;
@@ -86,16 +89,22 @@ export function HeadnoteFr({ d }: { d: Decision }) {
   const ofRule = tr.data?.abstract_fr_of === "rule";
   const headingAr = d.keywords || d.theme || "";
   return (
-    <section aria-label={t("ruling.headnote")}
-             className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/60 dark:bg-sky-950/30">
+    <section
+      aria-label={t("ruling.headnote")}
+      className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/60 dark:bg-sky-950/30"
+    >
       {(headingFr || headingAr) && (
         <>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">
             {tr.data?.keywords_fr || d.keywords ? t("ruling.keywords") : t("listing.theme")}
           </h2>
-          {headingFr
-            ? <p className="mt-1 font-medium leading-relaxed">{headingFr}</p>
-            : <p className="mt-1 font-medium leading-relaxed font-arabic" dir="rtl" lang="ar">{headingAr}</p>}
+          {headingFr ? (
+            <p className="mt-1 font-medium leading-relaxed">{headingFr}</p>
+          ) : (
+            <p className="mt-1 font-medium leading-relaxed font-arabic" dir="rtl" lang="ar">
+              {headingAr}
+            </p>
+          )}
         </>
       )}
       {summaryFr && (

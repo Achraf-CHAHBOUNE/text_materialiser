@@ -8,7 +8,10 @@ import { cn } from "@/lib/utils";
 
 /** 49900 -> "499,00 MAD" / "499,00 درهم". Amounts arrive in centimes. */
 export function money(centimes: number, lang: Lang): string {
-  const v = (centimes / 100).toLocaleString("fr-MA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const v = (centimes / 100).toLocaleString("fr-MA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   return lang === "ar" ? `${v} درهم` : `${v} MAD`;
 }
 
@@ -24,8 +27,16 @@ export function when(iso: string | null | undefined): string {
   return `${day(iso)} ${iso.slice(11, 16)}`;
 }
 
-export function Card({ title, action, children, className }: {
-  title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string;
+export function Card({
+  title,
+  action,
+  children,
+  className,
+}: {
+  title?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
 }) {
   return (
     <section className={cn("rounded-2xl border bg-card p-5 shadow-soft", className)}>
@@ -40,10 +51,23 @@ export function Card({ title, action, children, className }: {
   );
 }
 
-export function Stat({ label, value, tone = "default", hint }: {
-  label: string; value: ReactNode; tone?: "default" | "good" | "warn" | "bad"; hint?: ReactNode;
+export function Stat({
+  label,
+  value,
+  tone = "default",
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: "default" | "good" | "warn" | "bad";
+  hint?: ReactNode;
 }) {
-  const color = { default: "text-foreground", good: "text-teal", warn: "text-amber-600", bad: "text-destructive" }[tone];
+  const color = {
+    default: "text-foreground",
+    good: "text-teal",
+    warn: "text-amber-600",
+    bad: "text-destructive",
+  }[tone];
   return (
     <div className="rounded-2xl border bg-card p-4 shadow-soft">
       <p className={cn("text-2xl font-semibold tabular-nums", color)}>{value}</p>
@@ -63,23 +87,62 @@ const TONES: Record<string, string> = {
 
 /** Which tone each status reads as, wherever it appears. */
 export const STATUS_TONE: Record<string, keyof typeof TONES> = {
-  ok: "good", active: "good", paid: "good", won: "good", customer: "good", converted: "good", closed: "muted",
-  trial: "info", new: "info", open: "info", demo: "info", contacted: "info", qualified: "info", prospect: "info",
-  sent: "muted", pending: "warn", quiet: "warn", draft: "muted",
-  expired: "bad", overdue: "bad", suspended: "bad", lost: "bad", rejected: "muted", at_risk: "bad",
-  cancelled: "muted", former: "muted", none: "muted", high: "bad", normal: "muted",
+  ok: "good",
+  active: "good",
+  paid: "good",
+  won: "good",
+  customer: "good",
+  converted: "good",
+  closed: "muted",
+  trial: "info",
+  new: "info",
+  open: "info",
+  demo: "info",
+  contacted: "info",
+  qualified: "info",
+  prospect: "info",
+  sent: "muted",
+  pending: "warn",
+  quiet: "warn",
+  draft: "muted",
+  expired: "bad",
+  overdue: "bad",
+  suspended: "bad",
+  lost: "bad",
+  rejected: "muted",
+  at_risk: "bad",
+  cancelled: "muted",
+  former: "muted",
+  none: "muted",
+  high: "bad",
+  normal: "muted",
 };
 
-export function Badge({ tone = "muted", children }: { tone?: keyof typeof TONES | undefined; children: ReactNode }) {
+export function Badge({
+  tone = "muted",
+  children,
+}: {
+  tone?: keyof typeof TONES | undefined;
+  children: ReactNode;
+}) {
   return (
-    <span className={cn("inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1", TONES[tone])}>
+    <span
+      className={cn(
+        "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1",
+        TONES[tone],
+      )}
+    >
       {children}
     </span>
   );
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{children}</p>;
+  return (
+    <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+      {children}
+    </p>
+  );
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -91,25 +154,57 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function TextField({ label, value, onChange, type = "text", placeholder, required, dir }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string;
-  placeholder?: string; required?: boolean; dir?: "ltr" | "rtl";
+export function TextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  required,
+  dir,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  required?: boolean;
+  dir?: "ltr" | "rtl";
 }) {
   return (
     <Field label={label}>
-      <Input type={type} value={value} required={required} placeholder={placeholder} dir={dir}
-             onChange={(e) => onChange(e.target.value)} className="h-10" />
+      <Input
+        type={type}
+        value={value}
+        required={required}
+        placeholder={placeholder}
+        dir={dir}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10"
+      />
     </Field>
   );
 }
 
-export function Table({ head, children, minWidth = "40rem" }: { head: ReactNode[]; children: ReactNode; minWidth?: string }) {
+export function Table({
+  head,
+  children,
+  minWidth = "40rem",
+}: {
+  head: ReactNode[];
+  children: ReactNode;
+  minWidth?: string;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border">
       <table className="w-full text-sm" style={{ minWidth }}>
         <thead>
           <tr className="border-b bg-muted/40 text-xs font-semibold text-muted-foreground">
-            {head.map((h, i) => <th key={i} className="px-3 py-2.5 text-start">{h}</th>)}
+            {head.map((h, i) => (
+              <th key={i} className="px-3 py-2.5 text-start">
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y">{children}</tbody>
@@ -118,17 +213,35 @@ export function Table({ head, children, minWidth = "40rem" }: { head: ReactNode[
   );
 }
 
-export const Td = ({ children, className }: { children?: ReactNode; className?: string }) =>
-  <td className={cn("px-3 py-2.5 align-top", className)}>{children}</td>;
+export const Td = ({ children, className }: { children?: ReactNode; className?: string }) => (
+  <td className={cn("px-3 py-2.5 align-top", className)}>{children}</td>
+);
 
-export function Select({ value, onChange, options, className, label }: {
-  value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
-  className?: string; label?: string;
+export function Select({
+  value,
+  onChange,
+  options,
+  className,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+  label?: string;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
-            className={cn("h-10 rounded-md border border-input bg-background px-3 text-sm", className)}>
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
+      className={cn("h-10 rounded-md border border-input bg-background px-3 text-sm", className)}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
     </select>
   );
 }

@@ -43,7 +43,12 @@ function occurrenceAt(text: string, value: string, start: number): number | null
  * back to a position in it.
  */
 export function RulingText({
-  text, canEdit, busy, onHide, onHideAll, onReport,
+  text,
+  canEdit,
+  busy,
+  onHide,
+  onHideAll,
+  onReport,
 }: {
   text: string;
   canEdit: boolean;
@@ -67,12 +72,17 @@ export function RulingText({
     let start = offsetIn(el, range.startContainer, range.startOffset);
     let end = offsetIn(el, range.endContainer, range.endOffset);
     if (start < 0 || end <= start) return setSel(null);
-    while (start < end && /\s/.test(text[start] ?? "")) start += 1;   // no surrounding spaces
+    while (start < end && /\s/.test(text[start] ?? "")) start += 1; // no surrounding spaces
     while (end > start && /\s/.test(text[end - 1] ?? "")) end -= 1;
     const value = text.slice(start, end);
     if (!value || !value.replaceAll(TOKEN, "").trim()) return setSel(null);
     const box = range.getBoundingClientRect();
-    setSel({ value, occurrence: occurrenceAt(text, value, start), x: box.left + box.width / 2, y: box.top });
+    setSel({
+      value,
+      occurrence: occurrenceAt(text, value, start),
+      x: box.left + box.width / 2,
+      y: box.top,
+    });
   }, [text]);
 
   useEffect(() => {
@@ -110,7 +120,9 @@ export function RulingText({
           <span key={i}>
             {p}
             {i < parts.length - 1 && (
-              <mark className="rounded bg-muted px-0.5 font-mono text-[13px] text-muted-foreground">{TOKEN}</mark>
+              <mark className="rounded bg-muted px-0.5 font-mono text-[13px] text-muted-foreground">
+                {TOKEN}
+              </mark>
             )}
           </span>
         ))}
@@ -126,21 +138,41 @@ export function RulingText({
             top: Math.min(Math.max(8, sel.y - 48), window.innerHeight - 56),
           }}
           className="fixed z-40 flex -translate-x-1/2 items-center gap-1 rounded-xl border bg-popover p-1 shadow-lg"
-          onMouseDown={(e) => e.preventDefault()}          /* keep the selection */
+          onMouseDown={(e) => e.preventDefault()} /* keep the selection */
         >
           {canEdit ? (
             <>
-              <Button size="sm" disabled={busy || sel.occurrence === null}
-                      onClick={() => { onHide({ value: sel.value, occurrence: sel.occurrence }); done(); }}>
+              <Button
+                size="sm"
+                disabled={busy || sel.occurrence === null}
+                onClick={() => {
+                  onHide({ value: sel.value, occurrence: sel.occurrence });
+                  done();
+                }}
+              >
                 <EyeOff className="size-4" aria-hidden /> {t("edit.hide")}
               </Button>
-              <Button size="sm" variant="outline" disabled={busy}
-                      onClick={() => { onHideAll(sel.value); done(); }}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  onHideAll(sel.value);
+                  done();
+                }}
+              >
                 <ScanSearch className="size-4" aria-hidden /> {t("edit.hideAll")}
               </Button>
             </>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => { onReport(sel.value); done(); }}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                onReport(sel.value);
+                done();
+              }}
+            >
               <Flag className="size-4" aria-hidden /> {t("report.title")}
             </Button>
           )}

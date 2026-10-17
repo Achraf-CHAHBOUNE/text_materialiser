@@ -21,11 +21,18 @@ function Corrections() {
   const { t, dir, num, chamber } = useI18n();
   const label = useActionLabel();
   const summary = useSummary();
-  const reports = useQuery({ queryKey: ["corrections", "reports"], queryFn: () => listReports("open") });
+  const reports = useQuery({
+    queryKey: ["corrections", "reports"],
+    queryFn: () => listReports("open"),
+  });
   const drafts = useQuery({ queryKey: ["corrections", "drafts"], queryFn: listDrafts });
 
   const ruling = (docId: string, no: string | undefined, cat: string | undefined) => (
-    <Link to="/ruling/$docId" params={{ docId }} className="font-medium text-primary hover:underline">
+    <Link
+      to="/ruling/$docId"
+      params={{ docId }}
+      className="font-medium text-primary hover:underline"
+    >
       {t("ruling.decisionOf")} {no ? num(no) : docId}
       {cat ? <span className="text-muted-foreground"> · {chamber(cat)}</span> : null}
     </Link>
@@ -37,7 +44,9 @@ function Corrections() {
       description={t("review.subtitle")}
       action={
         <Button asChild size="sm" variant="outline">
-          <a href={editsExportUrl()}><Download className="size-4" aria-hidden /> {t("review.export")}</a>
+          <a href={editsExportUrl()}>
+            <Download className="size-4" aria-hidden /> {t("review.export")}
+          </a>
         </Button>
       }
     >
@@ -45,17 +54,27 @@ function Corrections() {
         <section className="rounded-2xl border bg-card p-4">
           <h2 className="mb-3 flex items-center gap-2 font-semibold">
             <Flag className="size-4 text-amber-600" aria-hidden /> {t("history.reports")}
-            {reports.data && <span className="text-muted-foreground">({num(reports.data.length)})</span>}
+            {reports.data && (
+              <span className="text-muted-foreground">({num(reports.data.length)})</span>
+            )}
           </h2>
           {reports.isLoading && <Skeleton className="h-24 w-full" />}
-          {reports.data?.length === 0 && <p className="text-sm text-muted-foreground">{t("review.noReports")}</p>}
+          {reports.data?.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("review.noReports")}</p>
+          )}
           <ul className="space-y-3">
             {reports.data?.map((r) => (
               <li key={r.id} className="rounded-xl bg-muted/50 p-3 text-sm">
                 {ruling(r.doc_id, r.decision_no, r.category)}
-                {r.quote && <p dir="rtl" className="mt-1">«{r.quote}»</p>}
+                {r.quote && (
+                  <p dir="rtl" className="mt-1">
+                    «{r.quote}»
+                  </p>
+                )}
                 {r.note && <p className="mt-1 text-muted-foreground">{r.note}</p>}
-                <p className="mt-1 text-xs text-muted-foreground">{r.reporter} · {when(r.created_at)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {r.reporter} · {when(r.created_at)}
+                </p>
               </li>
             ))}
           </ul>
@@ -64,16 +83,25 @@ function Corrections() {
         <section className="rounded-2xl border bg-card p-4">
           <h2 className="mb-3 flex items-center gap-2 font-semibold">
             <FileText className="size-4" aria-hidden /> {t("history.drafts")}
-            {drafts.data && <span className="text-muted-foreground">({num(drafts.data.length)})</span>}
+            {drafts.data && (
+              <span className="text-muted-foreground">({num(drafts.data.length)})</span>
+            )}
           </h2>
           {drafts.isLoading && <Skeleton className="h-24 w-full" />}
-          {drafts.data?.length === 0 && <p className="text-sm text-muted-foreground">{t("review.noDrafts")}</p>}
+          {drafts.data?.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("review.noDrafts")}</p>
+          )}
           <ul className="space-y-3">
             {drafts.data?.map((d) => (
               <li key={d.id} className="rounded-xl bg-muted/50 p-3 text-sm">
                 {ruling(d.doc_id, d.decision_no, d.category)}
-                <p className="mt-1">{label(d.action)} · <span className="text-muted-foreground">{summary(d.summary)}</span></p>
-                <p className="mt-1 text-xs text-muted-foreground">{t("history.by")} {d.actor} · {when(d.created_at)}</p>
+                <p className="mt-1">
+                  {label(d.action)} ·{" "}
+                  <span className="text-muted-foreground">{summary(d.summary)}</span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("history.by")} {d.actor} · {when(d.created_at)}
+                </p>
               </li>
             ))}
           </ul>

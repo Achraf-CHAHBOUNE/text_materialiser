@@ -3,16 +3,33 @@ import { Flag, History as HistoryIcon, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  approveDraft, discardDraft, getDraft, purgeHistory, resolveReport, restoreVersion, rulingHistory,
-  versionDiff, type VersionRow,
+  approveDraft,
+  discardDraft,
+  getDraft,
+  purgeHistory,
+  resolveReport,
+  restoreVersion,
+  rulingHistory,
+  versionDiff,
+  type VersionRow,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -33,9 +50,14 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
   const [draft, setDraft] = useState<number | null>(null);
   const [purging, setPurging] = useState(false);
 
-  const purge = useMutation({ mutationFn: () => purgeHistory(docId), onSuccess: (o) => applyOutcome(o), onError: fail });
+  const purge = useMutation({
+    mutationFn: () => purgeHistory(docId),
+    onSuccess: (o) => applyOutcome(o),
+    onError: fail,
+  });
   const resolve = useMutation({
-    mutationFn: (p: { id: number; status: "resolved" | "dismissed" }) => resolveReport(p.id, p.status),
+    mutationFn: (p: { id: number; status: "resolved" | "dismissed" }) =>
+      resolveReport(p.id, p.status),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: historyKey(docId) });
       void qc.invalidateQueries({ queryKey: ["corrections"] });
@@ -53,21 +75,36 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
       {reports.length > 0 && (
         <section className="rounded-2xl border border-amber-500/40 bg-card p-4">
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <Flag className="size-4 text-amber-600" aria-hidden /> {t("history.reports")} ({num(reports.length)})
+            <Flag className="size-4 text-amber-600" aria-hidden /> {t("history.reports")} (
+            {num(reports.length)})
           </h2>
           <ul className="space-y-3">
             {reports.map((r) => (
               <li key={r.id} className="rounded-xl bg-muted/50 p-3 text-sm">
-                {r.quote && <p dir="rtl" className="font-medium">«{r.quote}»</p>}
+                {r.quote && (
+                  <p dir="rtl" className="font-medium">
+                    «{r.quote}»
+                  </p>
+                )}
                 {r.note && <p className="mt-1 text-muted-foreground">{r.note}</p>}
-                <p className="mt-1 text-xs text-muted-foreground">{r.reporter} · {when(r.created_at)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {r.reporter} · {when(r.created_at)}
+                </p>
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" variant="outline" disabled={resolve.isPending}
-                          onClick={() => resolve.mutate({ id: r.id, status: "resolved" })}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={resolve.isPending}
+                    onClick={() => resolve.mutate({ id: r.id, status: "resolved" })}
+                  >
                     {t("history.resolve")}
                   </Button>
-                  <Button size="sm" variant="ghost" disabled={resolve.isPending}
-                          onClick={() => resolve.mutate({ id: r.id, status: "dismissed" })}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={resolve.isPending}
+                    onClick={() => resolve.mutate({ id: r.id, status: "dismissed" })}
+                  >
                     {t("history.dismiss")}
                   </Button>
                 </div>
@@ -90,7 +127,9 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
                     {t("history.by")} {d.actor} · {when(d.created_at)}
                   </span>
                 </span>
-                <Button size="sm" variant="outline" onClick={() => setDraft(d.id)}>{t("history.open")}</Button>
+                <Button size="sm" variant="outline" onClick={() => setDraft(d.id)}>
+                  {t("history.open")}
+                </Button>
               </li>
             ))}
           </ul>
@@ -110,28 +149,44 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
                 <span className="min-w-0">
                   <span className="font-medium tabular-nums">v{num(v.version ?? 0)}</span>{" "}
                   <span>{label(v.action)}</span>
-                  {v.summary && v.action !== "import" && <span className="text-muted-foreground"> · {summary(v.summary)}</span>}
+                  {v.summary && v.action !== "import" && (
+                    <span className="text-muted-foreground"> · {summary(v.summary)}</span>
+                  )}
                   <span className="block truncate text-xs text-muted-foreground">
                     {v.actor} · {when(v.decided_at || v.created_at)}
                   </span>
                 </span>
                 {v.version === version ? (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t("history.current")}</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    {t("history.current")}
+                  </span>
                 ) : (
-                  <Button size="sm" variant="ghost" onClick={() => setRestoring(v.version)}>{t("history.restore")}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRestoring(v.version)}>
+                    {t("history.restore")}
+                  </Button>
                 )}
               </li>
             ))}
           </ol>
         )}
         {versions.length > 1 && (
-          <Button size="sm" variant="ghost" className="mt-3 text-destructive" onClick={() => setPurging(true)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mt-3 text-destructive"
+            onClick={() => setPurging(true)}
+          >
             <Trash2 className="size-4" aria-hidden /> {t("history.purge")}
           </Button>
         )}
       </section>
 
-      <RestoreDialog docId={docId} version={version} target={restoring} onClose={() => setRestoring(null)} />
+      <RestoreDialog
+        docId={docId}
+        version={version}
+        target={restoring}
+        onClose={() => setRestoring(null)}
+      />
       <DraftDialog docId={docId} draftId={draft} onClose={() => setDraft(null)} />
 
       <AlertDialog open={purging} onOpenChange={setPurging}>
@@ -142,7 +197,9 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("edit.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => purge.mutate()}>{t("history.purge")}</AlertDialogAction>
+            <AlertDialogAction onClick={() => purge.mutate()}>
+              {t("history.purge")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -150,8 +207,16 @@ export function HistoryPanel({ docId, version }: { docId: string; version: numbe
   );
 }
 
-function RestoreDialog({ docId, version, target, onClose }: {
-  docId: string; version: number; target: number | null; onClose: () => void;
+function RestoreDialog({
+  docId,
+  version,
+  target,
+  onClose,
+}: {
+  docId: string;
+  version: number;
+  target: number | null;
+  onClose: () => void;
 }) {
   const { t, num, dir } = useI18n();
   const { applyOutcome, fail } = useEdits(docId);
@@ -162,23 +227,35 @@ function RestoreDialog({ docId, version, target, onClose }: {
   });
   const restore = useMutation({
     mutationFn: () => restoreVersion(docId, target ?? 0, version),
-    onSuccess: (o) => { applyOutcome(o, "restore"); onClose(); },
+    onSuccess: (o) => {
+      applyOutcome(o, "restore");
+      onClose();
+    },
     onError: fail,
   });
   return (
     <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent dir={dir} className="flex max-h-[90vh] max-w-3xl flex-col">
         <DialogHeader>
-          <DialogTitle>{t("history.restoreTitle")} v{num(target ?? 0)}</DialogTitle>
+          <DialogTitle>
+            {t("history.restoreTitle")} v{num(target ?? 0)}
+          </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           {diff.data && diff.data.diff.length > 0 && <ChangeKind removal={diff.data.removal} />}
           {diff.data && <DiffView hunks={diff.data.diff} />}
-          {diff.error && <p className="text-sm text-destructive">{(diff.error as Error).message}</p>}
+          {diff.error && (
+            <p className="text-sm text-destructive">{(diff.error as Error).message}</p>
+          )}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>{t("edit.cancel")}</Button>
-          <Button disabled={!diff.data?.diff.length || restore.isPending} onClick={() => restore.mutate()}>
+          <Button variant="ghost" onClick={onClose}>
+            {t("edit.cancel")}
+          </Button>
+          <Button
+            disabled={!diff.data?.diff.length || restore.isPending}
+            onClick={() => restore.mutate()}
+          >
             {diff.data?.removal === false ? t("edit.saveDraft") : t("history.restore")}
           </Button>
         </DialogFooter>
@@ -187,7 +264,15 @@ function RestoreDialog({ docId, version, target, onClose }: {
   );
 }
 
-function DraftDialog({ docId, draftId, onClose }: { docId: string; draftId: number | null; onClose: () => void }) {
+function DraftDialog({
+  docId,
+  draftId,
+  onClose,
+}: {
+  docId: string;
+  draftId: number | null;
+  onClose: () => void;
+}) {
   const { t, dir } = useI18n();
   const label = useActionLabel();
   const { applyOutcome, fail } = useEdits(docId);
@@ -199,12 +284,18 @@ function DraftDialog({ docId, draftId, onClose }: { docId: string; draftId: numb
   });
   const approve = useMutation({
     mutationFn: () => approveDraft(draftId ?? 0),
-    onSuccess: (o) => { applyOutcome(o, draft.data?.action); onClose(); },
+    onSuccess: (o) => {
+      applyOutcome(o, draft.data?.action);
+      onClose();
+    },
     onError: fail,
   });
   const discard = useMutation({
     mutationFn: () => discardDraft(draftId ?? 0),
-    onSuccess: (o) => { applyOutcome(o); onClose(); },
+    onSuccess: (o) => {
+      applyOutcome(o);
+      onClose();
+    },
     onError: fail,
   });
   const d = draft.data;
@@ -216,16 +307,26 @@ function DraftDialog({ docId, draftId, onClose }: { docId: string; draftId: numb
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           {d?.stale && (
-            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{t("history.stale")}</p>
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {t("history.stale")}
+            </p>
           )}
           {d && <GateWarning findings={d.gate} />}
           {d && <DiffView hunks={d.diff} />}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="ghost" className="text-destructive" disabled={discard.isPending} onClick={() => discard.mutate()}>
+          <Button
+            variant="ghost"
+            className="text-destructive"
+            disabled={discard.isPending}
+            onClick={() => discard.mutate()}
+          >
             {t("history.discard")}
           </Button>
-          <Button disabled={!d || d.stale || d.gate.length > 0 || approve.isPending} onClick={() => approve.mutate()}>
+          <Button
+            disabled={!d || d.stale || d.gate.length > 0 || approve.isPending}
+            onClick={() => approve.mutate()}
+          >
             {t("history.approve")}
           </Button>
         </DialogFooter>

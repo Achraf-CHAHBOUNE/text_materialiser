@@ -12,7 +12,12 @@ export const translationKey = (docId: string) => ["translation", docId];
 const key = translationKey;
 
 /** The button. Asks for the French the first time; afterwards it is already there. */
-export function TranslateButton({ docId, shown, onShow, onHide }: {
+export function TranslateButton({
+  docId,
+  shown,
+  onShow,
+  onHide,
+}: {
   docId: string;
   shown: boolean;
   onShow: () => void;
@@ -28,9 +33,10 @@ export function TranslateButton({ docId, shown, onShow, onHide }: {
       qc.setQueryData<Translation>(key(docId), data);
       onShow();
     },
-    onError: (e) => toast.error(t("tr.failed"), {
-      description: e instanceof Error ? e.message : undefined,
-    }),
+    onError: (e) =>
+      toast.error(t("tr.failed"), {
+        description: e instanceof Error ? e.message : undefined,
+      }),
   });
 
   if (shown) {
@@ -42,11 +48,17 @@ export function TranslateButton({ docId, shown, onShow, onHide }: {
   }
   const have = stored.data?.ready && !stored.data.stale;
   return (
-    <Button variant="outline" size="sm" disabled={ask.isPending}
-            onClick={() => (have ? onShow() : ask.mutate())}>
-      {ask.isPending
-        ? <Loader2 className="size-4 animate-spin" aria-hidden />
-        : <Languages className="size-4" aria-hidden />}
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={ask.isPending}
+      onClick={() => (have ? onShow() : ask.mutate())}
+    >
+      {ask.isPending ? (
+        <Loader2 className="size-4 animate-spin" aria-hidden />
+      ) : (
+        <Languages className="size-4" aria-hidden />
+      )}
       {ask.isPending ? t("tr.working") : t("tr.button")}
     </Button>
   );
@@ -64,9 +76,10 @@ export function TranslationView({ docId, arabic }: { docId: string; arabic: stri
   const again = useMutation({
     mutationFn: () => makeTranslation(docId),
     onSuccess: (data) => qc.setQueryData<Translation>(key(docId), data),
-    onError: (e) => toast.error(t("tr.failed"), {
-      description: e instanceof Error ? e.message : undefined,
-    }),
+    onError: (e) =>
+      toast.error(t("tr.failed"), {
+        description: e instanceof Error ? e.message : undefined,
+      }),
   });
 
   const french = stored.data?.text ?? "";
@@ -81,10 +94,17 @@ export function TranslationView({ docId, arabic }: { docId: string; arabic: stri
       {stale && (
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {t("tr.stale")}
-          <Button size="sm" variant="outline" disabled={again.isPending} onClick={() => again.mutate()}>
-            {again.isPending
-              ? <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              : <RotateCw className="size-3.5" aria-hidden />}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={again.isPending}
+            onClick={() => again.mutate()}
+          >
+            {again.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <RotateCw className="size-3.5" aria-hidden />
+            )}
             {t("tr.retry")}
           </Button>
         </div>
@@ -97,9 +117,11 @@ export function TranslationView({ docId, arabic }: { docId: string; arabic: stri
         </article>
         <article dir="ltr" className="rounded-2xl border bg-card p-6 text-[15px] leading-7">
           <h2 className="mb-2 text-xs font-medium text-muted-foreground">{t("tr.french")}</h2>
-          {french
-            ? <div className="whitespace-pre-wrap font-sans">{french}</div>
-            : <p className="text-sm text-muted-foreground">{t("tr.working")}</p>}
+          {french ? (
+            <div className="whitespace-pre-wrap font-sans">{french}</div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("tr.working")}</p>
+          )}
         </article>
       </div>
     </section>
@@ -113,7 +135,11 @@ export function TranslationView({ docId, arabic }: { docId: string; arabic: stri
  * top, and the original is offered alone or side by side. With no French yet, the
  * Arabic is shown with a note, and the reader can ask for the translation.
  */
-export function FrenchRuling({ docId, arabic, arabicView }: {
+export function FrenchRuling({
+  docId,
+  arabic,
+  arabicView,
+}: {
   docId: string;
   arabic: string;
   /** the Arabic text as the page normally shows it (selection, reporting, editing) */
@@ -131,9 +157,18 @@ export function FrenchRuling({ docId, arabic, arabicView }: {
       <section className="mt-4">
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
           {t("fr.textMissing")}
-          <TranslateButton docId={docId} shown={false} onShow={() => setView("both")} onHide={() => undefined} />
+          <TranslateButton
+            docId={docId}
+            shown={false}
+            onShow={() => setView("both")}
+            onHide={() => undefined}
+          />
         </div>
-        {view === "both" && stored.data?.text ? <TranslationView docId={docId} arabic={arabic} /> : arabicView}
+        {view === "both" && stored.data?.text ? (
+          <TranslationView docId={docId} arabic={arabic} />
+        ) : (
+          arabicView
+        )}
       </section>
     );
   }
@@ -144,15 +179,29 @@ export function FrenchRuling({ docId, arabic, arabicView }: {
         <span>{t("tr.notice")}</span>
         <div className="flex gap-1" role="group" aria-label={t("fr.viewLabel")}>
           {(["fr", "ar", "both"] as const).map((v) => (
-            <Button key={v} size="sm" variant={view === v ? "default" : "outline"}
-                    aria-pressed={view === v} onClick={() => setView(v)} className="h-7 px-2 text-xs">
+            <Button
+              key={v}
+              size="sm"
+              variant={view === v ? "default" : "outline"}
+              aria-pressed={view === v}
+              onClick={() => setView(v)}
+              className="h-7 px-2 text-xs"
+            >
               {t(v === "fr" ? "fr.viewFr" : v === "ar" ? "fr.viewAr" : "fr.viewBoth")}
             </Button>
           ))}
         </div>
       </div>
-      {view === "ar" ? arabicView : view === "both" ? <TranslationView docId={docId} arabic={arabic} /> : (
-        <article dir="ltr" lang="fr" className="rounded-2xl border bg-card p-6 text-[15px] leading-7">
+      {view === "ar" ? (
+        arabicView
+      ) : view === "both" ? (
+        <TranslationView docId={docId} arabic={arabic} />
+      ) : (
+        <article
+          dir="ltr"
+          lang="fr"
+          className="rounded-2xl border bg-card p-6 text-[15px] leading-7"
+        >
           <div className="whitespace-pre-wrap font-sans">{stored.data?.text}</div>
         </article>
       )}

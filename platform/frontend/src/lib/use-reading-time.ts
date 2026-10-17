@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { request } from "./api";
 import type { Lang } from "./lang-url";
 
-const BEAT = 30;   // seconds between beats
+const BEAT = 30; // seconds between beats
 
 /** While a ruling is open and the tab is in view, tell the server every half minute.
  *  A page left in a background tab, or closed at once, counts nothing. */
@@ -17,7 +17,8 @@ export function useReadingTime(docId: string | undefined, lang: Lang, enabled: b
       if (seen >= BEAT) {
         seen = 0;
         void request(`/api/decisions/${encodeURIComponent(docId)}/reading`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ seconds: BEAT, lang }),
         }).catch(() => undefined);
       }

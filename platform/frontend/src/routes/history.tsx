@@ -27,15 +27,30 @@ function History() {
             return (
               <li key={i} className="flex items-center gap-3 py-2.5 text-sm">
                 <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="w-36 shrink-0 tabular-nums text-xs text-muted-foreground">{when(h.ts)}</span>
+                <span className="w-36 shrink-0 tabular-nums text-xs text-muted-foreground">
+                  {when(h.ts)}
+                </span>
                 {h.action === "search" ? (
-                  <Link to="/browse/$chamber" params={{ chamber: "الكل" }} search={{ q: h.query }} className="hover:text-teal">
+                  <Link
+                    to="/browse/$chamber"
+                    params={{ chamber: "الكل" }}
+                    search={{ q: h.query }}
+                    className="hover:text-teal"
+                  >
                     {t("hist.searched")} « {h.query} »
                   </Link>
                 ) : (
-                  <Link to="/ruling/$docId" params={{ docId: h.doc_id ?? "" }} className="hover:text-teal">
-                    {h.action === "download" ? t("hist.downloaded") : t("hist.read")} {t("ruling.decisionOf")} {num(h.decision_no ?? "")}
-                    <span className="text-muted-foreground"> · {h.date} · {chamber(h.chamber ?? "")}</span>
+                  <Link
+                    to="/ruling/$docId"
+                    params={{ docId: h.doc_id ?? "" }}
+                    className="hover:text-teal"
+                  >
+                    {h.action === "download" ? t("hist.downloaded") : t("hist.read")}{" "}
+                    {t("ruling.decisionOf")} {num(h.decision_no ?? "")}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {h.date} · {chamber(h.chamber ?? "")}
+                    </span>
                   </Link>
                 )}
               </li>

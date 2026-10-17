@@ -3,7 +3,12 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useI18n } from "@/lib/i18n";
@@ -18,7 +23,14 @@ export type FilterOption = { key: string; label: string; count?: number };
  *  typed into, which matters most for the cities and the subjects.
  */
 export function FilterMenu({
-  label, value, options, onChange, allLabel, searchPlaceholder, align = "start", width = "16rem",
+  label,
+  value,
+  options,
+  onChange,
+  allLabel,
+  searchPlaceholder,
+  align = "start",
+  width = "16rem",
 }: {
   label: string;
   value?: string | undefined;
@@ -33,7 +45,10 @@ export function FilterMenu({
   const [open, setOpen] = useState(false);
   const chosen = options.find((o) => o.key === value);
 
-  const pick = (key: string | undefined) => { onChange(key); setOpen(false); };
+  const pick = (key: string | undefined) => {
+    onChange(key);
+    setOpen(false);
+  };
 
   return (
     <div className="inline-flex items-center">

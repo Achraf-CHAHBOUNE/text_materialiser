@@ -5,11 +5,21 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  hideAll, previewHideAll, previewText, reportProblem, saveText, type DiffHunk,
+  hideAll,
+  previewHideAll,
+  previewText,
+  reportProblem,
+  saveText,
+  type DiffHunk,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -22,7 +32,9 @@ export function Snippet({ text }: { text: string }) {
     <>
       {text.split(/(«[^»]*»)/g).map((c, i) =>
         c.startsWith("«") ? (
-          <mark key={i} className="rounded bg-amber-300/50 px-0.5">{c.slice(1, -1)}</mark>
+          <mark key={i} className="rounded bg-amber-300/50 px-0.5">
+            {c.slice(1, -1)}
+          </mark>
         ) : (
           <span key={i}>{c}</span>
         ),
@@ -55,8 +67,16 @@ export function GateWarning({ findings }: { findings: string[] }) {
   );
 }
 
-export function HideAllDialog({ docId, version, value, onClose }: {
-  docId: string; version: number; value: string | null; onClose: () => void;
+export function HideAllDialog({
+  docId,
+  version,
+  value,
+  onClose,
+}: {
+  docId: string;
+  version: number;
+  value: string | null;
+  onClose: () => void;
 }) {
   const { t, num, dir } = useI18n();
   const { applyOutcome, fail } = useEdits(docId);
@@ -68,7 +88,10 @@ export function HideAllDialog({ docId, version, value, onClose }: {
   });
   const apply = useMutation({
     mutationFn: () => hideAll(docId, value ?? "", version),
-    onSuccess: (out) => { applyOutcome(out, "hide_all"); onClose(); },
+    onSuccess: (out) => {
+      applyOutcome(out, "hide_all");
+      onClose();
+    },
     onError: fail,
   });
   const count = preview.data?.count ?? 0;
@@ -80,25 +103,34 @@ export function HideAllDialog({ docId, version, value, onClose }: {
           <DialogTitle>{t("edit.hideAllTitle")}</DialogTitle>
           <DialogDescription>{t("edit.hideAllNote")}</DialogDescription>
         </DialogHeader>
-        <p dir="rtl" className="rounded-xl bg-muted px-3 py-2 font-medium">{value}</p>
+        <p dir="rtl" className="rounded-xl bg-muted px-3 py-2 font-medium">
+          {value}
+        </p>
         {preview.isLoading && <p className="text-sm text-muted-foreground">…</p>}
-        {preview.error && <p className="text-sm text-destructive">{(preview.error as Error).message}</p>}
-        {preview.data && (
-          count === 0 ? (
+        {preview.error && (
+          <p className="text-sm text-destructive">{(preview.error as Error).message}</p>
+        )}
+        {preview.data &&
+          (count === 0 ? (
             <p className="text-sm text-muted-foreground">{t("edit.none")}</p>
           ) : (
             <>
-              <p className="text-sm"><b className="tabular-nums">{num(count)}</b> {t("edit.occurrences")}</p>
+              <p className="text-sm">
+                <b className="tabular-nums">{num(count)}</b> {t("edit.occurrences")}
+              </p>
               <ul dir="rtl" className="max-h-60 space-y-2 overflow-y-auto text-sm leading-7">
                 {preview.data.snippets.map((s, i) => (
-                  <li key={i} className="rounded-lg border px-3 py-1.5"><Snippet text={s} /></li>
+                  <li key={i} className="rounded-lg border px-3 py-1.5">
+                    <Snippet text={s} />
+                  </li>
                 ))}
               </ul>
             </>
-          )
-        )}
+          ))}
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>{t("edit.cancel")}</Button>
+          <Button variant="ghost" onClick={onClose}>
+            {t("edit.cancel")}
+          </Button>
           <Button disabled={!count || apply.isPending} onClick={() => apply.mutate()}>
             {t("edit.hideAllConfirm")}
           </Button>
@@ -108,16 +140,33 @@ export function HideAllDialog({ docId, version, value, onClose }: {
   );
 }
 
-export function TextEditorDialog({ docId, version, text, open, onClose }: {
-  docId: string; version: number; text: string; open: boolean; onClose: () => void;
+export function TextEditorDialog({
+  docId,
+  version,
+  text,
+  open,
+  onClose,
+}: {
+  docId: string;
+  version: number;
+  text: string;
+  open: boolean;
+  onClose: () => void;
 }) {
   const { t, dir } = useI18n();
   const { applyOutcome, fail } = useEdits(docId);
   const [draft, setDraft] = useState(text);
-  const [review, setReview] = useState<{ removal: boolean; diff: DiffHunk[]; gate: string[] } | null>(null);
+  const [review, setReview] = useState<{
+    removal: boolean;
+    diff: DiffHunk[];
+    gate: string[];
+  } | null>(null);
 
   useEffect(() => {
-    if (open) { setDraft(text); setReview(null); }
+    if (open) {
+      setDraft(text);
+      setReview(null);
+    }
   }, [open, text]);
 
   const check = useMutation({
@@ -127,7 +176,10 @@ export function TextEditorDialog({ docId, version, text, open, onClose }: {
   });
   const save = useMutation({
     mutationFn: () => saveText(docId, draft, version),
-    onSuccess: (out) => { applyOutcome(out, "edit"); onClose(); },
+    onSuccess: (out) => {
+      applyOutcome(out, "edit");
+      onClose();
+    },
     onError: fail,
   });
 
@@ -154,7 +206,9 @@ export function TextEditorDialog({ docId, version, text, open, onClose }: {
         <DialogFooter className="gap-2">
           {review ? (
             <>
-              <Button variant="ghost" onClick={() => setReview(null)}>{t("edit.back")}</Button>
+              <Button variant="ghost" onClick={() => setReview(null)}>
+                {t("edit.back")}
+              </Button>
               <Button
                 disabled={!review.diff.length || review.gate.length > 0 || save.isPending}
                 variant={review.removal ? "default" : "secondary"}
@@ -165,7 +219,9 @@ export function TextEditorDialog({ docId, version, text, open, onClose }: {
             </>
           ) : (
             <>
-              <Button variant="ghost" onClick={onClose}>{t("edit.cancel")}</Button>
+              <Button variant="ghost" onClick={onClose}>
+                {t("edit.cancel")}
+              </Button>
               <Button disabled={draft === text || check.isPending} onClick={() => check.mutate()}>
                 {t("edit.review")}
               </Button>
@@ -177,15 +233,28 @@ export function TextEditorDialog({ docId, version, text, open, onClose }: {
   );
 }
 
-export function ReportDialog({ docId, quote, open, onClose }: {
-  docId: string; quote: string; open: boolean; onClose: () => void;
+export function ReportDialog({
+  docId,
+  quote,
+  open,
+  onClose,
+}: {
+  docId: string;
+  quote: string;
+  open: boolean;
+  onClose: () => void;
 }) {
   const { t, dir } = useI18n();
   const [note, setNote] = useState("");
-  useEffect(() => { if (open) setNote(""); }, [open]);
+  useEffect(() => {
+    if (open) setNote("");
+  }, [open]);
   const send = useMutation({
     mutationFn: () => reportProblem(docId, quote, note),
-    onSuccess: () => { toast.success(t("report.sent")); onClose(); },
+    onSuccess: () => {
+      toast.success(t("report.sent"));
+      onClose();
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
   });
   return (
@@ -198,7 +267,9 @@ export function ReportDialog({ docId, quote, open, onClose }: {
         {quote && (
           <div>
             <p className="mb-1 text-xs text-muted-foreground">{t("report.quote")}</p>
-            <p dir="rtl" className="rounded-xl bg-muted px-3 py-2">{quote}</p>
+            <p dir="rtl" className="rounded-xl bg-muted px-3 py-2">
+              {quote}
+            </p>
           </div>
         )}
         <div>
@@ -206,8 +277,13 @@ export function ReportDialog({ docId, quote, open, onClose }: {
           <Textarea value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} />
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>{t("edit.cancel")}</Button>
-          <Button disabled={(!quote && !note.trim()) || send.isPending} onClick={() => send.mutate()}>
+          <Button variant="ghost" onClick={onClose}>
+            {t("edit.cancel")}
+          </Button>
+          <Button
+            disabled={(!quote && !note.trim()) || send.isPending}
+            onClick={() => send.mutate()}
+          >
             {t("report.send")}
           </Button>
         </DialogFooter>

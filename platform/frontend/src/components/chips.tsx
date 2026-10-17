@@ -35,7 +35,8 @@ export function Pill({
 export function LevelBadge({ level, className }: { level: string; className?: string }) {
   const { level: levelName, dir } = useI18n();
   const map: Record<string, string> = {
-    ابتدائي: "bg-primary/10 text-primary ring-primary/20 dark:bg-[#2f6da8]/18 dark:text-[#8fc0ec] dark:ring-[#2f6da8]/35",
+    ابتدائي:
+      "bg-primary/10 text-primary ring-primary/20 dark:bg-[#2f6da8]/18 dark:text-[#8fc0ec] dark:ring-[#2f6da8]/35",
     استئناف: "bg-teal/12 text-teal ring-teal/25",
     نقض: "bg-warning/14 text-warning-foreground ring-warning/35 dark:text-warning",
   };
@@ -65,4 +66,3 @@ export function ChamberBadge({ chamber }: { chamber: string }) {
     </span>
   );
 }
-

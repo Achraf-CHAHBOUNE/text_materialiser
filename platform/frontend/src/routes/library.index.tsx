@@ -27,38 +27,72 @@ function Library() {
   const [shared, setShared] = useState(false);
   const create = useMutation({
     mutationFn: () => createFolder(name, shared),
-    onSuccess: () => { setName(""); setShared(false); void qc.invalidateQueries({ queryKey: ["folders"] }); },
+    onSuccess: () => {
+      setName("");
+      setShared(false);
+      void qc.invalidateQueries({ queryKey: ["folders"] });
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : t("adm.failed")),
   });
   return (
     <AppShell title={t("lib.title")} description={t("lib.subtitle")}>
       <Card>
-        <form className="flex flex-wrap items-center gap-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder={t("lib.newName")}
-                 className="h-10 max-w-sm" aria-label={t("lib.newName")} />
+        <form
+          className="flex flex-wrap items-center gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder={t("lib.newName")}
+            className="h-10 max-w-sm"
+            aria-label={t("lib.newName")}
+          />
           {!isStaff && (
             <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={shared} onCheckedChange={(v) => setShared(v === true)} />{t("lib.shareFirm")}
+              <Checkbox checked={shared} onCheckedChange={(v) => setShared(v === true)} />
+              {t("lib.shareFirm")}
             </label>
           )}
-          <Button type="submit" disabled={create.isPending}><FolderPlus className="size-4" />{t("lib.create")}</Button>
+          <Button type="submit" disabled={create.isPending}>
+            <FolderPlus className="size-4" />
+            {t("lib.create")}
+          </Button>
         </form>
       </Card>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {(list.data ?? []).map((f) => (
-          <Link key={f.id} to="/library/$folderId" params={{ folderId: String(f.id) }}
-                className="rounded-2xl border bg-card p-5 shadow-soft transition-colors hover:border-teal/50 hover:bg-teal/5">
+          <Link
+            key={f.id}
+            to="/library/$folderId"
+            params={{ folderId: String(f.id) }}
+            className="rounded-2xl border bg-card p-5 shadow-soft transition-colors hover:border-teal/50 hover:bg-teal/5"
+          >
             <div className="flex items-center gap-2">
-              {f.shared ? <Users className="size-4 text-teal" /> : <FolderOpen className="size-4 text-teal" />}
+              {f.shared ? (
+                <Users className="size-4 text-teal" />
+              ) : (
+                <FolderOpen className="size-4 text-teal" />
+              )}
               <span className="font-medium">{f.name}</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {num(f.count)} {t("browse.rulingsCount")}{f.shared ? ` · ${t("lib.shared")}` : ""}{!f.mine ? ` · ${f.owner}` : ""}
+              {num(f.count)} {t("browse.rulingsCount")}
+              {f.shared ? ` · ${t("lib.shared")}` : ""}
+              {!f.mine ? ` · ${f.owner}` : ""}
             </p>
           </Link>
         ))}
       </div>
-      {list.data && list.data.length === 0 && <div className="mt-4"><Empty>{t("lib.empty")}</Empty></div>}
+      {list.data && list.data.length === 0 && (
+        <div className="mt-4">
+          <Empty>{t("lib.empty")}</Empty>
+        </div>
+      )}
     </AppShell>
   );
 }

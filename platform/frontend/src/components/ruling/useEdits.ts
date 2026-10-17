@@ -5,7 +5,11 @@ import { toast } from "sonner";
 import { ApiError, type Decision, type EditOutcome, type History } from "@/lib/api";
 import { useI18n, type StringKey } from "@/lib/i18n";
 
-export const rulingKey = (docId: string, admin: boolean) => ["ruling", docId, admin ? "admin" : "reader"];
+export const rulingKey = (docId: string, admin: boolean) => [
+  "ruling",
+  docId,
+  admin ? "admin" : "reader",
+];
 export const historyKey = (docId: string) => ["ruling-history", docId];
 
 const ACTIONS = ["import", "hide", "hide_all", "edit", "restore", "title", "replace_file"];
@@ -39,11 +43,12 @@ export function useEdits(docId: string) {
       qc.setQueryData<Decision>(rulingKey(docId, true), out.decision);
       qc.setQueryData<History>(historyKey(docId), (old) => ({ ...old, ...out.history }));
       void qc.invalidateQueries({ queryKey: rulingKey(docId, false) });
-      void qc.invalidateQueries({ queryKey: ["browse"] });     // listing fields, search text
+      void qc.invalidateQueries({ queryKey: ["browse"] }); // listing fields, search text
       void qc.invalidateQueries({ queryKey: ["corrections"] });
       if (out.deleted !== undefined) toast.success(t("history.purged"));
       else if (!out.applied && out.draft_id) toast.message(t("edit.draftSaved"));
-      else if (out.applied && action?.startsWith("hide")) toast.success(`${t("edit.hidden")} ${num(out.version ?? 0)}`);
+      else if (out.applied && action?.startsWith("hide"))
+        toast.success(`${t("edit.hidden")} ${num(out.version ?? 0)}`);
       else if (out.applied) toast.success(t("edit.saved"));
     },
     [qc, docId, t, num],
@@ -71,7 +76,9 @@ export function useEdits(docId: string) {
         return;
       }
       if (e instanceof ApiError && e.message.startsWith("Personal data")) {
-        toast.error(t("edit.gate"), { description: e.message.replace(/^Personal data found: /, "") });
+        toast.error(t("edit.gate"), {
+          description: e.message.replace(/^Personal data found: /, ""),
+        });
         return;
       }
       toast.error(e instanceof Error ? e.message : String(e));

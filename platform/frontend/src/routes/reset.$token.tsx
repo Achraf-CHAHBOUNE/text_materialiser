@@ -10,7 +10,9 @@ import { resetPassword } from "@/lib/api-biz";
 import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/reset/$token")({
-  head: () => ({ meta: [{ title: "كلمة المرور · Mot de passe" }, { name: "referrer", content: "no-referrer" }] }),
+  head: () => ({
+    meta: [{ title: "كلمة المرور · Mot de passe" }, { name: "referrer", content: "no-referrer" }],
+  }),
   component: Reset,
 });
 
@@ -32,14 +34,37 @@ function Reset() {
         <h1 className="text-h2 font-semibold">{t("reset.title")}</h1>
         {reset.isSuccess ? (
           <p className="mt-4 text-sm">
-            {t("reset.done")} <Link to="/" className="text-teal underline">{t("login.submit")}</Link>
+            {t("reset.done")}{" "}
+            <Link to="/" className="text-teal underline">
+              {t("login.submit")}
+            </Link>
           </p>
         ) : (
-          <form className="mt-5 space-y-3" onSubmit={(e) => { e.preventDefault(); reset.mutate(); }}>
-            <TextField label={t("acc.newPassword")} value={pw} onChange={setPw} type="password" required />
-            <TextField label={t("acc.confirmPassword")} value={pw2} onChange={setPw2} type="password" required />
+          <form
+            className="mt-5 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              reset.mutate();
+            }}
+          >
+            <TextField
+              label={t("acc.newPassword")}
+              value={pw}
+              onChange={setPw}
+              type="password"
+              required
+            />
+            <TextField
+              label={t("acc.confirmPassword")}
+              value={pw2}
+              onChange={setPw2}
+              type="password"
+              required
+            />
             <p className="text-xs text-muted-foreground">{t("acc.pwRule")}</p>
-            <Button type="submit" className="w-full" disabled={reset.isPending}>{t("reset.submit")}</Button>
+            <Button type="submit" className="w-full" disabled={reset.isPending}>
+              {t("reset.submit")}
+            </Button>
           </form>
         )}
       </div>

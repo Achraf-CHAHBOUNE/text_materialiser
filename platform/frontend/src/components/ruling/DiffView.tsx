@@ -17,11 +17,23 @@ export function DiffView({ hunks }: { hunks: DiffHunk[] }) {
           <p dir="rtl" className="whitespace-pre-wrap px-3 py-2 text-[15px] leading-8">
             {h.segments.map((s, k) =>
               s.op === "del" ? (
-                <del key={k} className="rounded bg-destructive/15 text-destructive decoration-destructive/60">{s.text}</del>
+                <del
+                  key={k}
+                  className="rounded bg-destructive/15 text-destructive decoration-destructive/60"
+                >
+                  {s.text}
+                </del>
               ) : s.op === "ins" ? (
-                <ins key={k} className="rounded bg-emerald-500/15 text-emerald-700 no-underline dark:text-emerald-400">{s.text}</ins>
+                <ins
+                  key={k}
+                  className="rounded bg-emerald-500/15 text-emerald-700 no-underline dark:text-emerald-400"
+                >
+                  {s.text}
+                </ins>
               ) : (
-                <span key={k} className="text-muted-foreground">{s.text}</span>
+                <span key={k} className="text-muted-foreground">
+                  {s.text}
+                </span>
               ),
             )}
           </p>

@@ -19,14 +19,31 @@ function Alerts() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["alerts"], queryFn: alerts });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["alerts"] });
-  const change = useMutation({ mutationFn: (a: { id: number; active?: boolean; frequency?: string }) => updateAlert(a.id, a), onSuccess: refresh });
+  const change = useMutation({
+    mutationFn: (a: { id: number; active?: boolean; frequency?: string }) => updateAlert(a.id, a),
+    onSuccess: refresh,
+  });
   const drop = useMutation({ mutationFn: deleteAlert, onSuccess: refresh });
   return (
     <AppShell title={t("alert.title")} description={t("alert.subtitle")}>
       <Card>
-        <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground"><BellRing className="size-4 text-teal" />{t("alert.how")}</p>
-        {list.data && list.data.length === 0 ? <Empty>{t("alert.empty")}</Empty> : (
-          <Table head={[t("alert.name"), t("alert.criteria"), t("alert.frequency"), t("alert.lastSent"), t("alert.active"), ""]}>
+        <p className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <BellRing className="size-4 text-teal" />
+          {t("alert.how")}
+        </p>
+        {list.data && list.data.length === 0 ? (
+          <Empty>{t("alert.empty")}</Empty>
+        ) : (
+          <Table
+            head={[
+              t("alert.name"),
+              t("alert.criteria"),
+              t("alert.frequency"),
+              t("alert.lastSent"),
+              t("alert.active"),
+              "",
+            ]}
+          >
             {(list.data ?? []).map((a) => (
               <tr key={a.id}>
                 <Td className="font-medium">{a.name}</Td>
@@ -40,12 +57,34 @@ function Alerts() {
                   </div>
                 </Td>
                 <Td>
-                  <Select value={a.frequency} onChange={(v) => change.mutate({ id: a.id, frequency: v })} label={t("alert.frequency")}
-                          options={[{ value: "daily", label: t("alert.daily") }, { value: "weekly", label: t("alert.weekly") }]} />
+                  <Select
+                    value={a.frequency}
+                    onChange={(v) => change.mutate({ id: a.id, frequency: v })}
+                    label={t("alert.frequency")}
+                    options={[
+                      { value: "daily", label: t("alert.daily") },
+                      { value: "weekly", label: t("alert.weekly") },
+                    ]}
+                  />
                 </Td>
                 <Td>{day(a.last_sent_at)}</Td>
-                <Td><Switch checked={a.active} onCheckedChange={(v) => change.mutate({ id: a.id, active: v })} aria-label={t("alert.active")} /></Td>
-                <Td><Button size="sm" variant="ghost" onClick={() => drop.mutate(a.id)} aria-label={t("lib.delete")}><Trash2 className="size-4" /></Button></Td>
+                <Td>
+                  <Switch
+                    checked={a.active}
+                    onCheckedChange={(v) => change.mutate({ id: a.id, active: v })}
+                    aria-label={t("alert.active")}
+                  />
+                </Td>
+                <Td>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => drop.mutate(a.id)}
+                    aria-label={t("lib.delete")}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </Td>
               </tr>
             ))}
           </Table>

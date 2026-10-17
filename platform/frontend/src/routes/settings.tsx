@@ -21,8 +21,16 @@ function Settings() {
         <div className="rounded-2xl border bg-card p-5 shadow-soft">
           <h2 className="text-sm font-semibold">{t("settings.account")}</h2>
           <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-muted-foreground">{t("adm.colEmail")}</dt><dd className="font-medium">{email || "—"}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted-foreground">{t("settings.role")}</dt><dd className="font-medium">{t(role === "admin" ? "settings.role.admin" : "settings.role.client")}</dd></div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">{t("adm.colEmail")}</dt>
+              <dd className="font-medium">{email || "—"}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">{t("settings.role")}</dt>
+              <dd className="font-medium">
+                {t(role === "admin" ? "settings.role.admin" : "settings.role.client")}
+              </dd>
+            </div>
           </dl>
         </div>
         <div className="rounded-2xl border bg-card p-5 shadow-soft">
@@ -32,14 +40,27 @@ function Settings() {
               {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               {theme === "dark" ? t("shell.theme.light") : t("shell.theme.dark")}
             </Button>
-            <Button variant="outline" className="h-10" onClick={() => setLang(lang === "ar" ? "fr" : "ar")}>
-              <Languages className="size-4" />{t("lang.switch")}
+            <Button
+              variant="outline"
+              className="h-10"
+              onClick={() => setLang(lang === "ar" ? "fr" : "ar")}
+            >
+              <Languages className="size-4" />
+              {t("lang.switch")}
             </Button>
           </div>
         </div>
-        <Button variant="outline" className="h-10 text-destructive"
-          onClick={() => { logout(); toast.success(t("login.signedOut")); navigate({ to: "/" }); }}>
-          <LogOut className="size-4" />{t("nav.signOut")}
+        <Button
+          variant="outline"
+          className="h-10 text-destructive"
+          onClick={() => {
+            logout();
+            toast.success(t("login.signedOut"));
+            navigate({ to: "/" });
+          }}
+        >
+          <LogOut className="size-4" />
+          {t("nav.signOut")}
         </Button>
       </div>
     </AppShell>
